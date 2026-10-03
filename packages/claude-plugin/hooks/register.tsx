@@ -201,10 +201,16 @@ const getLife = ($: EngineInterface) => (life ??= createLife($).then(l => (ended
 // data dir exists (d.ts has $.fs.write for any path), so close/end write to the cockpit data dir and the command returns the dump.
 async function exportOnClose($: EngineInterface) {
   if (!trace.on) return
+  let timer: { cancel: () => void } | undefined
   try {
-    const { dataDir } = await locate($)
-    await writeTrace({ dataDir, write: (path, text) => $.fs.write(path, text) }, exportTrace())
+    const out = (async () => {
+      const { dataDir } = await locate($)
+      await writeTrace({ dataDir, write: (path, text) => $.fs.write(path, text) }, exportTrace())
+    })()
+    // a hung write must not stall teardown
+    await Promise.race([out, new Promise<void>(r => (timer = $.clock.after(2000, () => r())))])
   } catch {}
+  timer?.cancel()
 }
 function closeLife() {
   const p = life
@@ -363,7 +369,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'cockpit',
-      description: 'Agent cockpit: /cockpit [start|stop|run <request>|status|approve|changes <text>|reject|report|trace|close]',
+      description: 'Agent cockpit: /cockpit [start|stop|run <request>|status|approve|changes <text>|reject|report|trace]',
     })
     ended = false
     closeLife()
@@ -410,9 +416,6 @@ export const register: Register = on => {
         await openPane($)
         return { text: await startRun($, e.args.replace(/^\s*run\s*/, '')) }
       }
-      case 'close':
-        await $.ui.close({ id: PANE })
-        return { text: 'Cockpit closed.' }
       case 'trace': {
         const out = await writeTrace({}, exportTrace())
         return { text: out && 'text' in out ? out.text : 'Trace is off (set COCKPIT_TRACE=1).' }
@@ -432,7 +435,7 @@ export const register: Register = on => {
         return { text: await decide($, sub, target, note) }
       }
       default:
-        return { text: 'Usage: /cockpit [start|stop|run <request>|status|approve [note]|changes <text>|reject [note]|report|trace|close]' }
+        return { text: 'Usage: /cockpit [start|stop|run <request>|status|approve [note]|changes <text>|reject [note]|report|trace]' }
     }
   })
 
