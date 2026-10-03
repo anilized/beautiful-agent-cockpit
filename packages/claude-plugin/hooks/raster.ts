@@ -1,11 +1,30 @@
 // Cell-grid painters for the terminal's Raster element. Each painter is a pure function of
 // (size, timeMs, data) → base64 `cells` (exactly cols*rows*3 uint32 words); every speed is per second,
 // so output depends only on the clock value, never on how often it is sampled. Colours come from
-// theme.ts and are quantized to a few levels so a frame holds ≤512 distinct fg/bg pairs.
+// theme.ts and are quantized to a few levels so a frame holds ≤512 distinct fg/bg pairs (the host paints 1024).
+//
+// Signatures (size = {cols, rows}; t = elapsed ms; data in braces):
+//   hero(size, t, {online, left, right, alert})                rows ≥ 2 (4 live)
+//   pipeline(size, t, {steps, phase, fill, failed, color})     rows 2; phase = discrete step, fill 0..1 = tweened connector
+//   progress(size, t, {frac, live})                            rows 1; frac 0..1 tweened
+//   spark(size, t, {values, live})                             rows ≥ 1
+//   orb(size, t, {color, active, seed})                        any size (4x2 live)
+//   divider(size, t, {color, active})                          rows ≥ 1, line on the middle row
+//   underline(size, t, {tabs, active, color})                  tabs = cell widths, active may be fractional; line on last row
+//   meters(size, t, {values, colors, labels})                  one bar per row; values 0..1 tweened
+//   hex(css) → 0xRRGGBB; pairCount(cells) → distinct fg/bg pairs in a frame
 
 import { AURORA, BAR, K, LETTERS, SPARK, cycle, hex, lerpRgb, quant, ramp, scale } from './theme'
 
 export { hex }
+
+/** Distinct (fg, bg) pairs in a base64 cells string. */
+export function pairCount(cells: string): number {
+  const bin = atob(cells), seen = new Set<string>()
+  const word = (i: number) => (bin.charCodeAt(i) | (bin.charCodeAt(i + 1) << 8) | (bin.charCodeAt(i + 2) << 16) | (bin.charCodeAt(i + 3) << 24)) >>> 0
+  for (let i = 0; i < bin.length; i += 12) seen.add(word(i + 4) + '/' + word(i + 8))
+  return seen.size
+}
 
 export type Size = { cols: number; rows: number }
 
@@ -56,13 +75,13 @@ class Pixels {
     if (x >= 0 && y >= 0 && x < this.cols && y < this.rows * 2) this.px[y * this.cols + x] = c
   }
   toCells(transparent = false): Cells {
-    const out = new Cells(this.cols, this.rows)
+    const out = new Cells(this.cols, this.rows), { cols, px } = this
     for (let y = 0; y < this.rows; y++)
-      for (let x = 0; x < this.cols; x++) {
-        const top = this.get(x, y * 2), bottom = this.get(x, y * 2 + 1)
-        if (!transparent || (top && bottom)) out.set(x, y, '▀', top, bottom)
-        else if (bottom) out.set(x, y, '▄', bottom)
-        else if (top) out.set(x, y, '▀', top)
+      for (let x = 0; x < cols; x++) {
+        const top = px[y * 2 * cols + x]!, bottom = px[(y * 2 + 1) * cols + x]!
+        if (!transparent || (top && bottom)) out.set(x, y, 0x2580, top, bottom)
+        else if (bottom) out.set(x, y, 0x2584, bottom)
+        else if (top) out.set(x, y, 0x2580, top)
       }
     return out
   }
@@ -94,7 +113,14 @@ const ALERT_RATE = 4.17 // rad/s
 const LETTER_DRIFT = 0.104 // gradient cycles/s
 const SWEEP_SPEED = 15 // pixels/s
 const DOT_RATE = { online: 3.33, offline: 5 } // rad/s
+const STAR_RATE = 1.3 // rad/s, ambient twinkle
 const AURORA_LEVELS = 12
+/** Integer hash of a pixel: fixed star positions without module state. */
+const hash = (x: number, y: number) => {
+  let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263)
+  h = Math.imul(h ^ (h >>> 13), 1274126177)
+  return (h ^ (h >>> 16)) >>> 0
+}
 const FADE_LEVELS = 4
 
 export type HeroData = { online: boolean; left: string; right: string; alert: boolean }
@@ -132,6 +158,10 @@ function paintHero({ cols, rows }: Size, t: number, d: HeroData): string {
       col = scale(col, bright)
       const g = glow[y * cols + x]!
       if (g) col = lerpRgb(col, K.glow, g === 2 ? 0.5 : 0.22)
+      else {
+        const h = hash(x, y)
+        if ((h & 63) === 0) col = lerpRgb(col, K.lavender, quant(wave(STAR_RATE, s, (h >>> 6 & 255) * 0.0246) * 0.45, 3))
+      }
       p.put(x, y, col)
     }
   }
@@ -142,7 +172,7 @@ function paintHero({ cols, rows }: Size, t: number, d: HeroData): string {
       const f = (gx / ww - s * LETTER_DRIFT) % 1
       const base = cycle(LETTERS, quant(f < 0 ? f + 1 : f, 16))
       const shine = quant(Math.max(0, 1 - Math.abs(gx - sweep) / 4), 4)
-      p.put(ox + gx, oy + gy, lerpRgb(base, WHITE, shine * 0.75))
+      p.put(ox + gx, oy + gy, scale(lerpRgb(base, WHITE, shine * 0.75), 1 - gy * 0.06))
     }
   const cells = p.toCells()
   // status line on the last row, over the aurora
@@ -186,7 +216,7 @@ function paintPipeline({ cols, rows }: Size, t: number, d: PipelineData): string
         const dist = (((head % span) - (x - a)) % span + span) % span
         if (dist < PARTICLE_TRAIL) col = lerpRgb(col, d.color, quant(1 - dist / PARTICLE_TRAIL, 5))
       }
-      c.set(x, 0, '━', col)
+      c.set(x, 0, col === K.faint ? 0x254c : 0x2501, col)
     }
   }
   const pulse = quant(wave(NODE_PULSE, s), 6)
@@ -197,6 +227,11 @@ function paintPipeline({ cols, rows }: Size, t: number, d: PipelineData): string
     const glyph = done ? '●' : now ? (d.failed ? '✗' : '◉') : '○'
     const col = done ? K.green : now ? (d.failed ? K.red : lerpRgb(d.color, WHITE, pulse * 0.6)) : K.line
     c.set(x, 0, glyph, col)
+    if (now && !d.failed) {
+      const halo = lerpRgb(K.faint, d.color, 0.25 + pulse * 0.3)
+      if (i > 0 && x - 1 > at(i - 1)) c.set(x - 1, 0, 0x2501, halo)
+      if (i < n - 1 && x + 1 < at(i + 1)) c.set(x + 1, 0, 0x2501, halo)
+    }
     const label = d.steps[i]!.slice(0, Math.max(3, Math.floor((cols - pad * 2) / n) - 1))
     const lx = Math.min(cols - label.length, Math.max(0, x - Math.floor(label.length / 2)))
     c.text(lx, 1, label, done ? K.mint : now ? (d.failed ? K.red : WHITE) : K.label)
@@ -262,7 +297,7 @@ function paintSpark({ cols, rows }: Size, t: number, d: SparkData): string {
 // ── orb (an agent's avatar) ────────────────────────────────────────────────────
 
 const ORB_PULSE = 5 // rad/s
-const ORB_SPARKLE = 5.56 // steps/s
+const ORB_ORBIT = 1.2 // rad/s, highlight travel
 
 export type OrbData = { color: number; active: boolean; seed: number }
 
@@ -274,12 +309,15 @@ function paintOrb({ cols, rows }: Size, t: number, d: OrbData): string {
   const core = lerpRgb(scale(d.color, 0.4), d.color, quant(k, 8))
   const rim = scale(d.color, quant(d.active ? 0.35 + 0.2 * Math.sin(s * ORB_PULSE + d.seed + 1) : 0.18, 10))
   const R = Math.min(w, h) / 2, cx = (w - 1) / 2, cy = (h - 1) / 2
+  const ang = s * ORB_ORBIT + d.seed, hx = cx + Math.cos(ang) * R * 0.4, hy = cy + Math.sin(ang) * R * 0.4
   for (let y = 0; y < h; y++)
     for (let x = 0; x < w; x++) {
       const dist = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy))
-      if (dist <= R) p.put(x, y, dist > R * 0.55 ? rim : core)
+      if (dist > R) continue
+      let col = lerpRgb(core, rim, quant(dist / R, 4))
+      if (d.active) col = lerpRgb(col, WHITE, quant(Math.max(0, 1 - Math.hypot(x - hx, y - hy) / (R * 0.8)), 3) * 0.45)
+      p.put(x, y, col)
     }
-  if (d.active) p.put(Math.floor((w - 1) / 2) + (Math.floor(s * ORB_SPARKLE + d.seed) & 1), Math.floor((h - 1) / 2), lerpRgb(core, WHITE, 0.6))
   return p.toCells(true).encode()
 }
 

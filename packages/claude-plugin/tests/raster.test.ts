@@ -67,12 +67,12 @@ test('orb paints any size, including 1x1 and 8x4', () => {
   }
 })
 
-const pairCount = (b64: string) => {
-  const w = new Uint32Array(decode(b64).buffer)
-  const pairs = new Set<string>()
-  for (let i = 0; i < w.length; i += 3) pairs.add(`${w[i + 1]}/${w[i + 2]}`)
-  return pairs.size
-}
+const pairCount = r.pairCount
+
+test('pairCount counts distinct fg/bg pairs', () => {
+  expect(pairCount(r.progress({ cols: 10, rows: 1 }, 0, { frac: 0, live: false }))).toBe(1)
+  expect(pairCount(r.hero({ cols: 100, rows: 4 }, 0, hdata))).toBeGreaterThan(20)
+})
 
 test('frame-rate independence: 16 ms and 33 ms clocks give identical frames at shared instants', () => {
   // Simulated clocks accumulate ticks and paint each one; 1000 is not a multiple of 16, so the shared instants
@@ -83,7 +83,7 @@ test('frame-rate independence: 16 ms and 33 ms clocks give identical frames at s
     return out
   }
   const T = 528 * 100, T2 = T + 1056
-  const moving = new Set(['hero', 'pipeline', 'progress', 'divider'])
+  const moving = new Set(['hero', 'pipeline', 'progress', 'divider', 'meters', 'orb', 'spark'])
   for (const [name, rows, paint] of cases) {
     const z = sizeFor(name, rows, 100)
     const a = run(16, T2, t => paint(z, t)), b = run(33, T2, t => paint(z, t))
@@ -100,6 +100,8 @@ test('animation depends on time: moving painters differ across a second, static 
   expect(r.hero(z(4), 0, hdata)).not.toBe(r.hero(z(4), 400, hdata))
   expect(r.divider(z(1), 0, { color: K.cyan, active: true })).not.toBe(r.divider(z(1), 400, { color: K.cyan, active: true }))
   expect(r.divider(z(1), 0, { color: K.cyan, active: false })).toBe(r.divider(z(1), 400, { color: K.cyan, active: false }))
+  const u = { tabs, active: 1.5, color: K.accent }
+  expect(r.underline(z(1), 0, u)).not.toBe(r.underline(z(1), 400, u))
   expect(r.progress(z(1), 0, { frac: 0.5, live: false })).toBe(r.progress(z(1), 400, { frac: 0.5, live: false }))
 })
 
@@ -128,7 +130,7 @@ test('pipeline: integer phase drives glyphs, fractional fill only paints the con
     const w = new Uint32Array(decode(r.pipeline({ cols: 100, rows: 2 }, 5000, { steps, phase: 3, fill, failed, color: K.cyan })).buffer)
     const row: number[] = []
     for (let x = 0; x < 100; x++) row.push(w[x * 3]!)
-    return row.filter(ch => ch !== 0x20 && ch !== 0x2501)
+    return row.filter(ch => ch !== 0x20 && ch !== 0x2501 && ch !== 0x254c)
   }
   expect(glyphs(0)).toEqual(glyphs(0.77))
   expect(glyphs(0.5).map(c => String.fromCodePoint(c)).join('')).toBe('●●●◉○○○○')
@@ -137,3 +139,20 @@ test('pipeline: integer phase drives glyphs, fractional fill only paints the con
 
 // Palette-literal greps (raster.ts has none, theme.ts owns them, 'register.tsx has no palette literals')
 // run in `npm run palette` (tests/tools.mjs), since the plugin test host has no fs.
+
+test('perf guard: all live painters at 140 columns stay well under the 4 ms budget (loose; tests/bench.ts is the real number)', () => {
+  const paint = (t: number) => [
+    r.hero({ cols: 140, rows: 4 }, t, hdata),
+    r.pipeline({ cols: 70, rows: 2 }, t, { steps, phase: 3, fill: 0.5, failed: false, color: K.cyan }),
+    r.progress({ cols: 64, rows: 1 }, t, { frac: 0.75, live: true }),
+    r.spark({ cols: 61, rows: 1 }, t, { values, live: true }),
+    r.divider({ cols: 72, rows: 1 }, t, { color: K.cyan, active: true }),
+    r.underline({ cols: 70, rows: 1 }, t, { tabs, active: 1.4, color: K.accent }),
+    r.meters({ cols: 34, rows: 3 }, t, meter),
+    r.orb({ cols: 4, rows: 2 }, t, { color: K.violet, active: true, seed: 1 }),
+  ]
+  for (let i = 0; i < 100; i++) paint(i * 16)
+  const N = 300, t0 = performance.now()
+  for (let i = 0; i < N; i++) paint((100 + i) * 16)
+  expect((performance.now() - t0) / N).toBeLessThan(12)
+})
