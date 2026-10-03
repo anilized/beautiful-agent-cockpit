@@ -32,6 +32,11 @@ export interface EngineContext {
 /** Durable per-run metadata (stored in runs.meta). */
 export interface RunMeta {
   repoIds: string[];
+  /** The human's choice of Supervisor and Lead for this run (absent: the configured hierarchy). */
+  supervisor?: string;
+  lead?: string;
+  /** The human's reasoning-effort choice per agent for this run (absent: the agent's default). */
+  efforts?: Record<string, string>;
   decisionRound?: number;
   assessment?: string;
   routingStrategy?: 'balanced' | 'prefer_quality' | 'prefer_cost' | 'prefer_speed';
@@ -64,11 +69,22 @@ export interface TaskContext {
   mergeIntegration?: boolean;
   integrationConflict?: string[];
   lastWorkerSummary?: string;
+  /** The worker the Lead assigned in its plan, honoured by the scheduler when it can be. */
+  preferredWorker?: string | null;
   [k: string]: unknown;
 }
 
 export function arch(run: Run): ArchitectureOutput | null {
   return (run.architecture as ArchitectureOutput | null) ?? null;
+}
+
+/** Who supervises and who leads this run: the run's own choice, else the configured hierarchy. */
+export function rolesOf(ctx: EngineContext, runId: string): { supervisor: string; lead: string } {
+  const meta = ctx.store.runMeta<RunMeta>(runId);
+  return {
+    supervisor: meta.supervisor ?? ctx.config.agents.hierarchy.supervisor,
+    lead: meta.lead ?? ctx.config.agents.hierarchy.lead,
+  };
 }
 
 export function runRepos(ctx: EngineContext, run: Run): Repository[] {

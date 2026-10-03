@@ -58,11 +58,12 @@ export class CodexAdapter implements AgentAdapter {
     this.running.get(sessionId)?.abort();
   }
 
-  buildArgs(session: AgentSession, schemaFile: string): string[] {
+  buildArgs(session: AgentSession, schemaFile: string, effort?: string | null): string[] {
     const sandbox = session.config.readOnly ? 'read-only' : (this.opts.writeSandbox ?? 'workspace-write');
     const common = ['--json', '--skip-git-repo-check', '--output-schema', schemaFile, '-c', `sandbox_mode="${sandbox}"`, '-c', 'approval_policy="never"'];
     if (this.profile.model) common.push('-m', this.profile.model);
-    if (this.opts.reasoningEffort) common.push('-c', `model_reasoning_effort="${this.opts.reasoningEffort}"`);
+    const reasoning = effort ?? this.opts.reasoningEffort;
+    if (reasoning) common.push('-c', `model_reasoning_effort="${reasoning}"`);
     common.push(...(this.opts.extraArgs ?? []));
     if (session.externalId) return ['exec', 'resume', ...common, session.externalId, '-'];
     const args = ['exec', ...common, '-C', session.config.cwd];
@@ -87,7 +88,7 @@ export class CodexAdapter implements AgentAdapter {
     let lastMessage: string | null = null;
     let failure: string | null = null;
 
-    spawnProcess(bin, this.buildArgs(session, schemaFile), {
+    spawnProcess(bin, this.buildArgs(session, schemaFile, assignment.effort), {
       cwd: session.config.cwd,
       stdin: assignment.prompt,
       timeoutMs: assignment.timeoutMs,
@@ -110,7 +111,8 @@ export class CodexAdapter implements AgentAdapter {
             if (item.type === 'agent_message') {
               lastMessage = item.text ?? '';
               queue.push({ type: 'text', text: lastMessage! });
-            } else if (item.type === 'command_execution') queue.push({ type: 'tool', name: 'shell', detail: String(item.command ?? '').slice(0, 200) });
+            } else if (item.type === 'reasoning' && item.text?.trim()) queue.push({ type: 'thinking', text: item.text });
+            else if (item.type === 'command_execution') queue.push({ type: 'tool', name: 'shell', detail: String(item.command ?? '').slice(0, 200) });
             else if (item.type === 'file_change') queue.push({ type: 'tool', name: 'edit', detail: JSON.stringify(item.changes ?? []).slice(0, 200) });
             break;
           }

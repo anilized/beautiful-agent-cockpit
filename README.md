@@ -51,7 +51,20 @@ The status line shows `cockpit: <run status> <done>/<total> · N working · N aw
 and a toast announces every new decision request. The cockpit is presentation only: it reads
 the snapshot the orchestrator writes and sends decisions through the CLI.
 
-## Architecture
+## Choosing who leads
+
+You seat the Supervisor and the Lead; the Lead staffs the workers.
+
+- **Per run:** pick them in the cockpit's NEW MISSION form, or `cockpit run "..." --supervisor opus --lead sonnet`.
+  Unset, the run takes `hierarchy` from `config/agents.yaml`.
+- **Mid-run** (a limit ran out): the CREW card's pickers, or `cockpit roles <runId> --lead opus`. Later calls of
+  that role go to the new agent; a call already in flight finishes where it started.
+- **Who may sit where:** an agent takes a seat only if the role is in its `roles` list in `agents.yaml`
+  (`cockpit agents` lists them). Supervisor and Lead must differ.
+- **Workers:** the Lead names a worker per task in its plan (`worker`), chosen from the enabled workers it is shown.
+  If that worker is at capacity or unknown, or the Lead leaves it null, `routing.yaml` decides.
+
+
 
 ```
 packages/

@@ -1,4 +1,5 @@
 import type {
+  AgentProfile,
   ArchitectureOutput,
   Decision,
   Proposal,
@@ -13,17 +14,21 @@ import type {
 // database: agents are compute nodes, not memory.
 
 const STRUCTURED = 'Your final answer is consumed by an orchestrator and must be the requested structured output, nothing else.';
+// The human follows each model live in the cockpit; one line per step keeps that legible for a few output tokens.
+const NARRATE = 'Before each tool call, write one short sentence saying what you are about to do and why (a human follows your work live). Keep it to that one sentence.';
 
 export const SUPERVISOR_PREAMBLE = `You are the Supervisor and Principal Architect of a hierarchical AI software engineering organization.
 Hierarchy: Human -> you (Supervisor) <-> Engineering Lead -> Workers. You have final architectural authority.
 You define architecture, constraints, acceptance criteria and systemic risks; evaluate the Lead's proposals; and perform final validation.
 You do not do routine implementation. The Lead is expected to challenge you with implementation evidence: weigh it seriously.
+${NARRATE}
 ${STRUCTURED}`;
 
 export const LEAD_PREAMBLE = `You are the Engineering Lead (Staff Engineer) of a hierarchical AI software engineering organization.
 Hierarchy: Human -> Supervisor (architect, final authority) <-> you -> Workers. Workers report only to you.
 You inspect repositories, challenge the architecture when evidence warrants it, decompose work into a dependency graph,
 assign file/module ownership, answer workers, review their output strictly, and integrate results. Escalate architectural issues to the Supervisor.
+${NARRATE}
 ${STRUCTURED}`;
 
 export function workerPreamble(specialty: string): string {
@@ -35,6 +40,7 @@ Rules:
 - Never run destructive commands, deployments, production or cloud operations, or read secrets.
 - If an important decision is ambiguous, stop and return status "needs_input" with precise questions instead of guessing.
 - If you change executable code, add or update automated tests and run them; report each run in testsRun.
+${NARRATE}
 ${STRUCTURED}`;
 }
 
@@ -126,7 +132,11 @@ export function leadPlanPrompt(args: {
   existingTasks: Task[];
   feedback: string[];
   round: number;
+  workers: AgentProfile[];
 }): string {
+  const workers = args.workers
+    .map((w) => `- ${w.id}: ${w.adapter}${w.model ? `/${w.model}` : ''}; reasoning ${w.capabilities.reasoningDepth}, cost ${w.capabilities.costTier}, speed ${w.capabilities.latencyTier}; specialties ${w.specialties.join(', ')}; up to ${w.maxConcurrent} at once`)
+    .join('\n');
   const existing = args.existingTasks.length
     ? args.existingTasks.map((t) => `- ${t.key} [${t.status}] ${t.title} (${t.kind}): ${t.summary ?? ''}`).join('\n')
     : '(none)';
@@ -154,8 +164,12 @@ Decompose the work into tasks for workers. For each task:
 - one repository; precise files/modules it will own (repo-relative paths; directories end with "/"); shared resources (ports, DB schemas, lockfiles)
 - dependsOn: keys of tasks it needs first (may cross repositories). Keep the graph shallow so independent work runs in parallel.
 - tasks whose files/modules overlap will be serialized; split ownership cleanly to maximize parallelism.
+- modules: only a directory the task owns outright and whose files you cannot list. Never the package or repo root shared with sibling tasks; when you list files, leave modules empty.
 - testsRequired must be true for any change to executable code. testCommand: the command to validate this task, or null to use the repository default.
-- specialty, risk and complexity drive which worker is chosen.`;
+- worker: you staff the team. Pick the worker for each task from the list below by its id, matching depth to risk and complexity and spending the cheaper ones where they suffice; null leaves the choice to the router (specialty, risk and complexity).
+
+Available workers:
+${workers}`;
 }
 
 export interface WorkerContext {
@@ -209,6 +223,9 @@ Architecture summary: ${arch?.summary ?? '(none)'}
 Answer precisely so the worker can proceed. If the question is architectural and beyond your authority, set escalateToSupervisor with a precise escalationQuestion (still give your best interim answer).`;
 }
 
+/** Largest diff handed over inline; past it the reviewer opens files for the rest. */
+const MAX_REVIEW_DIFF = 60_000;
+
 export function leadReviewPrompt(args: {
   task: Task;
   arch: ArchitectureOutput | null;
@@ -239,11 +256,12 @@ Diff stat:
 ${args.diffStat}
 
 Diff:
-${args.diff}
+${args.diff.length > MAX_REVIEW_DIFF ? `${args.diff.slice(0, MAX_REVIEW_DIFF)}\n... (diff truncated at ${MAX_REVIEW_DIFF} chars; open the remaining files in the stat above)` : args.diff}
 
+Review from the diff and the validation result above: they are the complete change. Open other files only for context the diff lacks; do not re-run the tests.
 Verdict: approve only if the change is correct, meets the acceptance criteria, stays within scope, and (for executable code) has adequate passing tests.
 Otherwise changes_requested with actionable issues. Use escalate only for architectural problems the Supervisor must decide.
-Add proposals if this work revealed something the Supervisor should reconsider.`;
+Add proposals only for something the Supervisor must reconsider for the whole project; they are reviewed together at final validation, not now.`;
 }
 
 export function leadLeaseDecisionPrompt(task: Task, conflicts: { pattern: string; holder: Task }[]): string {
@@ -275,6 +293,8 @@ export function supervisorValidationPrompt(args: {
   integration: { repo: string; branch: string; passed: boolean; output: string }[];
   proposals: Proposal[];
   decisions: Decision[];
+  /** Open proposals from task reviews, deferred to this validation. */
+  deferred: Proposal[];
   diffStats: string;
 }): string {
   return `${SUPERVISOR_PREAMBLE}
@@ -296,10 +316,13 @@ ${decisionsText(args.proposals, args.decisions)}
 Integration results (the orchestrator ran these test commands itself on the integration branch; treat them as authoritative, you do not need shell access to re-run them):
 ${args.integration.map((i) => `- ${i.repo} on ${i.branch}: ${i.passed ? 'tests passed' : 'TESTS FAILED'}\n${i.passed ? '' : i.output.slice(-1500)}`).join('\n')}
 
+Proposals the Lead raised during task reviews, deferred to you (rule on each in proposalDecisions by its index; fold accepted work into requiredChanges or followUps):
+${args.deferred.map((p, i) => `${i}. [${p.kind}] ${p.title}: ${p.rationale} Suggestion: ${p.suggestion}`).join('\n') || '(none)'}
+
 Combined diff stat:
 ${args.diffStats}
 
-You may inspect the integration worktrees (current directory and added dirs). Verdict accept if the result satisfies the architecture and acceptance criteria;
+Judge from this report: the Lead reviewed every task's diff and the orchestrator ran the tests. Inspect the integration worktrees (current directory and added dirs) only to settle a specific doubt. Verdict accept if the result satisfies the architecture and acceptance criteria;
 revise with requiredChanges if more work is needed before the human sees it. Choose reportDepth proportionate to the work and fill the report fields.`;
 }
 

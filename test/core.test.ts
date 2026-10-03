@@ -52,6 +52,19 @@ describe('scope overlap', () => {
     expect(g.compatibleWith('t3', ['t1', 't2'])).toBe(true);
     expect(g.compatibleWith('t3', ['t4'])).toBe(false);
   });
+
+  it('lets tasks that name the same package but list disjoint files run together', () => {
+    const pkg = (files: string[]) => ({ files, modules: ['packages/ui'], resources: [] });
+    const g = new ConflictGraph([
+      { id: 'a', repoId: 'r1', scope: pkg(['packages/ui/hooks/scheduler.ts']) },
+      { id: 'b', repoId: 'r1', scope: pkg(['packages/ui/hooks/theme.ts', 'packages/ui/hooks/raster.ts']) },
+      { id: 'c', repoId: 'r1', scope: pkg(['packages/ui/hooks/raster.ts']) },
+      { id: 'd', repoId: 'r1', scope: { files: [], modules: ['packages/ui'], resources: [] } },
+    ]);
+    expect(g.compatibleWith('a', ['b'])).toBe(true);
+    expect(g.compatibleWith('b', ['c'])).toBe(false); // the same file
+    expect(g.compatibleWith('d', ['a'])).toBe(false); // a bare module still owns the whole package
+  });
 });
 
 describe('state machines', () => {

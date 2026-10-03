@@ -10,6 +10,8 @@ export interface DaemonInfo {
   pid: number;
   port: number;
   token: string;
+  /** Authorizes GET routes only: what a browser page (the telemetry dashboard) is handed. */
+  readToken?: string;
   startedAt: string;
   dataDir: string;
 }
@@ -49,17 +51,20 @@ interface Route {
   pattern: RegExp;
   keys: string[];
   handler: Handler;
+  public: boolean;
 }
 
 export class LocalServer {
   private readonly routes: Route[] = [];
   private server: Server | null = null;
   readonly token = randomBytes(24).toString('hex');
+  readonly readToken = randomBytes(24).toString('hex');
 
-  route(method: string, path: string, handler: Handler): this {
+  /** A route; `public` ones (a static page) need no token, every other needs one. */
+  route(method: string, path: string, handler: Handler, opts: { public?: boolean } = {}): this {
     const keys: string[] = [];
     const pattern = new RegExp(`^${path.replace(/:(\w+)/g, (_, k) => (keys.push(k), '([^/]+)'))}$`);
-    this.routes.push({ method, pattern, keys, handler });
+    this.routes.push({ method, pattern, keys, handler, public: opts.public ?? false });
     return this;
   }
 
@@ -74,6 +79,7 @@ export class LocalServer {
       pid: process.pid,
       port: typeof addr === 'object' && addr ? addr.port : port,
       token: this.token,
+      readToken: this.readToken,
       startedAt: new Date().toISOString(),
       dataDir,
     };
@@ -88,18 +94,22 @@ export class LocalServer {
     this.server?.closeAllConnections?.();
   }
 
+  /** The full token authorizes everything; the read token GETs only. */
   private authorized(req: IncomingMessage): boolean {
     const header = req.headers.authorization ?? '';
     const given = Buffer.from(header.replace(/^Bearer /, ''));
-    const want = Buffer.from(this.token);
-    return given.length === want.length && timingSafeEqual(given, want);
+    const is = (token: string) => {
+      const want = Buffer.from(token);
+      return given.length === want.length && timingSafeEqual(given, want);
+    };
+    return is(this.token) || (req.method === 'GET' && is(this.readToken));
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://127.0.0.1');
     try {
-      if (url.pathname !== '/health' && !this.authorized(req)) throw new HttpError(401, 'unauthorized');
       const route = this.routes.find((r) => r.method === req.method && r.pattern.test(url.pathname));
+      if (url.pathname !== '/health' && !route?.public && !this.authorized(req)) throw new HttpError(401, 'unauthorized');
       if (!route) throw new HttpError(404, `no route ${req.method} ${url.pathname}`);
       const m = route.pattern.exec(url.pathname)!;
       const params = Object.fromEntries(route.keys.map((k, i) => [k, decodeURIComponent(m[i + 1]!)]));

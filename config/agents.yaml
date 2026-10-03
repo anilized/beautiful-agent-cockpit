@@ -1,19 +1,29 @@
 # Roles are bound to agent profiles here, never to model names in code.
+# `hierarchy` is the default seating. Per run you pick the Supervisor and the Lead
+# yourself (cockpit composer, `cockpit run --supervisor X --lead Y`) and can hand a
+# seat to another agent mid-run (`cockpit roles <runId> --lead X`) when a limit runs
+# out. An agent may sit in a seat only if that role is in its `roles` list.
+# Workers are staffed by the Lead in its plan (falling back to routing.yaml).
+# `effort` is each agent's default reasoning effort (null = the CLI's own default);
+# claude: low|medium|high|xhigh|max, codex: minimal|low|medium|high|xhigh. Per run
+# you change it in the cockpit (f / g / w) or with `cockpit run --effort opus=max`.
 hierarchy:
   supervisor: opus          # architecture, decisions, final validation
-  lead: codex               # decomposition, routing, review, integration
+  lead: codex               # decomposition, worker staffing, review, integration
 
 agents:
   - id: opus
     adapter: claude
     model: opus
-    roles: [supervisor]
+    roles: [supervisor, lead]
+    effort: null
     capabilities: { reasoningDepth: high, costTier: high, latencyTier: high, maxContextTokens: 1000000 }
 
   - id: codex
     adapter: codex
     model: null               # null = the model configured in ~/.codex/config.toml
-    roles: [lead]
+    roles: [lead, supervisor]
+    effort: null              # null = model_reasoning_effort from ~/.codex/config.toml
     capabilities: { reasoningDepth: high, costTier: medium, latencyTier: medium }
     options:
       # binary: C:\path\to\codex.exe   # auto-discovered (PATH, then the desktop app bundle)
@@ -22,7 +32,8 @@ agents:
   - id: sonnet
     adapter: claude
     model: sonnet
-    roles: [worker]
+    roles: [worker, lead, supervisor]
+    effort: null
     specialties: ["*"]
     maxConcurrent: 4
     capabilities: { reasoningDepth: high, costTier: medium, latencyTier: medium }

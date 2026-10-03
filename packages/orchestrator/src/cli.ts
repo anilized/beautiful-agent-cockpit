@@ -2,7 +2,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { openSync, mkdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig, type CockpitConfig } from '@cockpit/core';
+import { effortLevels, loadConfig, type CockpitConfig } from '@cockpit/core';
 import { discoverCodexBinary } from '@cockpit/agents';
 import { findExecutable, resolveLaunch } from '@cockpit/workspace';
 import { CockpitClient, readDaemonInfo } from '@cockpit/transport';
@@ -16,13 +16,19 @@ const USAGE = `cockpit - hierarchical multi-agent coding cockpit
   cockpit daemon [--detach]                 start the orchestrator service
   cockpit stop                              stop the orchestrator service
   cockpit doctor                            check local Claude Code / Codex / git integration
-  cockpit run "<request>" --repo <path> [--test "<cmd>"] [--base <branch>] [--repo ...] [--project <name>] [--follow]
+  cockpit run "<request>" --repo <path> [--test "<cmd>"] [--base <branch>] [--repo ...] [--project <name>]
+              [--supervisor <agent>] [--lead <agent>] [--effort [<role>:]<agent>=<level> ...] [--follow]
+  cockpit agents                            configured agents and the roles each may take
+  cockpit effort <runId> [<role>:]<agent>=<level> ...  change reasoning effort per agent (or per seat) on a live run
+  cockpit roles <runId> [--supervisor <agent>] [--lead <agent>]
+                                            hand a live run's Supervisor or Lead seat to another agent
   cockpit status [<runId>] [--json]         leadership, tasks, workers, conflicts, tests
   cockpit approvals                         pending human approvals
   cockpit approve <runId|approvalId> [note]
   cockpit changes <runId> "<what to change>"
   cockpit reject <runId|approvalId> [note]
   cockpit report <runId>                    final engineering report
+  cockpit dashboard [<runId>]               open the telemetry dashboard in the browser
   cockpit events [<runId>] [--follow]
   cockpit retry <runId>                     retry a failed run from the phase it failed in
 
@@ -60,6 +66,15 @@ function config(args: Args): CockpitConfig {
   return loadConfig(resolve(dir));
 }
 
+function openInBrowser(url: string): void {
+  // PowerShell's Start-Process takes the URL as one argument ('&' and '#' intact), unlike cmd's start.
+  const [cmd, args] =
+    process.platform === 'win32' ? ['powershell', ['-NoProfile', '-Command', `Start-Process '${url.replace(/'/g, "''")}'`]]
+    : process.platform === 'darwin' ? ['open', [url]]
+    : ['xdg-open', [url]];
+  spawn(cmd as string, args as string[], { detached: true, stdio: 'ignore' }).unref();
+}
+
 function client(cfg: CockpitConfig): CockpitClient {
   return CockpitClient.fromDataDir(cfg.engine.dataDir);
 }
@@ -72,7 +87,7 @@ const ICON: Record<string, string> = {
 function printRun(r: RunView & { report?: string | null }): void {
   console.log(`\n${r.id}  [${r.status}]  round ${r.round}${r.error ? `  error: ${r.error}` : ''}`);
   console.log(`  request:    ${r.request.split('\n')[0]!.slice(0, 100)}`);
-  console.log(`  supervisor: ${r.leadership.supervisor}   lead: ${r.leadership.lead}`);
+  console.log(`  supervisor: ${r.roles.supervisor} (${r.leadership.supervisor})   lead: ${r.roles.lead} (${r.leadership.lead})`);
   for (const repo of r.repositories) console.log(`  repo ${repo.name}: ${repo.path} (${repo.baseBranch})${repo.integration ? ` -> ${repo.integration.branch} tests ${repo.integration.passed ? 'passed' : 'FAILED'}` : ''}`);
   if (r.tasks.length) {
     console.log('  tasks:');
@@ -129,9 +144,12 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       process.on('SIGTERM', stop);
       return;
     }
-    case 'stop':
+    case 'stop': {
       await client(cfg).request('POST', '/shutdown');
-      return void console.log('orchestrator stopping');
+      // Return only once the daemon is gone (it removes daemon.json on exit), so `stop; daemon` restarts cleanly.
+      for (let waited = 0; readDaemonInfo(cfg.engine.dataDir) && waited < 30_000; waited += 250) await new Promise((r) => setTimeout(r, 250));
+      return void console.log(readDaemonInfo(cfg.engine.dataDir) ? 'orchestrator is still stopping (gave up waiting after 30s)' : 'orchestrator stopped');
+    }
     case 'doctor': {
       const claude = findExecutable('claude');
       const codex = discoverCodexBinary();
@@ -163,7 +181,11 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         baseBranch: args.flags.get(`base@${i}`)?.[0],
       }));
       const c = client(cfg);
-      const run = await c.request<{ id: string }>('POST', '/runs', { request, repos, project: args.flags.get('project')?.[0] });
+      const run = await c.request<{ id: string }>('POST', '/runs', {
+        request, repos, project: args.flags.get('project')?.[0],
+        supervisor: args.flags.get('supervisor')?.[0], lead: args.flags.get('lead')?.[0],
+        efforts: parseEfforts(args.flags.get('effort') ?? []),
+      });
       console.log(`run ${run.id} started`);
       if (args.flags.has('follow')) await follow(c, run.id);
       return;
@@ -201,6 +223,15 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       await c.request('POST', target.path, { decision, response: rest.slice(1).join(' ') || null });
       return void console.log(`${decision} recorded`);
     }
+    case 'dashboard': {
+      const info = readDaemonInfo(cfg.engine.dataDir);
+      if (!info?.readToken) throw new Error('the orchestrator daemon is not running (or predates the dashboard); start it with "cockpit daemon"');
+      // The read-only token travels in the fragment: never sent to a server, kept out of logs.
+      const url = `http://127.0.0.1:${info.port}/dashboard#token=${info.readToken}${rest[0] ? `&run=${rest[0]}` : ''}`;
+      openInBrowser(url);
+      // The whole link, so it can be clicked when no browser opened: the token reads only, and only from this machine.
+      return void console.log(`dashboard: ${url}`);
+    }
     case 'report': {
       const r = await client(cfg).request<{ report: string | null }>('GET', `/runs/${rest[0]}/report`);
       return void console.log(r.report ?? 'no report yet');
@@ -211,6 +242,26 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       const events = await c.request<{ ts: string; type: string; data: unknown }[]>('GET', `/events${rest[0] ? `?runId=${rest[0]}` : ''}`);
       for (const e of events) console.log(`${e.ts.slice(11, 19)} ${e.type.padEnd(24)} ${JSON.stringify(e.data).slice(0, 160)}`);
       return;
+    }
+    case 'agents': {
+      const { supervisor, lead } = cfg.agents.hierarchy;
+      for (const a of cfg.agents.agents) {
+        const seat = a.id === supervisor ? ' (default supervisor)' : a.id === lead ? ' (default lead)' : '';
+        console.log(`${a.enabled ? ' ' : 'x'} ${a.id.padEnd(14)} ${`${a.adapter}${a.model ? `/${a.model}` : ''}`.padEnd(16)} roles: ${a.roles.join(', ')}${seat}  effort: ${a.effort ?? 'cli default'} (${effortLevels(a.adapter).join('/')})`);
+      }
+      return;
+    }
+    case 'effort': {
+      if (!rest[0] || rest.length < 2) throw new Error('usage: cockpit effort <runId> <agent>=<level> ...');
+      const efforts = await client(cfg).request<Record<string, string>>('POST', `/runs/${rest[0]}/efforts`, parseEfforts(rest.slice(1)));
+      return void console.log(Object.entries(efforts).map(([a, l]) => `${a} ${l}`).join(' · ') || 'defaults');
+    }
+    case 'roles': {
+      if (!rest[0]) throw new Error('usage: cockpit roles <runId> [--supervisor <agent>] [--lead <agent>]');
+      const roles = await client(cfg).request<{ supervisor: string; lead: string }>('POST', `/runs/${rest[0]}/roles`, {
+        supervisor: args.flags.get('supervisor')?.[0], lead: args.flags.get('lead')?.[0],
+      });
+      return void console.log(`supervisor ${roles.supervisor} · lead ${roles.lead}`);
     }
     case 'retry':
       await client(cfg).request('POST', `/runs/${rest[0]}/retry`);
@@ -232,4 +283,15 @@ async function follow(c: CockpitClient, runId?: string): Promise<void> {
       if (type === 'run.completed') ac.abort();
     }
   }, ac.signal);
+}
+
+/** `agent=level` pairs into a map. */
+function parseEfforts(pairs: string[]): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const p of pairs) {
+    const [agent, level] = p.split('=');
+    if (!agent || !level) throw new Error(`effort "${p}" must look like <agent>=<level>`);
+    out[agent] = level;
+  }
+  return out;
 }

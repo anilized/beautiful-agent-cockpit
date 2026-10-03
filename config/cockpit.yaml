@@ -5,6 +5,7 @@ review:
   maxIterations: 3                   # Worker -> Codex review loop before escalating to Opus
 decisions:
   maxRounds: 2                       # Codex <-> Opus proposal rounds before planning
+  duringTasks: defer                 # defer: Opus rules on review proposals once, at final validation; immediate: a call per review
 validation:
   maxRevisions: 1                    # Opus "revise" rounds before presenting to the human
 agentTimeoutMs: 2700000

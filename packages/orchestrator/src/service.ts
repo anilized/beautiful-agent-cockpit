@@ -11,6 +11,7 @@ import { Orchestrator, type HumanDecision, type StartRunInput } from './engine';
 import { EventBus } from './event-bus';
 import { PermissionEngine } from './permission-engine';
 import { buildSnapshot, runView, writeSnapshot } from './snapshot';
+import { dashboardHtml, telemetryView } from './dashboard';
 
 export interface EngineOptions {
   /** Register extra adapter factories (tests use the fake adapter). */
@@ -89,6 +90,8 @@ export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {
       return { ...runView(store, config, run), report: run.report, architecture: run.architecture };
     })
     .route('GET', '/runs/:id/report', ({ params }) => ({ report: store.runById(params.id!)?.report ?? null }))
+    .route('POST', '/runs/:id/efforts', ({ params, body }) => engine.setEfforts(params.id!, (body ?? {}) as Record<string, string>))
+    .route('POST', '/runs/:id/roles', ({ params, body }) => engine.setRoles(params.id!, (body ?? {}) as { supervisor?: string; lead?: string }))
     .route('POST', '/runs/:id/retry', ({ params }) => (engine.retry(params.id!), { ok: true }))
     .route('POST', '/runs/:id/decision', ({ params, body }) => {
       const d = decision(body);
@@ -111,6 +114,13 @@ export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {
       });
       return undefined;
     })
+    // The telemetry dashboard: a static page (public) that reads /telemetry with the read-only token.
+    .route('GET', '/dashboard', ({ res }) => {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+      res.end(dashboardHtml());
+      return undefined;
+    }, { public: true })
+    .route('GET', '/telemetry', ({ query }) => telemetryView(store, dataDir, query.get('runId')))
     .route('POST', '/shutdown', () => {
       setTimeout(() => void stop().then(() => process.exit(0)), 50);
       return { ok: true };

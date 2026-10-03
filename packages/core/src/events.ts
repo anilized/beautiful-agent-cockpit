@@ -4,6 +4,8 @@
 export interface EventPayloads {
   'run.started': { request: string; repositories: string[] };
   'run.status_changed': { from: string; to: string };
+  'run.roles_changed': { supervisor: string; lead: string };
+  'run.efforts_changed': { efforts: Record<string, string> };
   'run.completed': { outcome: 'approved' | 'rejected' | 'failed'; reason?: string };
   'architecture.defined': { summary: string };
   'proposal.created': { proposalId: string; kind: string; title: string; taskId?: string | null };
@@ -18,9 +20,10 @@ export interface EventPayloads {
   'task.blocked': { taskId: string; reason: string };
   'task.completed': { taskId: string; summary: string };
   'task.failed': { taskId: string; reason: string };
-  'agent.started': { agentId: string; role: string; sessionId: string; taskId?: string | null };
+  'agent.started': { agentId: string; role: string; sessionId: string; taskId?: string | null; contract?: string; effort?: string | null };
   'agent.waiting': { agentId: string; taskId?: string | null; question: string };
-  'agent.output': { agentId: string; taskId?: string | null; text: string };
+  /** What a model is doing: its visible text, its reasoning, or a tool it ran. */
+  'agent.output': { agentId: string; taskId?: string | null; text: string; kind?: 'text' | 'thinking' | 'tool'; role?: string; sessionId?: string };
   'agent.completed': { agentId: string; sessionId: string; taskId?: string | null };
   'agent.failed': { agentId: string; taskId?: string | null; error: string };
   'question.asked': { taskId: string; questions: string[] };

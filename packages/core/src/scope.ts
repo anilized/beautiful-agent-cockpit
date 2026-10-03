@@ -49,11 +49,19 @@ export interface ScopedPattern {
   pattern: string;
 }
 
-/** Flatten a predicted scope into lease patterns. Modules are treated as directory prefixes. */
+/**
+ * Flatten a predicted scope into lease patterns. Modules are treated as directory prefixes,
+ * except one the task's own files already narrow down: a plan that names the package as
+ * the module and lists the files it touches must not lock the whole package.
+ */
 export function scopePatterns(scope: Scope): ScopedPattern[] {
+  const files = scope.files.map((pattern) => ({ kind: 'file' as const, pattern: normalizePattern(pattern) }));
+  const modules = scope.modules
+    .map((m) => ({ kind: 'module' as const, pattern: normalizePattern(/[*?]/.test(m) ? m : `${m.replace(/\/+$/, '')}/**`) }))
+    .filter((m) => !files.some((f) => patternsOverlap(m.pattern, f.pattern)));
   return [
-    ...scope.files.map((pattern) => ({ kind: 'file' as const, pattern: normalizePattern(pattern) })),
-    ...scope.modules.map((m) => ({ kind: 'module' as const, pattern: normalizePattern(/[*?]/.test(m) ? m : `${m.replace(/\/+$/, '')}/**`) })),
+    ...files,
+    ...modules,
     ...scope.resources.map((r) => ({ kind: 'resource' as const, pattern: r.trim().toLowerCase() })),
   ];
 }

@@ -3,12 +3,16 @@ import { basename, resolve } from 'node:path';
 import {
   assertRunTransition,
   ConflictGraph,
+  eligibleFor,
   errorMessage,
   isTerminalRun,
+  resolveRoles,
+  checkEffort,
   TaskGraph,
   ACTIVE_TASK_STATUSES,
   type Approval,
   type LeadPlan,
+  type Proposal,
   type Repository,
   type Run,
   type RunStatus,
@@ -25,7 +29,7 @@ import {
 } from '@cockpit/agents';
 import { gitOps, runShell } from '@cockpit/workspace';
 import type { Span } from '@cockpit/telemetry';
-import { arch, runRepos, setTaskStatus, type EngineContext, type RunMeta, type TaskContext } from './context';
+import { arch, rolesOf, runRepos, setTaskStatus, type EngineContext, type RunMeta, type TaskContext } from './context';
 import { decideProposals } from './proposals';
 import { buildReport } from './report';
 import { readConflictMarkers, TaskPipeline } from './task-pipeline';
@@ -41,6 +45,11 @@ export interface StartRunInput {
   request: string;
   project?: string;
   repos: RepoInput[];
+  /** The human's choice for this run; absent, the configured hierarchy. */
+  supervisor?: string | null;
+  lead?: string | null;
+  /** Reasoning effort per agent id for this run; absent agents keep their default. */
+  efforts?: Record<string, string>;
 }
 
 export type HumanDecision = 'approve' | 'reject' | 'request_changes';
@@ -67,6 +76,9 @@ export class Orchestrator {
     const { store, bus } = this.ctx;
     if (!input.request.trim()) throw new Error('request is empty');
     if (!input.repos.length) throw new Error('at least one repository is required');
+    const roles = resolveRoles(this.ctx.config, input, 'run');
+    const efforts = input.efforts ?? {};
+    for (const [agent, level] of Object.entries(efforts)) checkEffort(this.ctx.config, agent, level, 'run');
     const repos: Repository[] = [];
     const resolved: RepoInput[] = [];
     for (const r of input.repos) {
@@ -91,10 +103,41 @@ export class Orchestrator {
       );
     }
     const run = store.createRun(project.id, input.request);
-    store.setRunMeta(run.id, { repoIds: repos.map((r) => r.id) } satisfies RunMeta);
+    store.setRunMeta(run.id, { repoIds: repos.map((r) => r.id), ...roles, efforts } satisfies RunMeta);
     bus.emit('run.started', run.id, { request: input.request, repositories: repos.map((r) => r.name) });
+    bus.emit('run.roles_changed', run.id, roles);
     this.drive(run.id);
     return run;
+  }
+
+  /**
+   * Hands the Supervisor or Lead seat of a live run to another agent (a limit ran
+   * out, a model misbehaves). Every later call of that role goes to the new agent;
+   * a call already in flight finishes where it started.
+   */
+  /** Changes reasoning effort per agent for a live run; later calls of those agents use it. */
+  setEfforts(runId: string, efforts: Record<string, string>): Record<string, string> {
+    const { store, bus } = this.ctx;
+    const run = store.runById(runId);
+    if (!run) throw new Error(`unknown run ${runId}`);
+    if (isTerminalRun(run.status)) throw new Error(`run ${runId} is ${run.status}; its efforts can no longer change`);
+    for (const [agent, level] of Object.entries(efforts)) checkEffort(this.ctx.config, agent, level, 'effort');
+    const merged = { ...(store.runMeta<RunMeta>(runId).efforts ?? {}), ...efforts };
+    store.setRunMeta(runId, { efforts: merged } satisfies Partial<RunMeta>);
+    bus.emit('run.efforts_changed', runId, { efforts: merged });
+    return merged;
+  }
+
+  setRoles(runId: string, choice: { supervisor?: string | null; lead?: string | null }): { supervisor: string; lead: string } {
+    const { store, bus } = this.ctx;
+    const run = store.runById(runId);
+    if (!run) throw new Error(`unknown run ${runId}`);
+    if (isTerminalRun(run.status)) throw new Error(`run ${runId} is ${run.status}; its roles can no longer change`);
+    const current = rolesOf(this.ctx, runId);
+    const roles = resolveRoles(this.ctx.config, { supervisor: choice.supervisor || current.supervisor, lead: choice.lead || current.lead }, 'roles');
+    store.setRunMeta(runId, roles satisfies Partial<RunMeta>);
+    bus.emit('run.roles_changed', runId, roles);
+    return roles;
   }
 
   /** Resume every non-terminal run after a restart. */
@@ -275,8 +318,7 @@ export class Orchestrator {
       cwd: repos[0]!.path,
       additionalDirs: repos.slice(1).map((r) => r.path),
       timeoutMs: this.ctx.config.engine.agentTimeoutMs,
-      supervisor: this.ctx.config.agents.hierarchy.supervisor,
-      lead: this.ctx.config.agents.hierarchy.lead,
+      ...rolesOf(this.ctx, run.id),
     };
   }
 
@@ -322,7 +364,7 @@ export class Orchestrator {
   private async deciding(run: Run): Promise<void> {
     const { store, config } = this.ctx;
     const meta = store.runMeta<RunMeta>(run.id);
-    const open = store.proposals(run.id, 'open');
+    const open = store.proposals(run.id, 'open').filter((p) => p.taskId === null);
     const outcome = await decideProposals(this.ctx, run, meta.assessment ?? '', open);
     const fresh = store.runById(run.id)!;
     if (outcome.humanApprovalId) {
@@ -377,7 +419,7 @@ export class Orchestrator {
       const res = await runner.call({
         runId: run.id, agentId: c.lead, role: 'lead', contract: 'LeadPlan',
         prompt:
-          leadPlanPrompt({ request: run.request, arch: arch(current)!, decisions: decisionText, repos: c.repos, existingTasks: existing, feedback, round }) +
+          leadPlanPrompt({ request: run.request, arch: arch(current)!, decisions: decisionText, repos: c.repos, existingTasks: existing, feedback, round, workers: this.ctx.router.workers() }) +
           (lastError ? `\n\nYour previous plan was invalid: ${lastError}. Fix it.` : ''),
         cwd: c.cwd, additionalDirs: c.additionalDirs, readOnly: true, timeoutMs: c.timeoutMs, spanName: 'codex.planning',
       });
@@ -402,6 +444,7 @@ export class Orchestrator {
           testCommand: p.testCommand, status: 'pending', agentId: null, iteration: 0, branch: null, worktreePath: null,
           summary: null, blockedReason: null, round,
         });
+        if (p.worker) store.setTaskContext(task.id, { preferredWorker: p.worker } satisfies Partial<TaskContext>);
         byKey.set(p.key, task);
       }
       for (const p of plan!.tasks) {
@@ -422,6 +465,8 @@ export class Orchestrator {
       if (keys.has(t.key)) throw new Error(`duplicate task key ${t.key}`);
       keys.add(t.key);
       if (!repos.some((r) => r.name === t.repository)) throw new Error(`task ${t.key} uses unknown repository "${t.repository}" (known: ${repos.map((r) => r.name).join(', ')})`);
+      const workers = eligibleFor(this.ctx.config, 'worker');
+      if (t.worker && !workers.includes(t.worker)) throw new Error(`task ${t.key} assigns unknown or disabled worker "${t.worker}" (available: ${workers.join(', ')})`);
     }
     const graph = new TaskGraph(keys);
     for (const t of plan.tasks) {
@@ -600,6 +645,23 @@ export class Orchestrator {
     this.transition(store.runById(run.id)!, bounced ? 'executing' : 'validating');
   }
 
+  /** Stores the Supervisor's rulings on deferred proposals; one it skipped counts as rejected. */
+  private recordDeferredRulings(run: Run, deferred: Proposal[], rulings: SupervisorValidation['proposalDecisions']): void {
+    const { store, bus } = this.ctx;
+    const ruled = new Map<string, { outcome: 'accept' | 'reject'; rationale: string }>();
+    for (const r of rulings) {
+      const p = deferred[r.proposalIndex];
+      if (p && !ruled.has(p.id)) ruled.set(p.id, r);
+    }
+    for (const p of deferred) {
+      const r = ruled.get(p.id) ?? { outcome: 'reject' as const, rationale: 'Not addressed by the Supervisor; treated as rejected.' };
+      store.insertDecision({ runId: run.id, proposalId: p.id, decidedBy: 'supervisor', outcome: r.outcome, rationale: r.rationale, changes: null });
+      store.setProposalStatus(p.id, r.outcome === 'accept' ? 'accepted' : 'rejected');
+      if (r.outcome === 'accept') bus.emit('proposal.accepted', run.id, { proposalId: p.id, withChanges: false, rationale: r.rationale });
+      else bus.emit('proposal.rejected', run.id, { proposalId: p.id, rationale: r.rationale });
+    }
+  }
+
   private async validating(run: Run): Promise<void> {
     const { store, bus, runner, config } = this.ctx;
     const c = this.common(run);
@@ -613,17 +675,19 @@ export class Orchestrator {
       if (i) diffStats[repo.id] = (await gitOps.git(i.path, ['diff', '--stat', `${repo.baseBranch}...HEAD`])).stdout;
     }
     const paths = c.repos.map((r) => integ[r.id]?.path ?? r.path);
+    const deferred = store.proposals(run.id, 'open').filter((p) => p.taskId !== null);
     const res = await runner.call({
       runId: run.id, agentId: c.supervisor, role: 'supervisor', contract: 'SupervisorValidation',
       prompt: supervisorValidationPrompt({
         request: run.request, arch: arch(run), tasks, reviews,
         integration: c.repos.filter((r) => integ[r.id]).map((r) => ({ repo: r.name, branch: integ[r.id]!.branch, passed: integ[r.id]!.passed, output: integ[r.id]!.output })),
-        proposals: store.proposals(run.id), decisions: store.decisions(run.id),
+        proposals: store.proposals(run.id), decisions: store.decisions(run.id), deferred,
         diffStats: Object.entries(diffStats).map(([id, s]) => `${c.repos.find((r) => r.id === id)?.name}:\n${s}`).join('\n'),
       }),
       cwd: paths[0]!, additionalDirs: paths.slice(1), readOnly: true, timeoutMs: c.timeoutMs, spanName: 'opus.validation',
     });
     let v: SupervisorValidation = res.output;
+    this.recordDeferredRulings(run, deferred, v.proposalDecisions);
     // Failing integration tests can never be accepted silently.
     const failing = c.repos.filter((r) => integ[r.id] && !integ[r.id]!.passed);
     if (v.verdict === 'accept' && failing.length) {
@@ -649,7 +713,7 @@ export class Orchestrator {
     const approval = store.insertApproval({
       runId: run.id, kind: 'final', operation: merges.some((m) => m.protected) ? 'merge_protected' : null,
       summary: `Final result: ${v.summary}`.slice(0, 2000),
-      details: { verdict: v.verdict, merges, finalMerge: config.engine.finalMerge },
+      details: { verdict: v.verdict, merges, finalMerge: config.engine.finalMerge, text: `Final result: ${v.summary}` },
     });
     this.trackApproval(approval.id, run.id);
     bus.emit('approval.requested', run.id, { approvalId: approval.id, kind: 'final', summary: approval.summary, operation: approval.operation });

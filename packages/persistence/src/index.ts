@@ -523,6 +523,15 @@ export class Store {
     return rec;
   }
 
+  /** Every recorded model call of a run, oldest first. */
+  usage(runId: string): ModelUsage[] {
+    return this.all(`SELECT * FROM model_usage WHERE run_id = ? ORDER BY created_at`, runId).map((r) => ({
+      id: String(r.id), runId: String(r.run_id), taskId: (r.task_id as string) ?? null, agentId: String(r.agent_id), role: r.role as ModelUsage['role'],
+      model: String(r.model), inputTokens: Number(r.input_tokens), outputTokens: Number(r.output_tokens), cachedTokens: Number(r.cached_tokens ?? 0),
+      costUsd: r.cost_usd === null || r.cost_usd === undefined ? null : Number(r.cost_usd), durationMs: Number(r.duration_ms ?? 0), createdAt: String(r.created_at),
+    }));
+  }
+
   usageSummary(runId: string): { agentId: string; model: string; calls: number; inputTokens: number; outputTokens: number; costUsd: number }[] {
     return this.all(
       `SELECT agent_id, model, COUNT(*) calls, SUM(input_tokens) i, SUM(output_tokens) o, COALESCE(SUM(cost_usd), 0) c

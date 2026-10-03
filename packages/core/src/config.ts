@@ -26,6 +26,8 @@ export const AgentProfile = z.object({
   capabilities: AgentCapabilities.default(AgentCapabilities.parse({})),
   maxConcurrent: z.number().int().positive().default(4),
   enabled: z.boolean().default(true),
+  /** Default reasoning effort (see effortLevels); null leaves the CLI's own default. A run may override it. */
+  effort: z.string().nullable().default(null),
   /** Adapter-specific options (binary path, permission mode, sandbox, extra args...). */
   options: z.record(z.string(), z.unknown()).default({}),
 });
@@ -79,7 +81,13 @@ export const EngineConfig = z.object({
   dataDir: z.string().default(join(homedir(), '.agent-cockpit')),
   maxParallelTasks: z.number().int().positive().default(4),
   review: z.object({ maxIterations: z.number().int().positive().default(3) }).default({ maxIterations: 3 }),
-  decisions: z.object({ maxRounds: z.number().int().positive().default(2) }).default({ maxRounds: 2 }),
+  decisions: z
+    .object({
+      maxRounds: z.number().int().positive().default(2),
+      /** Proposals from task reviews: `defer` (the Supervisor rules on them once, at final validation) or `immediate` (a Supervisor call per review). */
+      duringTasks: z.enum(['defer', 'immediate']).default('defer'),
+    })
+    .default({ maxRounds: 2, duringTasks: 'defer' }),
   validation: z.object({ maxRevisions: z.number().int().nonnegative().default(1) }).default({ maxRevisions: 1 }),
   agentTimeoutMs: z.number().int().positive().default(45 * 60_000),
   testTimeoutMs: z.number().int().positive().default(15 * 60_000),
@@ -130,10 +138,60 @@ export function loadConfig(dir: string, overrides: Partial<{ engine: Partial<Eng
 
 export function validateConfig(config: CockpitConfig): void {
   const ids = new Set(config.agents.agents.map((a) => a.id));
-  const { supervisor, lead } = config.agents.hierarchy;
-  if (!ids.has(supervisor)) throw new Error(`hierarchy.supervisor "${supervisor}" is not a configured agent`);
-  if (!ids.has(lead)) throw new Error(`hierarchy.lead "${lead}" is not a configured agent`);
-  if (supervisor === lead) throw new Error('Supervisor and lead must be distinct agents');
+  resolveRoles(config, {}, 'hierarchy');
+  for (const a of config.agents.agents) if (a.effort) checkEffort(config, a.id, a.effort, `agents.yaml (${a.id})`);
   if (!config.agents.agents.some((a) => a.enabled && a.roles.includes('worker'))) throw new Error('No enabled worker agent configured');
   for (const r of config.routing.rules) for (const p of r.prefer) if (!ids.has(p)) throw new Error(`routing rule "${r.name}" prefers unknown agent "${p}"`);
+}
+
+export interface RoleChoice {
+  supervisor?: string | null;
+  lead?: string | null;
+}
+
+/**
+ * The Supervisor and Lead for a run: the human's choice where given, else the
+ * configured hierarchy. Each must be an enabled agent tagged with that role, and
+ * the two must differ.
+ */
+export function resolveRoles(config: CockpitConfig, choice: RoleChoice, source = 'choice'): { supervisor: string; lead: string } {
+  const supervisor = choice.supervisor || config.agents.hierarchy.supervisor;
+  const lead = choice.lead || config.agents.hierarchy.lead;
+  for (const [role, id] of [['supervisor', supervisor], ['lead', lead]] as const) {
+    const agent = config.agents.agents.find((a) => a.id === id);
+    if (!agent) throw new Error(`${source}: ${role} "${id}" is not a configured agent`);
+    if (!agent.enabled) throw new Error(`${source}: ${role} "${id}" is disabled in agents.yaml`);
+    if (!agent.roles.includes(role)) {
+      const eligible = eligibleFor(config, role).join(', ') || 'none';
+      throw new Error(`${source}: "${id}" may not act as ${role} (add "${role}" to its roles in agents.yaml; eligible: ${eligible})`);
+    }
+  }
+  if (supervisor === lead) throw new Error(`${source}: supervisor and lead must be distinct agents`);
+  return { supervisor, lead };
+}
+
+/** Enabled agents that may take a role. */
+export function eligibleFor(config: CockpitConfig, role: 'supervisor' | 'lead' | 'worker'): string[] {
+  return config.agents.agents.filter((a) => a.enabled && a.roles.includes(role)).map((a) => a.id);
+}
+
+/** The reasoning effort levels an adapter's CLI accepts, lowest first. */
+export function effortLevels(adapter: string): string[] {
+  if (adapter === 'codex') return ['minimal', 'low', 'medium', 'high', 'xhigh'];
+  return ['low', 'medium', 'high', 'xhigh', 'max']; // claude (and the fake adapter in tests)
+}
+
+/**
+ * Validates one effort choice. The key is an agent id, or `<role>:<agent>` to set it
+ * for that seat only (one agent can hold the lead seat and also work, at different levels).
+ */
+export function checkEffort(config: CockpitConfig, key: string, effort: string, source = 'effort'): void {
+  const sep = key.indexOf(':');
+  const role = sep === -1 ? null : key.slice(0, sep);
+  const agentId = sep === -1 ? key : key.slice(sep + 1);
+  if (role !== null && !['supervisor', 'lead', 'worker'].includes(role)) throw new Error(`${source}: "${role}" is not a role (supervisor, lead, worker)`);
+  const agent = config.agents.agents.find((a) => a.id === agentId);
+  if (!agent) throw new Error(`${source}: "${agentId}" is not a configured agent`);
+  const levels = effortLevels(agent.adapter);
+  if (!levels.includes(effort)) throw new Error(`${source}: "${effort}" is not an effort ${agentId} (${agent.adapter}) accepts (${levels.join(', ')})`);
 }

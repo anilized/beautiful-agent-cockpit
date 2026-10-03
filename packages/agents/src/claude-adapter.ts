@@ -55,6 +55,7 @@ export class ClaudeAdapter implements AgentAdapter {
   buildArgs(session: AgentSession, assignment: Assignment, newSessionId: string | null): string[] {
     const args = ['-p', '--output-format', 'stream-json', '--verbose', '--json-schema', JSON.stringify(contractJsonSchema(assignment.contract))];
     if (this.profile.model) args.push('--model', this.profile.model);
+    if (assignment.effort) args.push('--effort', assignment.effort);
     if (session.externalId) args.push('--resume', session.externalId);
     else if (newSessionId) args.push('--session-id', newSessionId);
     if (session.config.readOnly) {
@@ -125,6 +126,7 @@ export function translate(msg: Record<string, any>, model: string): AgentEvent[]
   if (msg.type === 'assistant' && Array.isArray(msg.message?.content)) {
     for (const block of msg.message.content) {
       if (block.type === 'text' && block.text?.trim()) out.push({ type: 'text', text: block.text });
+      else if (block.type === 'thinking' && block.thinking?.trim()) out.push({ type: 'thinking', text: block.thinking });
       else if (block.type === 'tool_use' && block.name !== 'StructuredOutput') {
         out.push({ type: 'tool', name: block.name, detail: summarizeInput(block.input) });
       }

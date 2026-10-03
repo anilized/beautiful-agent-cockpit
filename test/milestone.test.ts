@@ -18,9 +18,9 @@ const ARCH = {
 const PLAN: LeadPlan = {
   notes: 'three tasks',
   tasks: [
-    { key: 'TASK-101', title: 'alpha module', description: 'create src/alpha.js', kind: 'implementation', repository: 'svc-a', specialty: 'backend', risk: 'low', complexity: 'low', files: ['src/alpha.js'], modules: [], resources: [], dependsOn: [], acceptanceCriteria: ['exports alpha'], testsRequired: true, testCommand: null },
-    { key: 'TASK-102', title: 'beta module', description: 'create src/beta.js', kind: 'implementation', repository: 'svc-a', specialty: 'backend', risk: 'low', complexity: 'low', files: ['src/beta.js'], modules: [], resources: [], dependsOn: [], acceptanceCriteria: ['exports beta'], testsRequired: true, testCommand: null },
-    { key: 'TASK-103', title: 'gamma client', description: 'create src/gamma.js in svc-b', kind: 'implementation', repository: 'svc-b', specialty: 'backend', risk: 'medium', complexity: 'low', files: ['src/gamma.js'], modules: [], resources: [], dependsOn: ['TASK-101'], acceptanceCriteria: ['exports gamma'], testsRequired: true, testCommand: null },
+    { key: 'TASK-101', title: 'alpha module', description: 'create src/alpha.js', kind: 'implementation', repository: 'svc-a', specialty: 'backend', risk: 'low', complexity: 'low', worker: null, files: ['src/alpha.js'], modules: [], resources: [], dependsOn: [], acceptanceCriteria: ['exports alpha'], testsRequired: true, testCommand: null },
+    { key: 'TASK-102', title: 'beta module', description: 'create src/beta.js', kind: 'implementation', repository: 'svc-a', specialty: 'backend', risk: 'low', complexity: 'low', worker: null, files: ['src/beta.js'], modules: [], resources: [], dependsOn: [], acceptanceCriteria: ['exports beta'], testsRequired: true, testCommand: null },
+    { key: 'TASK-103', title: 'gamma client', description: 'create src/gamma.js in svc-b', kind: 'implementation', repository: 'svc-b', specialty: 'backend', risk: 'medium', complexity: 'low', worker: null, files: ['src/gamma.js'], modules: [], resources: [], dependsOn: ['TASK-101'], acceptanceCriteria: ['exports gamma'], testsRequired: true, testCommand: null },
   ],
 };
 
@@ -76,7 +76,7 @@ function handler(s: Script) {
       case 'SupervisorValidation':
         return {
           verdict: 'accept', summary: 'All modules delivered', reportDepth: 'standard', architectureDecisions: ['modules per file'],
-          findings: [], requiredChanges: [], remainingRisks: ['none significant'], knownLimitations: [], followUps: ['add docs'],
+          findings: [], requiredChanges: [], remainingRisks: ['none significant'], knownLimitations: [], followUps: ['add docs'], proposalDecisions: [],
         };
       case 'SupervisorRevision':
         return { guidance: 'add a delta module', architectureUpdate: null };

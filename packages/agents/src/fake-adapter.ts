@@ -8,6 +8,7 @@ export interface FakeCall {
   cwd: string;
   readOnly: boolean;
   resumed: boolean;
+  effort: string | null;
 }
 
 /**
@@ -50,6 +51,7 @@ export class FakeAdapter implements AgentAdapter {
       cwd: session.config.cwd,
       readOnly: session.config.readOnly,
       resumed,
+      effort: assignment.effort ?? null,
     };
     FakeAdapter.calls.push(call);
     try {

@@ -62,3 +62,175 @@ test('a refused launch shows a failure card with the fix', async ($, on) => {
   expect(await ui.find({ key: 'init-commit' })).toBeUndefined()
   await ui.unmount()
 })
+
+test('seats picked in the composer go to the run, and a live run can hand a seat over', async ($, on) => {
+  const snap = JSON.parse(LIVE)
+  snap.agents = [
+    { id: 'opus', adapter: 'claude', model: 'opus', roles: ['supervisor', 'lead'], enabled: true, effort: null, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+    { id: 'codex', adapter: 'codex', model: null, roles: ['lead', 'supervisor'], enabled: true, effort: 'medium', efforts: ['minimal', 'low', 'medium', 'high', 'xhigh'] },
+    { id: 'sonnet', adapter: 'claude', model: 'sonnet', roles: ['worker', 'lead', 'supervisor'], enabled: true, effort: null, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+  ]
+  snap.runs[0].roles = { supervisor: 'opus', lead: 'codex' }
+  snap.runs[0].status = 'executing'
+  const calls: string[][] = []
+  on('fs.read', async () => ({ value: JSON.stringify(snap) }))
+  on('process.run', async (_, e) => {
+    calls.push([...(e as unknown as { argv: string[] }).argv])
+    return { value: { exitCode: 0, stdout: 'ok', stderr: '' } } as never
+  })
+  mock.clock(on)
+  mock.env(on, { COCKPIT_DATA_DIR: '/data' })
+  on('command.register', async () => ({ value: undefined }) as never)
+  on('session.start', async (_, e) => ({ cwd: e.cwd }))
+  on('session.cwd', async () => ({ value: '/repo' }) as never)
+  on('ui.status', async () => ({ value: undefined }) as never)
+  on('ui.toast', async () => ({ value: undefined }) as never)
+  await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
+  const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(100) })
+  // a live run: v hands the supervisor seat to the next eligible agent (codex holds lead, so sonnet)
+  await ui.press({ key: 'cycle-supervisor' })
+  expect(calls.some(c => c.includes('roles') && c.includes('--supervisor') && c.includes('sonnet'))).toBe(true)
+  // live effort: g steps the lead (codex, default medium) up to high right away
+  await ui.press({ key: 'effort-lead:codex' })
+  expect(calls.some(c => c.includes('effort') && c.includes('lead:codex=high'))).toBe(true)
+  await ui.press({ key: 'new' })
+  await ui.press({ key: 'seat-lead-sonnet' })
+  await ui.press({ key: 'effort-supervisor:opus' }) // default -> low for the next mission
+  // sonnet leads and works: each seat keeps its own level
+  await ui.press({ key: 'effort-lead:sonnet' }) // default -> low
+  await ui.press({ key: 'effort-worker:sonnet' })
+  await ui.press({ key: 'effort-worker:sonnet' }) // default -> low -> medium
+  await ui.input({ key: 'compose-0', text: 'add a readme' })
+  const run = calls.find(c => c.includes('run'))!
+  expect(run.slice(run.indexOf('--lead'), run.indexOf('--lead') + 2)).toEqual(['--lead', 'sonnet'])
+  expect(run.includes('--supervisor')).toBe(false)
+  expect(run).toContain('supervisor:opus=low')
+  expect(run).toContain('lead:sonnet=low')
+  expect(run).toContain('worker:sonnet=medium')
+  await ui.unmount()
+})
+
+test('the Minds tab follows each model and streams its reasoning, words and tools', async ($, on) => {
+  const snap = JSON.parse(LIVE)
+  snap.runs[0].minds = [
+    {
+      sessionId: 'ses_w', agentId: 'sonnet', role: 'worker', task: 'TASK-102', contract: 'WorkerResult', effort: 'medium', status: 'active',
+      startedAt: '2026-10-03T13:23:33.674Z', endedAt: null,
+      activity: [
+        { ts: '2026-10-03T13:23:40.000Z', kind: 'thinking', text: 'slugify must collapse repeated dashes before trimming them' },
+        { ts: '2026-10-03T13:23:41.000Z', kind: 'tool', text: 'Read: src/strings.js' },
+        { ts: '2026-10-03T13:23:45.000Z', kind: 'text', text: 'Adding the slugify tests next.' },
+      ],
+    },
+    { sessionId: 'ses_l', agentId: 'codex', role: 'lead', task: 'TASK-101', contract: 'LeadReview', effort: null, status: 'completed', startedAt: '2026-10-03T13:10:00.000Z', endedAt: '2026-10-03T13:11:00.000Z', activity: [] },
+  ]
+  on('fs.read', async () => ({ value: JSON.stringify(snap) }))
+  mock.clock(on)
+  mock.env(on, { COCKPIT_DATA_DIR: '/data' })
+  on('command.register', async () => ({ value: undefined }) as never)
+  on('session.start', async (_, e) => ({ cwd: e.cwd }))
+  on('ui.status', async () => ({ value: undefined }) as never)
+  on('ui.toast', async () => ({ value: undefined }) as never)
+  on('process.run', async () => ({ exitCode: 0, stdout: '', stderr: '' }))
+  await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
+  for (const cols of [60, 100, 140]) {
+    const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(cols) })
+    await ui.press({ key: 'tab-minds' })
+    expect(await ui.find({ type: 'Text', text: /implementing/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /collapse repeated dashes/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /src\/strings\.js/ })).toBeDefined()
+    await ui.press({ key: 'mind-next' })
+    expect(await ui.find({ type: 'Text', text: /reviewing the work/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /no visible output/ })).toBeDefined()
+    await ui.press({ key: 'mind-pick-ses_w' })
+    await ui.unmount()
+  }
+})
+
+test('rows open to show the whole task, event or Minds entry', async ($, on) => {
+  const snap = JSON.parse(LIVE)
+  const run = snap.runs[0]
+  run.tasks[1].detail = {
+    description: 'Implement capitalize and slugify in src/strings.js with node:test coverage.', kind: 'implementation', risk: 'low', complexity: 'low',
+    acceptanceCriteria: ['slugify collapses repeated dashes'], scope: { files: ['src/strings.js', 'test/strings.test.js'], modules: [], resources: [] },
+    testsRequired: true, testCommand: 'node --test', summary: 'implemented strings',
+    review: { iteration: 1, verdict: 'changes_requested', summary: 'missing edge cases', issues: [{ severity: 'major', file: 'src/strings.js', description: 'empty input throws' }] },
+  }
+  run.recentEvents[run.recentEvents.length - 1].detail = 'outcome: approved\nreason: every criterion met'
+  run.minds = [{
+    sessionId: 'ses_w', agentId: 'sonnet', role: 'worker', task: 'TASK-102', contract: 'WorkerResult', effort: null, status: 'active',
+    startedAt: '2026-10-03T13:23:33.674Z', endedAt: null,
+    activity: [{ ts: '2026-10-03T13:23:41.000Z', kind: 'tool', text: "Bash: cat > /tmp/a.py <<'EOF'\nprint('hidden second line')\nEOF" }],
+  }]
+  on('fs.read', async () => ({ value: JSON.stringify(snap) }))
+  mock.clock(on)
+  mock.env(on, { COCKPIT_DATA_DIR: '/data' })
+  on('command.register', async () => ({ value: undefined }) as never)
+  on('session.start', async (_, e) => ({ cwd: e.cwd }))
+  on('ui.status', async () => ({ value: undefined }) as never)
+  on('ui.toast', async () => ({ value: undefined }) as never)
+  on('process.run', async () => ({ exitCode: 0, stdout: '', stderr: '' }))
+  await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
+  const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(100) })
+  expect(await ui.find({ type: 'Text', text: /collapses repeated dashes/ })).toBeUndefined()
+  await ui.press({ key: 'open-task-TASK-102' })
+  expect(await ui.find({ type: 'Text', text: /collapses repeated dashes/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /empty input throws/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /test\/strings\.test\.js/ })).toBeDefined()
+  await ui.press({ key: 'open-task-TASK-102' })
+  expect(await ui.find({ type: 'Text', text: /collapses repeated dashes/ })).toBeUndefined()
+
+  await ui.press({ key: 'tab-events' })
+  const last = run.recentEvents[run.recentEvents.length - 1]
+  await ui.press({ key: `open-ev-${last.ts}-${last.type}` })
+  expect(await ui.find({ type: 'Text', text: /every criterion met/ })).toBeDefined()
+
+  await ui.press({ key: 'tab-minds' })
+  expect(await ui.find({ type: 'Text', text: /hidden second line/ })).toBeUndefined()
+  const entry = run.minds[0].activity[0]
+  await ui.press({ key: `open-mind-ses_w-${entry.ts}-tool-${entry.text.length}` })
+  expect(await ui.find({ type: 'Text', text: /hidden second line/ })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a long approval shows its first lines and opens to the whole text', async ($, on) => {
+  const snap = JSON.parse(LIVE)
+  snap.pendingApprovals[0].text = `Final result: ${'every task is integrated and the suite passes. '.repeat(30)}TAIL-MARKER remaining risk: none.`
+  on('fs.read', async () => ({ value: JSON.stringify(snap) }))
+  mock.clock(on)
+  mock.env(on, { COCKPIT_DATA_DIR: '/data' })
+  on('command.register', async () => ({ value: undefined }) as never)
+  on('session.start', async (_, e) => ({ cwd: e.cwd }))
+  on('ui.status', async () => ({ value: undefined }) as never)
+  on('ui.toast', async () => ({ value: undefined }) as never)
+  on('process.run', async () => ({ exitCode: 0, stdout: '', stderr: '' }))
+  await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
+  const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(100) })
+  expect(await ui.find({ type: 'Text', text: /TAIL-MARKER/ })).toBeUndefined()
+  expect(await ui.find({ key: 'approve-apr_1' })).toBeDefined()
+  await ui.press({ key: 'open-apr-apr_1' })
+  expect(await ui.find({ type: 'Text', text: /TAIL-MARKER/ })).toBeDefined()
+  expect(await ui.find({ key: 'approve-apr_1' })).toBeDefined()
+  await ui.unmount()
+})
+
+test('a report longer than one Markdown element is drawn whole, in parts', async ($, on) => {
+  const report = `# Report\n\n${Array.from({ length: 400 }, (_, i) => `- finding ${i}: ${'detail '.repeat(8)}`).join('\n')}\n\nEND-OF-REPORT`
+  on('fs.read', async () => ({ value: LIVE }))
+  mock.clock(on)
+  mock.env(on, { COCKPIT_DATA_DIR: '/data' })
+  on('command.register', async () => ({ value: undefined }) as never)
+  on('session.start', async (_, e) => ({ cwd: e.cwd }))
+  on('ui.status', async () => ({ value: undefined }) as never)
+  on('ui.toast', async () => ({ value: undefined }) as never)
+  on('process.run', async () => ({ value: { exitCode: 0, stdout: report, stderr: '' } }) as never)
+  await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
+  const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(100) })
+  await ui.press({ key: 'tab-report' })
+  await ui.advance(500)
+  const parts = await ui.findAll({ type: 'Markdown' })
+  expect(report.length).toBeGreaterThan(20000)
+  expect(parts.length).toBeGreaterThan(2)
+  expect(await ui.find({ key: 'tab-tasks' })).toBeDefined()
+  await ui.unmount()
+})

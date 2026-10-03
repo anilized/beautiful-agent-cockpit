@@ -68,6 +68,8 @@ export const LeadPlan = z.strictObject({
       specialty,
       risk: level,
       complexity: level,
+      /** The worker the Lead assigns (an enabled worker's id), or null to let the router choose. */
+      worker: z.string().nullable(),
       files: strings,
       modules: strings,
       resources: strings,
@@ -143,6 +145,14 @@ export const SupervisorValidation = z.strictObject({
   remainingRisks: strings,
   knownLimitations: strings,
   followUps: strings,
+  /** Rulings on the Lead's proposals from task reviews, deferred to this validation. */
+  proposalDecisions: z.array(
+    z.strictObject({
+      proposalIndex: z.number().int(),
+      outcome: z.enum(['accept', 'reject']),
+      rationale: z.string(),
+    }),
+  ),
 });
 
 /** Opus: revised direction after the human requests changes or validation asks for revision. */

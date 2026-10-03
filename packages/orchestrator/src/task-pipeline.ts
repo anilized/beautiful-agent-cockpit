@@ -10,7 +10,7 @@ import {
   type WorkerContext,
 } from '@cockpit/agents';
 import { gitOps, runShell } from '@cockpit/workspace';
-import { arch, setTaskStatus, type EngineContext, type RunMeta, type TaskContext } from './context';
+import { arch, rolesOf, setTaskStatus, type EngineContext, type RunMeta, type TaskContext } from './context';
 import { decideProposals } from './proposals';
 
 /**
@@ -41,12 +41,12 @@ export class TaskPipeline {
     return this.ctx.store.runById(t.runId)!;
   }
 
-  private get lead(): string {
-    return this.ctx.config.agents.hierarchy.lead;
+  private lead(t: Task): string {
+    return rolesOf(this.ctx, t.runId).lead;
   }
 
-  private get supervisor(): string {
-    return this.ctx.config.agents.hierarchy.supervisor;
+  private supervisor(t: Task): string {
+    return rolesOf(this.ctx, t.runId).supervisor;
   }
 
   async drive(taskId: string): Promise<void> {
@@ -119,9 +119,17 @@ export class TaskPipeline {
           load.set(other.agentId, (load.get(other.agentId) ?? 0) + 1);
         }
       }
-      const decision = router.route(t, { strategy: meta.routingStrategy, load });
-      agentId = decision.agentId;
-      bus.emit('task.assigned', t.runId, { taskId: t.id, agentId, reason: decision.reason });
+      const preferred = this.tctx(t.id).preferredWorker;
+      const chosen = preferred ? router.workers().find((w) => w.id === preferred) : undefined;
+      if (chosen && (load.get(chosen.id) ?? 0) < chosen.maxConcurrent) {
+        agentId = chosen.id;
+        bus.emit('task.assigned', t.runId, { taskId: t.id, agentId, reason: `chosen by the lead (${rolesOf(this.ctx, t.runId).lead})` });
+      } else {
+        const decision = router.route(t, { strategy: meta.routingStrategy, load });
+        agentId = decision.agentId;
+        const why = preferred ? `lead chose ${preferred} but it is ${chosen ? 'at capacity' : 'unavailable'}; ` : '';
+        bus.emit('task.assigned', t.runId, { taskId: t.id, agentId, reason: `${why}${decision.reason}` });
+      }
     }
 
     const repo = store.repository(t.repoId)!;
@@ -232,7 +240,7 @@ export class TaskPipeline {
     const questions = c.questions ?? [];
     const run = this.run(t);
     const res = await runner.call({
-      runId: t.runId, taskId: t.id, agentId: this.lead, role: 'lead', contract: 'LeadAnswer',
+      runId: t.runId, taskId: t.id, agentId: this.lead(t), role: 'lead', contract: 'LeadAnswer',
       prompt: leadAnswerPrompt(t, arch(run), questions, c.lastWorkerSummary ?? ''),
       cwd: t.worktreePath!, readOnly: true, timeoutMs: config.engine.agentTimeoutMs, spanName: 'codex.answer',
     });
@@ -241,7 +249,7 @@ export class TaskPipeline {
     if (res.output.escalateToSupervisor) {
       bus.emit('escalation.requested', t.runId, { from: 'lead', to: 'supervisor', taskId: t.id, reason: res.output.escalationQuestion ?? questions.join('; ') });
       const sup = await runner.call({
-        runId: t.runId, taskId: t.id, agentId: this.supervisor, role: 'supervisor', contract: 'SupervisorEscalation',
+        runId: t.runId, taskId: t.id, agentId: this.supervisor(t), role: 'supervisor', contract: 'SupervisorEscalation',
         prompt: supervisorEscalationPrompt(t, res.output.escalationQuestion ?? questions.join('; '), `Worker questions: ${questions.join(' | ')}\nLead interim answer: ${answer}`),
         cwd: t.worktreePath!, readOnly: true, timeoutMs: config.engine.agentTimeoutMs, spanName: 'opus.escalation',
       });
@@ -333,7 +341,7 @@ export class TaskPipeline {
     if (c.leaseDecision) return false; // still waiting
 
     const res = await runner.call({
-      runId: t.runId, taskId: t.id, agentId: this.lead, role: 'lead', contract: 'LeadLeaseDecision',
+      runId: t.runId, taskId: t.id, agentId: this.lead(t), role: 'lead', contract: 'LeadLeaseDecision',
       prompt: leadLeaseDecisionPrompt(t, conflicts.map((x) => ({ pattern: x.pattern, holder: store.task(x.heldBy)! }))),
       cwd: t.worktreePath!, readOnly: true, timeoutMs: config.engine.agentTimeoutMs, spanName: 'codex.lease_decision',
     });
@@ -369,7 +377,7 @@ export class TaskPipeline {
     bus.emit('review.started', t.runId, { taskId: t.id, iteration: t.iteration });
     const run = this.run(t);
     const res = await runner.call({
-      runId: t.runId, taskId: t.id, agentId: this.lead, role: 'lead', contract: 'LeadReview',
+      runId: t.runId, taskId: t.id, agentId: this.lead(t), role: 'lead', contract: 'LeadReview',
       prompt: leadReviewPrompt({
         task: t,
         arch: arch(run),
@@ -397,7 +405,8 @@ export class TaskPipeline {
     if (out.proposals.length) {
       const created = out.proposals.map((p) => store.insertProposal({ runId: t.runId, taskId: t.id, ...p }));
       for (const p of created) bus.emit('proposal.created', t.runId, { proposalId: p.id, kind: p.kind, title: p.title, taskId: t.id });
-      await decideProposals(this.ctx, run, out.summary, created);
+      // Deferred proposals stay open; the Supervisor rules on them all at final validation.
+      if (config.engine.decisions.duringTasks === 'immediate') await decideProposals(this.ctx, run, out.summary, created);
     }
 
     if (out.verdict === 'approve') {
@@ -445,7 +454,7 @@ export class TaskPipeline {
       .map((r) => `review ${r.iteration}: ${r.verdict} - ${r.summary}${r.issues.map((i) => `\n  - [${i.severity}] ${i.description}`).join('')}`)
       .join('\n');
     const res = await runner.call({
-      runId: t.runId, taskId: t.id, agentId: this.supervisor, role: 'supervisor', contract: 'SupervisorEscalation',
+      runId: t.runId, taskId: t.id, agentId: this.supervisor(t), role: 'supervisor', contract: 'SupervisorEscalation',
       prompt: supervisorEscalationPrompt(t, c.escalationReason ?? t.blockedReason ?? 'unspecified', history || '(no reviews)'),
       cwd: t.worktreePath ?? store.repository(t.repoId)!.path, readOnly: true, timeoutMs: config.engine.agentTimeoutMs, spanName: 'opus.escalation',
     });

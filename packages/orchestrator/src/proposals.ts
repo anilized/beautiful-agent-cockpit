@@ -1,6 +1,6 @@
 import { supervisorDecisionPrompt } from '@cockpit/agents';
 import type { ArchitectureOutput, Proposal, ProposalStatus, Run } from '@cockpit/core';
-import { arch, runRepos, type EngineContext, type RunMeta } from './context';
+import { arch, rolesOf, runRepos, type EngineContext, type RunMeta } from './context';
 
 export interface DecisionOutcome {
   humanApprovalId: string | null;
@@ -26,7 +26,7 @@ export async function decideProposals(ctx: EngineContext, run: Run, assessment: 
   const repos = runRepos(ctx, run);
   const res = await runner.call({
     runId: run.id,
-    agentId: config.agents.hierarchy.supervisor,
+    agentId: rolesOf(ctx, run.id).supervisor,
     role: 'supervisor',
     contract: 'SupervisorDecisions',
     prompt: supervisorDecisionPrompt(current ?? emptyArch(), assessment, proposals),

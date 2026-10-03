@@ -24,6 +24,8 @@ export interface Assignment {
   contract: ContractName;
   timeoutMs: number;
   signal?: AbortSignal;
+  /** Reasoning effort for this call (a level the adapter's CLI accepts); absent, the CLI's default. */
+  effort?: string | null;
 }
 
 export interface UsageReport {
@@ -37,6 +39,7 @@ export interface UsageReport {
 export type AgentEvent =
   | { type: 'session'; externalId: string }
   | { type: 'text'; text: string }
+  | { type: 'thinking'; text: string }
   | { type: 'tool'; name: string; detail: string }
   | { type: 'usage'; usage: UsageReport }
   | { type: 'result'; output: unknown }

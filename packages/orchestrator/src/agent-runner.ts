@@ -4,6 +4,9 @@ import type { Store } from '@cockpit/persistence';
 import type { Telemetry } from '@cockpit/telemetry';
 import type { EventBus } from './event-bus';
 
+/** Longest model message or reasoning block kept per event. */
+const MAX_OUTPUT = 4000;
+
 export interface AgentCall<N extends ContractName> {
   runId: string;
   taskId?: string | null;
@@ -98,12 +101,17 @@ export class AgentRunner {
 
   private async once<N extends ContractName>(call: AgentCall<N>, prompt: string, resumeId: string | null) {
     const adapter = this.registry.get(call.agentId);
+    // Effort: the run's choice for this seat, then for this agent (read per attempt, so a live change applies), else its default.
+    const efforts = this.store.runMeta<{ efforts?: Record<string, string> }>(call.runId).efforts ?? {};
+    const effort = efforts[`${call.role}:${call.agentId}`] ?? efforts[call.agentId] ?? this.registry.profile(call.agentId).effort ?? null;
     const config = { agentId: call.agentId, role: call.role, cwd: call.cwd, readOnly: call.readOnly, additionalDirs: call.additionalDirs };
     const session: AgentSession = resumeId ? await adapter.resume(resumeId, config) : await adapter.startSession(config);
     const record = this.store.insertSession({
       runId: call.runId, taskId: call.taskId ?? null, agentId: call.agentId, role: call.role, externalId: resumeId, status: 'active', cwd: call.cwd,
     });
-    this.bus.emit('agent.started', call.runId, { agentId: call.agentId, role: call.role, sessionId: record.id, taskId: call.taskId ?? null });
+    this.bus.emit('agent.started', call.runId, { agentId: call.agentId, role: call.role, sessionId: record.id, taskId: call.taskId ?? null, contract: call.contract, effort });
+    const said = (kind: 'text' | 'thinking' | 'tool', text: string) =>
+      this.bus.emit('agent.output', call.runId, { agentId: call.agentId, role: call.role, sessionId: record.id, taskId: call.taskId ?? null, kind, text: text.slice(0, MAX_OUTPUT) });
     const abort = new AbortController();
     const key = `${call.runId}:${record.id}`;
     this.cancels.set(key, abort);
@@ -112,22 +120,19 @@ export class AgentRunner {
     let gotOutput = false;
     let usage: UsageReport | null = null;
     let error: { message: string; retryable: boolean } | null = null;
-    let lastText = 0;
     try {
-      for await (const ev of adapter.execute(session, { prompt, contract: call.contract, timeoutMs: call.timeoutMs, signal: abort.signal })) {
+      for await (const ev of adapter.execute(session, { prompt, contract: call.contract, timeoutMs: call.timeoutMs, signal: abort.signal, effort })) {
         switch (ev.type) {
           case 'session':
             this.store.updateSession(record.id, { externalId: ev.externalId });
             break;
           case 'text':
-            // Throttle progress chatter into the event log.
-            if (Date.now() - lastText > 2000) {
-              lastText = Date.now();
-              this.bus.emit('agent.output', call.runId, { agentId: call.agentId, taskId: call.taskId ?? null, text: ev.text.slice(0, 500) });
-            }
+          case 'thinking':
+            // Whole messages (the CLIs stream no token deltas here), kept for the cockpit's Minds view.
+            said(ev.type, ev.text);
             break;
           case 'tool':
-            this.bus.emit('agent.output', call.runId, { agentId: call.agentId, taskId: call.taskId ?? null, text: `${ev.name}: ${ev.detail}` });
+            said('tool', `${ev.name}: ${ev.detail}`);
             break;
           case 'usage':
             usage = ev.usage;
