@@ -150,3 +150,10 @@ Consistent with the Lifecycle contract above; all limits come from `HOST_LIMITS`
 
 ## 6. Commands
 `npm --prefix packages/claude-plugin run typecheck | test | bench | capture | probe` (probe/capture write `tests/evidence/*`; `capture <label>` writes `<label>-60.txt`/`-140.txt`, default `before`). Full chain verified passing.
+
+## 7. Gate 0 amendment (supersedes the blit-rate row of 2b where they differ)
+- Gate 0 is human-owned and does not block implementation; workers continue on `claude-code/testing` with the mock clock. All section 4 items stay OPEN until a human runs the probe or waives each item in writing.
+- Scheduler exposes `CADENCE = 'conservative' | 'full'`, default `'conservative'`: total <= 60 blits/s, Tier A <= 30 fps per key. `'full'`: 90/s total, Tier A <= 70/s, <= 60 fps per key. Constants only, no code-path change; only a Gate 0 report or human waiver may flip the default. Tests cover both under the mock clock.
+- `HOST_LIMITS.blit.sharedPerSec: 100` in 2b is the unverified upper bound; the active `CADENCE` budget (60 or 90) is what the scheduler enforces. The documented host figure (120 taken / ~60 shown, d.ts:2179) is unchanged.
+- Payload contract (cols*rows*3 words, <= 140x8 raster cap, size-mismatch refusal test) is binding; baseline max is 140x4 (9013 B serialized). No discrepancy claimed.
+- Baseline cadence of current code (16/s x 7 keys = 112/s) already exceeds both profiles' totals: the scheduler worker must throttle.
