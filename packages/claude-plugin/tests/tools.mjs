@@ -1,6 +1,6 @@
 // Plugin-local runner for typecheck / capture / probe. No dependencies; tsc and `claude` are looked up, never installed.
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -36,6 +36,20 @@ if (cmd === 'typecheck') {
   const tsc = findTsc() ?? die('typescript not found (npm install at the repo root, or set TSC=/path/to/tsc)')
   ensureTypes()
   process.exit(run(process.execPath, [tsc, '-p', join(pkg, 'tsconfig.json')]).status ?? 1)
+} else if (cmd === 'palette') {
+  // theme.ts is the only module with colour literals. Tests have no fs, so the grep runs here.
+  const HEX = /#[0-9a-fA-F]{6}/
+  const dir = join(pkg, 'hooks')
+  const files = readdirSync(dir).filter(f => /\.tsx?$/.test(f))
+  let bad = 0
+  for (const f of files) {
+    const has = HEX.test(readFileSync(join(dir, f), 'utf8'))
+    if (f === 'theme.ts') { if (!has) (console.error('FAIL theme.ts has no palette literals'), bad++) }
+    else if (has) (console.error(`FAIL ${f} has palette literals (theme.ts only)`), bad++)
+  }
+  if (!files.includes('theme.ts')) (console.error('FAIL hooks/theme.ts missing'), bad++)
+  if (!files.includes('raster.ts')) (console.error('FAIL hooks/raster.ts missing'), bad++)
+  process.exit(bad ? 1 : 0)
 } else if (cmd === 'capture' || cmd === 'probe') {
   // Tests have no fs: run generated tests in scratch copies and keep what they print in tests/evidence.
   const label = process.argv[3] ?? 'before'

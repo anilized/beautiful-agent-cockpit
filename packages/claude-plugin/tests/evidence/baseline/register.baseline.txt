@@ -2,12 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, InputProps, Register, RenderChildren } from 'claude-code'
 
 import type { CockpitApproval, CockpitRun, CockpitSnapshot, CockpitTab, CockpitTask, CockpitUi, CockpitView } from '../types'
-import { enableTrace, resolveCadence } from './limits'
 import * as paint from './raster'
 import { COCKPIT_ROOT } from './root'
-import { createScheduler, type KeySpec, type Scheduler } from './scheduler'
-import { C, K, LOGO_GRADIENT } from './theme'
-import { createTweens, type Tweens } from './tween'
 
 // Presentation only: the orchestrator owns all workflow state. This mod reads the
 // snapshot the orchestrator projects to <dataDir>/snapshot.json and sends human
@@ -18,9 +14,16 @@ const EMPTY: CockpitView = { snapshot: null, error: null, message: null }
 const UI0: CockpitUi = { selectedRun: null, tab: 'tasks', composing: null, nonce: 0, busy: null, report: null, failure: null }
 const view = atom({ plugin: 'agent-cockpit', key: 'view' } as const, EMPTY)
 const ui = atom({ plugin: 'agent-cockpit', key: 'ui' } as const, UI0)
-const tickAtom = atom({ plugin: 'agent-cockpit', key: 'tick' } as const, 0)
+const tick = atom({ plugin: 'agent-cockpit', key: 'tick' } as const, 0)
 
 // ── palette ──────────────────────────────────────────────────────────────────
+
+const C = {
+  accent: '#ff8a3d', violet: '#a78bfa', cyan: '#22d3ee', blue: '#60a5fa', green: '#34d399', yellow: '#fbbf24',
+  red: '#f87171', pink: '#f472b6', text: '#e5e7eb', mute: '#9ca3af', dim: '#6b7280', faint: '#3f3f46', line: '#52525b',
+}
+const LOGO_GRADIENT = [C.cyan, C.violet, C.pink, C.accent, C.yellow, C.cyan]
+const BAR_GRADIENT = [C.violet, C.cyan, C.green]
 
 const STATUS_COLOR: Record<string, string> = {
   running: C.cyan, needs_input: C.yellow, validating: C.blue, in_review: C.violet, changes_requested: C.yellow,
@@ -109,93 +112,11 @@ function eventColor(type: string): string {
 // ── orchestrator I/O ─────────────────────────────────────────────────────────
 
 let lastGenerated = ''
-
-// One lifecycle per session: scheduler, tweens, text tick. Animation time (`anim`) is monotonic from creation and
-// frozen under COCKPIT_REDUCED_MOTION; wall time only ever feeds the clock string. `T` is the last wall reading, kept
-// sync because the scheduler's clock is: every timer callback refreshes it before running.
-type Life = {
-  sched: Scheduler
-  tweens: Tweens
-  open: boolean
-  T: number
-  epoch: number
-  frozenAt: number | null
-  motion: boolean
-  seen: number
-  tick: (() => void) | null
-  cancels: (() => void)[]
-  anim: () => number
-  freeze: (on: boolean) => void
-  arm: () => void
-  setMotion: (on: boolean) => void
-  close: () => void
-}
-let life: Promise<Life> | null = null
-let stopPoll: (() => void) | null = null
-const TICK_MS = 125 // text spinners and pulses: <=10 fps with motion
-const IDLE_TICK_MS = 1000
-const STALE_MS = 1500 // the host has no unmount event: no render for longer than the 1 s idle beat means the pane was gone, tweens snap
-
-async function createLife($: EngineInterface): Promise<Life> {
-  const T0 = await $.clock.now()
-  enableTrace(await $.env.get('COCKPIT_TRACE'))
-  const cadence = resolveCadence({ COCKPIT_CADENCE: await $.env.get('COCKPIT_CADENCE') })
-  const l: Life = {
-    sched: null as never, tweens: createTweens(), open: true, T: T0, epoch: T0, frozenAt: null, motion: false, seen: T0, tick: null, cancels: [],
-    anim: () => l.frozenAt ?? l.T - l.epoch,
-    freeze(on) {
-      if (on && l.frozenAt === null) l.frozenAt = l.T - l.epoch
-      else if (!on && l.frozenAt !== null) l.epoch = l.T - l.frozenAt, l.frozenAt = null
-      l.tweens.setMotion(!on && l.motion)
-    },
-    setMotion(on) {
-      if (on === l.motion || !l.open) return
-      l.motion = on
-      l.sched.setMotion(on)
-      l.tweens.setMotion(on)
-      l.arm()
-    },
-    close() {
-      l.open = false
-      l.sched.close()
-      l.tick?.()
-      l.tick = null
-      for (const c of l.cancels.splice(0)) c()
-      l.tweens.reset()
-    },
-    arm() {
-      l.tick?.()
-      const t = $.clock.every(l.motion ? TICK_MS : IDLE_TICK_MS, () => void update($, tickAtom, n => n + 1))
-      l.tick = () => t.cancel()
-    },
-  }
-  // Every timer callback first reads the wall clock, so the scheduler's sync `now` is never older than one period.
-  const stamp = (fn: () => void) => () => void $.clock.now().then(t => {
-    if (!l.open) return
-    l.T = Math.max(l.T, t)
-    fn()
-  })
-  l.sched = createScheduler({
-    cadence,
-    clock: {
-      now: () => l.T,
-      every: (ms, fn) => { const t = $.clock.every(ms, stamp(fn)); return () => t.cancel() },
-      after: (ms, fn) => { const t = $.clock.after(ms, stamp(fn)); return () => t.cancel() },
-    },
-    blit: (key, cells) => $.ui.blit({ requestId: PANE, key, cells }),
-  })
-  l.sched.setMotion(false)
-  l.tweens.setMotion(false)
-  l.arm()
-  return l
-}
-let ended = false // a render after session.end gets an inert Life: no timers, no blits
-const getLife = ($: EngineInterface) => (life ??= createLife($).then(l => (ended && l.close(), l)))
-function closeLife() {
-  const p = life
-  life = null
-  void p?.then(l => l.close())
-}
+// Rasters drawn by the last render, repainted by the animation clock until a blit is refused.
+const rasters = new Map<string, { paint: (f: number) => string }>()
+let frame = 0
+let nowMs = 0
+let motion = false
 const seenApprovals = new Set<string>()
 let paths: { root: string; dataDir: string } | null = null
 
@@ -217,14 +138,13 @@ async function cli($: EngineInterface, args: string[], timeoutMs = 60_000) {
 
 async function refresh($: EngineInterface) {
   const { dataDir } = await locate($)
-  const l = await life
-  if (l?.open) l.freeze((await $.env.get('COCKPIT_REDUCED_MOTION')) === '1')
   let snapshot: CockpitSnapshot | null = null
   try {
     snapshot = JSON.parse(await $.fs.read(`${dataDir}/snapshot.json`)) as CockpitSnapshot
   } catch {
     if (lastGenerated !== 'missing') {
       lastGenerated = 'missing'
+      motion = false
       await update($, view, v => ({ ...v, snapshot: null, error: 'Orchestrator not started' }))
       $.ui.status(undefined)
     }
@@ -240,6 +160,7 @@ async function refresh($: EngineInterface) {
     $.ui.toast(`◆ Cockpit needs your decision (${a.kind}): ${a.summary.slice(0, 80)}`)
   }
   const run = activeRun(snapshot)
+  motion = snapshot.daemon.port !== null && (snapshot.pendingApprovals.length > 0 || (!!run && !TERMINAL.includes(run.status)))
   if (!run || snapshot.daemon.port === null) {
     $.ui.status(snapshot.daemon.port === null ? 'cockpit ○ offline' : undefined)
     return
@@ -350,26 +271,23 @@ export const register: Register = on => {
       name: 'cockpit',
       description: 'Agent cockpit: /cockpit [start|stop|run <request>|status|approve|changes <text>|reject|report]',
     })
-    ended = false
-    closeLife()
-    await getLife($)
     await refresh($)
-    stopPoll?.()
-    const poll = $.clock.every(1000, () => void refresh($))
-    stopPoll = () => poll.cancel()
-    return next(e)
-  })
-
-  on('ui.close', async ($, e, next) => {
-    const r = await next(e) // a hook may keep the pane open: tear down only after it is really closing
-    if (e.id === PANE) closeLife()
-    return r
-  })
-  on('session.end', async ($, e, next) => {
-    ended = true
-    closeLife()
-    stopPoll?.()
-    stopPoll = null
+    $.clock.every(1000, () => void refresh($))
+    // Text animation (spinners, pulses): ~8 fps while something moves, one beat a second at rest.
+    let beat = 0
+    $.clock.every(125, () => {
+      beat++
+      if (motion || beat % 8 === 0) void update($, tick, n => n + 1)
+    })
+    // Raster animation: every mounted Raster is repainted in place at ~16 fps, no render pass.
+    $.clock.every(60, () => {
+      frame++
+      if (frame % 20 === 0) void $.clock.now().then(t => (nowMs = t))
+      for (const [key, r] of rasters)
+        void $.ui.blit({ requestId: PANE, key, cells: r.paint(frame) }).then(res => {
+          if ('deny' in res && res.deny && rasters.get(key) === r) rasters.delete(key)
+        })
+    })
     return next(e)
   })
 
@@ -413,53 +331,32 @@ export const register: Register = on => {
     const { Box, Text, Button, Markdown } = T
     // Surfaces without text fields (mobile) get a hint to use the slash command instead.
     const Input = 'Input' in T ? T.Input : (_: InputProps) => Text({ color: C.dim, children: 'type it as /cockpit run … or /cockpit changes …' })
-    // Desktop and mobile draw no cell grid: they get the designed text fallbacks instead.
-    const RasterEl = e.surface === 'terminal' && 'Raster' in T ? T.Raster : null
+    const RasterEl = 'Raster' in T ? T.Raster : null
     const v = await read($, view)
     const u = await read($, ui)
-    await read($, tickAtom)
-    const l = await getLife($)
-    const wall = await $.clock.now()
-    if (wall - l.seen > STALE_MS) l.tweens.reset() // the pane was gone: nothing eases across the gap
-    l.seen = l.T = Math.max(l.T, wall)
-    const now = wall
-    const anim = l.anim()
-    const n = Math.floor(anim / TICK_MS) // text beat: derived from animation time, so it stops with it
+    const n = await read($, tick)
+    const now = (nowMs = await $.clock.now())
     const s = v.snapshot
     const cols = Math.max(40, e.props.bodyColumns ?? e.viewport?.columns ?? 100)
     const rows = e.viewport?.rows ?? 40
     const online = !!s && s.daemon.port !== null
-    const specs = new Map<string, KeySpec>()
+    rasters.clear()
 
-    // A Raster that keeps animating: drawn now at the current animation time, repainted by the scheduler afterwards.
-    const raster = (key: string, columns: number, height: number, tier: 'A' | 'B', fn: (t: number) => string, fallback: RenderChildren = null) => {
+    // A Raster that keeps animating: drawn now, repainted by the clock afterwards.
+    const raster = (key: string, columns: number, height: number, fn: (f: number) => string, fallback: RenderChildren = null) => {
       if (!RasterEl || columns < 1) return fallback
-      // At rest only the hero (wall clock) is repainted by the scheduler (<=2 fps); the rest are redrawn by the 1 Hz render.
-      if (l.motion || key === 'hero') specs.set(key, { tier, id: `${columns}x${height}`, paint: () => fn(l.anim()) })
-      return RasterEl({ key, columns, rows: height, cells: fn(anim) })
-    }
-    // Every return path reports the mounted raster keys; text-only surfaces have none and leave the scheduler alone.
-    const out = <R,>(el: R): R => (RasterEl && l.open && l.sched.sync(specs), el)
-    // Tweens: retarget at render, sampled at paint time so the ease runs between renders.
-    const run0 = online ? (u.selectedRun && s.runs.find(r => r.id === u.selectedRun)) || activeRun(s) : null
-    const viewing = !!run0 && !TERMINAL.includes(run0.status)
-    l.setMotion(!!online && l.frozenAt === null && viewing)
-    if (!run0) l.tweens.reset()
-    else if (l.tweens.active() !== run0.id) l.tweens.switchRun(run0.id)
-    const ease = (el: string, target: number, ms = 600) => {
-      if (!run0) return () => target
-      l.tweens.target(run0.id, el, target, anim, ms)
-      return (t: number) => (l.tweens.sample(run0.id, el, t) as number | undefined) ?? target
+      rasters.set(key, { paint: fn })
+      return RasterEl({ key, columns, rows: height, cells: fn(frame) })
     }
 
     // ── small pieces ──
 
     const Pill = ({ label, bg, fg }: { label: string; bg: string; fg?: string }) => (
-      <Text backgroundColor={bg} color={fg ?? C.bgDeep} bold> {label} </Text>
+      <Text backgroundColor={bg} color={fg ?? '#0b0b0f'} bold> {label} </Text>
     )
     const Key = ({ k, label }: { k: string; label: string }) => (
       <Text>
-        <Text backgroundColor={C.chip} color={C.text} bold> {k} </Text>
+        <Text backgroundColor="#2a2a33" color={C.text} bold> {k} </Text>
         <Text color={C.dim}> {label}   </Text>
       </Text>
     )
@@ -470,7 +367,7 @@ export const register: Register = on => {
       </Box>
     )
     const Card = ({ title, right, children, color, width, grow }: { title: string; right?: RenderChildren; children: RenderChildren; color?: string; width?: number; grow?: boolean }) => (
-      <Box flexDirection="column" borderStyle="round" borderColor={color ?? C.border} paddingX={1} width={width} flexGrow={grow ? 1 : 0}>
+      <Box flexDirection="column" borderStyle="round" borderColor={color ?? '#2e2e36'} paddingX={1} width={width} flexGrow={grow ? 1 : 0}>
         <Title label={title} right={right} />
         {children}
       </Box>
@@ -479,13 +376,13 @@ export const register: Register = on => {
     const clock = new Date(now).toISOString().slice(11, 19)
     const chain = s ? `${s.hierarchy.supervisor} ▸ ${s.hierarchy.lead} ▸ workers` : 'opus ▸ codex ▸ workers'
     const attention = !!s?.pendingApprovals.length
-    const heroInfo = (): paint.HeroData => ({
+    const heroInfo = (): paint.HeroInfo => ({
       online,
       alert: attention,
       left: chain,
-      right: `${online ? `online :${s!.daemon.port}` : 'offline'}  ${clock}`,
+      right: `${online ? `online :${s!.daemon.port}` : 'offline'}  ${new Date(nowMs || now).toISOString().slice(11, 19)}`,
     })
-    const hero = raster('hero', cols, 4, 'A', t => paint.hero({ cols, rows: 4 }, t, heroInfo()), (
+    const hero = raster('hero', cols, 4, f => paint.hero(cols, 4, f, heroInfo()), (
       <Box justifyContent="space-between" paddingX={1}>
         <Text bold>{[...'◆ AGENT COCKPIT'].map((ch, i) => <Text color={gradient(LOGO_GRADIENT, i / 22 - n / 40)}>{ch}</Text>)}</Text>
         <Text color={C.mute}>{online ? '● online' : '○ offline'}  {clock}</Text>
@@ -506,11 +403,11 @@ export const register: Register = on => {
     )
 
     const failureCard = u.failure ? (
-      <Box flexDirection="column" borderStyle="round" borderColor={pulse(n, C.red, C.redDeep, 0.35)} paddingX={1}>
+      <Box flexDirection="column" borderStyle="round" borderColor={pulse(n, C.red, '#5b1d1d', 0.35)} paddingX={1}>
         <Box justifyContent="space-between">
           <Text><Pill label="✗ LAUNCH FAILED" bg={C.red} /> <Text color={C.dim}>{clip(firstLine(u.failure.request), 40)}</Text></Text>
         </Box>
-        <Text color={C.red} bold wrap="wrap">{u.failure.text}</Text>
+        <Text color={C.text} wrap="wrap">{u.failure.text}</Text>
         <Box gap={1}>
           {u.failure.uninitializedRepo ? (
             <Button variant="primary" hotkey="i" key="init-commit" autoFocus label="i · Initial commit & retry" onPress={() => void initialCommitAndRetry($)} />
@@ -545,7 +442,7 @@ export const register: Register = on => {
     // ── offline ──
 
     if (!s || !online) {
-      return out(
+      return (
         <Box flexDirection="column">
           {hero}
           <Box flexDirection="column" alignItems="center" paddingY={1}>
@@ -563,7 +460,7 @@ export const register: Register = on => {
 
     const run = (u.selectedRun && s.runs.find(r => r.id === u.selectedRun)) || activeRun(s)
     if (!run) {
-      return out(
+      return (
         <Box flexDirection="column">
           {hero}
           <Box flexDirection="column" paddingY={1} paddingX={1}>
@@ -591,9 +488,6 @@ export const register: Register = on => {
     const phase = run.status === 'completed' ? STEPS.length : STEPS.findIndex(([, st]) => st.includes(run.status))
     const frac = run.status === 'completed' ? 1 : run.tasks.length ? done / run.tasks.length : phase >= 0 ? phase / STEPS.length : 0
     const runColor = STATUS_COLOR[run.status] ?? C.text
-    const fracE = ease('frac', frac)
-    const fillE = ease('fill', run.tasks.length ? done / run.tasks.length : 0)
-    const pct = Math.round(fracE(anim) * 100)
     const runAttention = approvals.length > 0
 
     const wide = cols >= 120
@@ -609,7 +503,6 @@ export const register: Register = on => {
     const t0 = Math.min(...times, now), t1 = live ? now : Math.max(...times, t0 + 1)
     const buckets = new Array(48).fill(0) as number[]
     for (const t of times) buckets[Math.min(47, Math.floor(((t - t0) / Math.max(1, t1 - t0)) * 48))]!++
-    const bucketE = buckets.map((b, i) => ease(`spark${i}`, b))
 
     // ── run list (wide: left column) ──
 
@@ -619,9 +512,9 @@ export const register: Register = on => {
       const rd = r.tasks.filter(isDone).length
       const waits = s.pendingApprovals.some(a => a.runId === r.id)
       return (
-        <Box key={`row-${r.id}`} flexDirection="column" hover={{ backgroundColor: C.hover }}>
+        <Box key={`row-${r.id}`} flexDirection="column" hover={{ backgroundColor: '#1f1f27' }}>
           <Box>
-            <Text color={picked ? C.accent : C.hover}>▌</Text>
+            <Text color={picked ? C.accent : '#1f1f27'}>▌</Text>
             <Text color={rc}>{glyph(r.status, n)} </Text>
             <Button plain dimColor={!picked} key={`pick-${r.id}`} label={clip(firstLine(r.request), runsW - 9)} onPress={() => select(r.id)} />
           </Box>
@@ -657,20 +550,13 @@ export const register: Register = on => {
             </Box>
           ) : null}
         </Box>
-        <Text color={C.ink} bold wrap="wrap">{clip(firstLine(run.request), inner * 2)}</Text>
+        <Text color="#fafafa" bold wrap="wrap">{clip(firstLine(run.request), inner * 2)}</Text>
         {run.error ? <Text color={C.red} wrap="truncate-end">✗ {run.error}</Text> : null}
       </Box>
     )
 
-    const dividerW = Math.max(1, centerW - 2)
-    const divider = (
-      <Box paddingX={1}>
-        {raster('divider', dividerW, 1, 'B', t => paint.divider({ cols: dividerW, rows: 1 }, t, { color: paint.hex(runColor), active: live }), <Text color={C.borderDim}>{'─'.repeat(dividerW)}</Text>)}
-      </Box>
-    )
-
     const Tile = ({ label, value, sub, color }: { label: string; value: string; sub?: string; color: string }) => (
-      <Box flexDirection="column" borderStyle="round" borderColor={C.borderDim} paddingX={1} flexGrow={1}>
+      <Box flexDirection="column" borderStyle="round" borderColor="#26262e" paddingX={1} flexGrow={1}>
         <Text color={C.dim}>{label}</Text>
         <Text color={color} bold>{value}</Text>
         {sub ? <Text color={C.dim} wrap="truncate-end">{sub}</Text> : null}
@@ -679,7 +565,7 @@ export const register: Register = on => {
     const tel = run.telemetry
     const tiles = (
       <Box gap={1} flexWrap="wrap">
-        <Tile label="PROGRESS" value={`${pct}%`} sub={run.status === 'completed' ? 'shipped' : STEPS[Math.max(0, phase)]?.[0] ?? run.status} color={C.cyan} />
+        <Tile label="PROGRESS" value={`${Math.round(frac * 100)}%`} sub={run.status === 'completed' ? 'shipped' : STEPS[Math.max(0, phase)]?.[0] ?? run.status} color={C.cyan} />
         <Tile label="TASKS" value={`${done}/${run.tasks.length}`} sub={run.tasks.length ? `${run.tasks.filter(t => MOVING.has(t.status)).length} moving` : 'planning'} color={C.green} />
         <Tile label="AGENTS" value={`${run.workers.length + [run.leadership.supervisor, run.leadership.lead].filter(x => x !== 'idle').length}`} sub="live now" color={C.violet} />
         <Tile label="SPEND" value={tel.costUsd ? `$${tel.costUsd.toFixed(2)}` : '—'} sub={`${compact(tel.inputTokens + tel.outputTokens)} tok`} color={C.yellow} />
@@ -700,19 +586,19 @@ export const register: Register = on => {
       <Card
         title="LIFECYCLE"
         right={<Text color={C.dim}>{run.tasks.length ? `${done} of ${run.tasks.length} tasks` : ''}</Text>}
-        color={runAttention ? pulse(n, C.yellow, C.yellowDeep, 0.35) : live ? pulse(n, C.violetDeep, C.border, 0.2) : C.border}
+        color={runAttention ? pulse(n, C.yellow, '#3a2a0a', 0.35) : live ? pulse(n, '#3b2a55', '#2e2e36', 0.2) : '#2e2e36'}
       >
         <Text> </Text>
-        {raster('pipeline', inner, 2, 'A', t => paint.pipeline({ cols: inner, rows: 2 }, t, { steps: stepNames, phase, fill: fillE(t), failed, color: paint.hex(runColor) }), textStepper)}
+        {raster('pipeline', inner, 2, f => paint.pipeline(inner, f, { steps: stepNames, phase, failed, color: paint.hex(runColor) }), textStepper)}
         <Text> </Text>
         <Box>
-          {raster('progress', barW, 1, 'B', t => paint.progress({ cols: barW, rows: 1 }, t, { frac: fracE(t), live }), <Text color={C.cyan}>{'█'.repeat(Math.round(fracE(anim) * barW))}</Text>)}
-          <Text color={C.ink} bold> {String(pct).padStart(3)}%</Text>
+          {raster('progress', barW, 1, f => paint.progress(barW, f, frac, live), <Text color={C.cyan}>{'█'.repeat(Math.round(frac * barW))}</Text>)}
+          <Text color="#fafafa" bold> {String(Math.round(frac * 100)).padStart(3)}%</Text>
         </Box>
         {times.length > 1 && RasterEl ? (
           <Box>
             <Text color={C.dim}>activity </Text>
-            {raster('spark', sparkW, 1, 'B', t => paint.spark({ cols: sparkW, rows: 1 }, t, { values: bucketE.map(f => f(t)), live }))}
+            {raster('spark', sparkW, 1, f => paint.spark(sparkW, 1, f, buckets, live))}
           </Box>
         ) : null}
       </Card>
@@ -728,7 +614,7 @@ export const register: Register = on => {
             <Text><Pill label={`${n % 8 < 4 ? '◆' : '◇'} YOUR CALL`} bg={C.yellow} /> <Text color={C.dim}>{a.kind}{a.operation ? `/${a.operation}` : ''}</Text></Text>
             <Text color={C.dim}>{a.id.slice(-6)}</Text>
           </Box>
-          <Text color={C.ink} bold wrap="wrap">{clip(a.summary, inner * 3)}</Text>
+          <Text color={C.text} wrap="wrap">{clip(a.summary, inner * 3)}</Text>
           {writing ? (
             <Box flexDirection="column">
               <Input
@@ -758,7 +644,7 @@ export const register: Register = on => {
     // ── tabs ──
 
     const Tab = ({ id, label, hotkey, badge }: { id: CockpitTab; label: string; hotkey: string; badge?: string }) => (
-      <Box backgroundColor={u.tab === id ? C.tabActive : undefined} paddingX={1}>
+      <Box backgroundColor={u.tab === id ? '#3a2412' : undefined} paddingX={1}>
         <Button
           plain
           hotkey={hotkey}
@@ -770,7 +656,7 @@ export const register: Register = on => {
       </Box>
     )
 
-    const fixed = 27 + approvals.length * 5 + (u.composing?.kind === 'run' ? 5 : 0)
+    const fixed = 26 + approvals.length * 5 + (u.composing?.kind === 'run' ? 5 : 0)
     const room = Math.max(4, rows - fixed)
 
     const TaskRow = ({ t }: { t: CockpitTask }) => {
@@ -779,20 +665,20 @@ export const register: Register = on => {
       const fin = isDone(t)
       const meta = [t.agentId, t.iteration > 1 ? `it${t.iteration}` : '', t.dependsOn.length ? `⇠ ${t.dependsOn.join(',')}` : ''].filter(Boolean).join(' · ')
       return (
-        <Box key={`task-${t.key}`} flexDirection="column" hover={{ backgroundColor: C.hover }}>
+        <Box key={`task-${t.key}`} flexDirection="column" hover={{ backgroundColor: '#1f1f27' }}>
           <Box justifyContent="space-between">
             <Box flexShrink={1}>
               <Text wrap="truncate-end">
                 <Text color={color}>▎</Text>
-                <Text color={moving ? pulse(n, color, C.white, 0.5) : color}>{glyph(t.status, n)} </Text>
-                <Text color={fin ? C.dim : C.ink} bold>{t.key}</Text>
+                <Text color={moving ? pulse(n, color, '#ffffff', 0.5) : color}>{glyph(t.status, n)} </Text>
+                <Text color={fin ? C.dim : '#fafafa'} bold>{t.key}</Text>
                 <Text color={fin ? C.dim : C.text}>  {t.title}</Text>
               </Text>
             </Box>
             <Box flexShrink={0}>
               <Text>
                 <Text color={C.dim}>{meta ? ` ${meta} ` : ' '}</Text>
-                {fin ? <Text color={C.green}>✓ {t.status}</Text> : <Pill label={t.status.replace(/_/g, ' ')} bg={color} />}
+                {fin ? <Text color={C.green}>✓ {t.status}</Text> : <Pill label={t.status.replace(/_/g, ' ')} bg={moving ? pulse(n, color, '#ffffff', 0.3) : color} />}
               </Text>
             </Box>
           </Box>
@@ -810,10 +696,10 @@ export const register: Register = on => {
           const c = eventColor(ev.type)
           return (
             <Text wrap="truncate-end">
-              <Text color={mix(C.dim, C.white, fresh)}>{ev.ts.slice(11, 19)} </Text>
-              <Text color={mix(c, C.white, fresh * 0.6)}>{i === 0 && live ? glyph('running', n) : '●'}</Text>
+              <Text color={mix(C.dim, '#ffffff', fresh)}>{ev.ts.slice(11, 19)} </Text>
+              <Text color={mix(c, '#ffffff', fresh * 0.6)}>{i === 0 && live ? glyph('running', n) : '●'}</Text>
               <Text color={C.faint}>─ </Text>
-              <Text color={mix(c, C.white, fresh * 0.6)} bold>{ev.type}</Text>
+              <Text color={mix(c, '#ffffff', fresh * 0.6)} bold>{ev.type}</Text>
               <Text color={mix(C.mute, C.text, fresh)}>  {ev.text === ev.type ? '' : ev.text}</Text>
             </Text>
           )
@@ -836,26 +722,8 @@ export const register: Register = on => {
       )
     }
 
-    const tabs: [CockpitTab, string][] = [['tasks', `Tasks ${done}/${run.tasks.length}`], ['events', `Events ${run.recentEvents.length}`], ['report', 'Report']]
-    const tabW = tabs.map(([, label]) => label.length + 2)
-    const tabIdx = Math.max(0, tabs.findIndex(([id]) => id === u.tab))
-    const tabE = ease('tab', tabIdx, 220)
-    // Text fallback: ▔ under the active tab, a dim rule under the rest.
-    let used = 0
-    const underlineText = (
-      <Text>
-        {tabs.map(([id], i) => {
-          const w = Math.max(0, Math.min(tabW[i]!, inner - used))
-          used += w
-          return <Text color={id === u.tab ? C.accent : C.borderDim}>{'▔'.repeat(w)}</Text>
-        })}
-        <Text color={C.borderDim}>{'▔'.repeat(Math.max(0, inner - used))}</Text>
-      </Text>
-    )
-    const underline = raster('underline', inner, 1, 'B', t => paint.underline({ cols: inner, rows: 1 }, t, { tabs: tabW, active: tabE(t), color: K.accent }), underlineText)
-
     const work = (
-      <Box flexDirection="column" borderStyle="round" borderColor={C.border} paddingX={1} flexGrow={1}>
+      <Box flexDirection="column" borderStyle="round" borderColor="#2e2e36" paddingX={1} flexGrow={1}>
         <Box justifyContent="space-between">
           <Box>
             <Tab id="tasks" label="Tasks" hotkey="1" badge={`${done}/${run.tasks.length}`} />
@@ -869,7 +737,7 @@ export const register: Register = on => {
             <Button hotkey="x" plain dimColor key="stop" label="x stop" onPress={() => void daemon($, false)} />
           </Box>
         </Box>
-        {underline}
+        <Text color="#26262e">{'─'.repeat(Math.max(1, inner))}</Text>
         {tabBody}
       </Box>
     )
@@ -877,7 +745,6 @@ export const register: Register = on => {
     const center = (
       <Box flexDirection="column" width={wide ? centerW : undefined} flexGrow={wide ? 0 : 1}>
         {missionHead}
-        {divider}
         {centerW >= 56 ? tiles : null}
         {lifecycle}
         {failureCard}
@@ -894,9 +761,9 @@ export const register: Register = on => {
       const active = state !== 'idle'
       return (
         <Box gap={1}>
-          {raster(`orb-${id}`, 4, 2, 'B', t => paint.orb({ cols: 4, rows: 2 }, t, { color: paint.hex(color), active, seed }), <Text color={active ? pulse(n, color, C.white, 0.4) : C.faint}>◉</Text>)}
+          {raster(`orb-${id}`, 4, 2, f => paint.orb(f, paint.hex(color), active, seed), <Text color={active ? pulse(n, color, '#ffffff', 0.4) : C.faint}>◉</Text>)}
           <Box flexDirection="column" flexShrink={1}>
-            <Text wrap="truncate-end"><Text color={C.ink} bold>{name}</Text><Text color={C.dim}>  {role}</Text></Text>
+            <Text wrap="truncate-end"><Text color="#fafafa" bold>{name}</Text><Text color={C.dim}>  {role}</Text></Text>
             <Text color={active ? color : C.dim} wrap="truncate-end">{active ? `${SPIN[(n + seed) % SPIN.length]} ` : ''}{state}</Text>
           </Box>
         </Box>
@@ -943,39 +810,31 @@ export const register: Register = on => {
           </Text>
         ))}
         {run.conflicts.map(c => (
-          <Text color={pulse(n, C.red, C.redDark, 0.4)} wrap="truncate-end">⚠ {c.task} ⟂ {c.heldBy}  <Text color={C.dim}>{c.pattern}</Text></Text>
+          <Text color={pulse(n, C.red, '#7f1d1d', 0.4)} wrap="truncate-end">⚠ {c.task} ⟂ {c.heldBy}  <Text color={C.dim}>{c.pattern}</Text></Text>
         ))}
       </Card>
     )
     const byAgent = tel.byAgent ?? []
     const maxCalls = Math.max(1, ...byAgent.map(a => a.calls))
-    const meterW = Math.max(4, sideCols - 20)
-    const meterColors = [K.cyan, K.violet, K.green, K.yellow, K.pink]
-    const meterE = byAgent.map((a, i) => ease(`meter${i}`, a.calls / maxCalls))
-    const meterFall = byAgent.map((a, i) => {
-      const w = Math.max(1, Math.round(meterE[i]!(anim) * meterW))
-      return (
-        <Text wrap="truncate-end">
-          <Text color={C.mute}>{a.agentId.padEnd(7).slice(0, 7)} </Text>
-          <Text color={C.faint}>▕</Text>
-          {Array.from({ length: w }, (_, k) => <Text color={gradient(LOGO_GRADIENT, i / 5 + k / (meterW * 4))}>█</Text>)}
-          <Text color={C.borderDim}>{'█'.repeat(Math.max(0, meterW - w))}</Text>
-          <Text color={C.faint}>▏</Text>
-          <Text color={C.dim}> {a.calls}</Text>
-        </Text>
-      )
-    })
-    const meterBars = byAgent.length && RasterEl ? raster('meters', Math.max(1, sideCols - 4), byAgent.length, 'B', t => paint.meters({ cols: Math.max(1, sideCols - 4), rows: byAgent.length }, t, {
-      values: meterE.map(f => f(t)), colors: byAgent.map((_, i) => meterColors[i % meterColors.length]!), labels: byAgent.map(a => `${a.agentId.slice(0, 7)} ${a.calls}`),
-    })) : meterFall
+    const meterW = Math.max(4, sideCols - 18)
     const meter = (
       <Card title="TELEMETRY" right={<Text color={C.yellow} bold>{tel.costUsd ? `$${tel.costUsd.toFixed(2)}` : ''}</Text>} width={sideCols}>
         <Text>
-          <Text color={C.ink} bold>{tel.calls}</Text><Text color={C.dim}> calls   </Text>
+          <Text color="#fafafa" bold>{tel.calls}</Text><Text color={C.dim}> calls   </Text>
           <Text color={C.cyan}>↓ {compact(tel.inputTokens)}</Text><Text color={C.dim}>   </Text>
           <Text color={C.violet}>↑ {compact(tel.outputTokens)}</Text>
         </Text>
-        {meterBars}
+        {byAgent.map((a, i) => {
+          const w = Math.max(1, Math.round((a.calls / maxCalls) * meterW))
+          return (
+            <Text wrap="truncate-end">
+              <Text color={C.mute}>{a.agentId.padEnd(7).slice(0, 7)} </Text>
+              {Array.from({ length: w }, (_, k) => <Text color={gradient(LOGO_GRADIENT, i / 5 + k / (meterW * 4))}>█</Text>)}
+              <Text color="#26262e">{'█'.repeat(Math.max(0, meterW - w))}</Text>
+              <Text color={C.dim}> {a.calls}</Text>
+            </Text>
+          )
+        })}
       </Card>
     )
     const side = wide ? (
@@ -993,7 +852,7 @@ export const register: Register = on => {
       ['n', 'new'], ['1 2 3', 'tabs'], ...(s.runs.length > 1 ? ([['j k', 'missions']] as [string, string][]) : []),
       ['p', 'report'], ['x', 'stop'],
     ]
-    return out(
+    return (
       <Box flexDirection="column">
         {hero}
         {wide ? (
