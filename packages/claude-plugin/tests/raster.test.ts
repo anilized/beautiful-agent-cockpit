@@ -136,5 +136,4 @@ test('pipeline: integer phase drives glyphs, fractional fill only paints the con
 })
 
 // Palette-literal greps (raster.ts has none, theme.ts owns them, 'register.tsx has no palette literals')
-// run in `npm run palette` (tests/tools.mjs), since the plugin test host has no fs. TASK-204 must set
-// REGISTER_STRICT = true there.
+// run in `npm run palette` (tests/tools.mjs), since the plugin test host has no fs.

@@ -98,7 +98,6 @@ const AURORA_LEVELS = 12
 const FADE_LEVELS = 4
 
 export type HeroData = { online: boolean; left: string; right: string; alert: boolean }
-export type HeroInfo = HeroData
 
 function paintHero({ cols, rows }: Size, t: number, d: HeroData): string {
   const s = t / 1000
@@ -167,15 +166,14 @@ const NODE_PULSE = 5.83 // rad/s
 
 /** `phase` is the discrete current step; `fill` (0..1, tweened) is how far the connector after it is lit. */
 export type PipelineData = { steps: string[]; phase: number; fill: number; failed: boolean; color: number }
-export type PipelineInfo = Omit<PipelineData, 'fill'> & { fill?: number }
 
-function paintPipeline({ cols, rows }: Size, t: number, d: PipelineInfo): string {
+function paintPipeline({ cols, rows }: Size, t: number, d: PipelineData): string {
   const s = t / 1000
   const c = new Cells(cols, rows)
   const n = d.steps.length
   const pad = 3
   const phase = Math.floor(d.phase)
-  const fill = clamp01(d.fill ?? 0)
+  const fill = clamp01(d.fill)
   const at = (i: number) => (n > 1 ? Math.round(pad + (i * (cols - 1 - pad * 2)) / (n - 1)) : Math.floor(cols / 2))
   const head = (s * PARTICLE_SPEED)
   for (let i = 0; i < n - 1; i++) {
@@ -366,44 +364,11 @@ function paintMeters({ cols, rows }: Size, t: number, d: MetersData): string {
 
 // ── public API ─────────────────────────────────────────────────────────────────
 
-export function hero(size: Size, t: number, d: HeroData): string
-/** @deprecated frame-based; removed with TASK-204. */
-export function hero(cols: number, rows: number, f: number, d: HeroData): string
-export function hero(a: Size | number, b: number, c: HeroData | number, d?: HeroData): string {
-  return typeof a === 'number' ? heroF(a, b, c as number, d!) : paintHero(a, b, c as HeroData)
-}
-export function pipeline(size: Size, t: number, d: PipelineData): string
-/** @deprecated frame-based; removed with TASK-204. */
-export function pipeline(cols: number, f: number, d: PipelineInfo): string
-export function pipeline(a: Size | number, b: number, c: PipelineInfo): string {
-  return typeof a === 'number' ? pipelineF(a, b, c) : paintPipeline(a, b, c)
-}
-export function progress(size: Size, t: number, d: ProgressData): string
-/** @deprecated frame-based; removed with TASK-204. */
-export function progress(cols: number, f: number, frac: number, live: boolean): string
-export function progress(a: Size | number, b: number, c: ProgressData | number, d?: boolean): string {
-  return typeof a === 'number' ? progressF(a, b, c as number, d!) : paintProgress(a, b, c as ProgressData)
-}
-export function spark(size: Size, t: number, d: SparkData): string
-/** @deprecated frame-based; removed with TASK-204. */
-export function spark(cols: number, rows: number, f: number, values: number[], live: boolean): string
-export function spark(a: Size | number, b: number, c: SparkData | number, d?: number[], e?: boolean): string {
-  return typeof a === 'number' ? sparkF(a, b, c as number, d!, e!) : paintSpark(a, b, c as SparkData)
-}
-export function orb(size: Size, t: number, d: OrbData): string
-/** @deprecated frame-based; removed with TASK-204. */
-export function orb(f: number, color: number, active: boolean, seed: number): string
-export function orb(a: Size | number, b: number, c?: OrbData | boolean, d?: number): string {
-  return typeof a === 'number' ? orbF(a, b, c as boolean, d!) : paintOrb(a, b, c as OrbData)
-}
+export const hero = paintHero
+export const pipeline = paintPipeline as (size: Size, t: number, d: PipelineData) => string
+export const progress = paintProgress
+export const spark = paintSpark
+export const orb = paintOrb
 export const divider = paintDivider
 export const underline = paintUnderline
 export const meters = paintMeters
-
-// Deprecated frame wrappers: the old clock stepped a frame counter every 60 ms.
-const FRAME_MS = 60
-export const heroF = (cols: number, rows: number, f: number, d: HeroData) => paintHero({ cols, rows }, f * FRAME_MS, d)
-export const pipelineF = (cols: number, f: number, d: PipelineInfo) => paintPipeline({ cols, rows: 2 }, f * FRAME_MS, d)
-export const progressF = (cols: number, f: number, frac: number, live: boolean) => paintProgress({ cols, rows: 1 }, f * FRAME_MS, { frac, live })
-export const sparkF = (cols: number, rows: number, f: number, values: number[], live: boolean) => paintSpark({ cols, rows }, f * FRAME_MS, { values, live })
-export const orbF = (f: number, color: number, active: boolean, seed: number) => paintOrb({ cols: 4, rows: 2 }, f * FRAME_MS, { color, active, seed })

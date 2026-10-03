@@ -11,14 +11,18 @@ const N = Number(process.env.BENCH_N ?? 2000)
 const steps = ['architect', 'debate', 'plan', 'build', 'integrate', 'validate', 'approve', 'merge']
 const values = Array.from({ length: COLS - 80 }, (_, i) => (i * 7) % 5)
 const hero = { online: true, left: 'opus ▸ codex ▸ workers', right: 'online :4317  00:00:00', alert: true }
-const pipe = { steps, phase: 6, failed: false, color: r.hex('#22d3ee') }
-// Painters take a frame counter today; the time-based API replaces `f` with elapsed ms (f = t / 60 ms here).
+const pipe = { steps, phase: 6, fill: 0.5, failed: false, color: r.hex('#22d3ee') }
+const mv = [0.9, 0.6, 0.3, 0.1]
+// Time-based painters: `f` is the iteration, elapsed ms = f * 16.
 const cases: [string, (f: number) => string][] = [
-  ['hero 140x4', f => r.hero(COLS, 4, f, hero)],
-  ['pipeline 136x2', f => r.pipeline(COLS - 4, f, pipe)],
-  ['progress 100x1', f => r.progress(100, f, 0.75, true)],
-  ['spark 60x1', f => r.spark(60, 1, f, values, true)],
-  ...[0, 1, 2, 3].map((i): [string, (f: number) => string] => [`orb ${i} 4x2`, f => r.orb(f, r.hex('#a78bfa'), true, i)]),
+  ['hero 140x4', f => r.hero({ cols: COLS, rows: 4 }, f * 16, hero)],
+  ['pipeline 136x2', f => r.pipeline({ cols: COLS - 4, rows: 2 }, f * 16, pipe)],
+  ['progress 100x1', f => r.progress({ cols: 100, rows: 1 }, f * 16, { frac: 0.75, live: true })],
+  ['spark 60x1', f => r.spark({ cols: 60, rows: 1 }, f * 16, { values, live: true })],
+  ['divider 138x1', f => r.divider({ cols: COLS - 2, rows: 1 }, f * 16, { color: r.hex('#22d3ee'), active: true })],
+  ['underline 136x1', f => r.underline({ cols: COLS - 4, rows: 1 }, f * 16, { tabs: [12, 12, 8], active: 1.4, color: r.hex('#ff8a3d') })],
+  ['meters 40x4', f => r.meters({ cols: 40, rows: 4 }, f * 16, { values: mv, colors: mv.map(() => r.hex('#34d399')), labels: mv.map((_, i) => `agent${i} ${i}`) })],
+  ...[0, 1, 2, 3].map((i): [string, (f: number) => string] => [`orb ${i} 4x2`, f => r.orb({ cols: 4, rows: 2 }, f * 16, { color: r.hex('#a78bfa'), active: true, seed: i })]),
 ]
 
 const stats = (xs: number[]) => {

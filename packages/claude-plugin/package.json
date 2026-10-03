@@ -8,7 +8,7 @@
     "typecheck": "node tests/tools.mjs typecheck",
     "palette": "node tests/tools.mjs palette",
     "test": "node tests/tools.mjs palette && claude plugin test .",
-    "bench": "node --experimental-transform-types --no-warnings scripts/bench.ts",
+    "bench": "node --experimental-transform-types --no-warnings --import ./tests/resolve-ts.mjs tests/bench.ts",
     "capture": "node --experimental-transform-types --no-warnings scripts/capture.ts",
     "probe": "node --experimental-transform-types --no-warnings scripts/probe.ts"
   }
