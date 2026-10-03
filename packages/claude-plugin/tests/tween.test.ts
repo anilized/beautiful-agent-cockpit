@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { createTweens, easeOutCubic, hexToRgb, lerpRgb, rgbToHex } from '../hooks/tween'
+import { createPhaseFill, createTweens, easeOutCubic, hexToRgb, lerpRgb, rgbToHex } from '../hooks/tween'
 
 const seed = () => { const t = createTweens(); t.target('r1', 'bar', 0, 0, 0); return t }
 
@@ -68,4 +68,47 @@ test('run-id isolation, run switch snap, reset, motion off snap', () => {
   t.reset()
   expect(t.sample('a', 'bar', 10)).toBeUndefined()
   expect(t.active()).toBe('')
+})
+
+test('settled / idle detection', () => {
+  const t = seed()
+  expect(t.state(0)).toBe('idle')
+  t.target('r1', 'bar', 100, 10, 200)
+  expect(t.settled('r1', 'bar', 100)).toBe(false)
+  expect(t.state(100)).toBe('moving')
+  expect(t.settled('r1', 'bar', 210)).toBe(true)
+  expect(t.state(210)).toBe('idle')
+  expect(t.settled('r1', 'nope', 0)).toBe(true)
+})
+
+test('easing is monotonic over a dense sweep', () => {
+  let prev = -1
+  for (let i = 0; i <= 1000; i++) {
+    const v = easeOutCubic(i / 1000)
+    expect(v).toBeGreaterThanOrEqual(prev)
+    prev = v
+  }
+  expect(easeOutCubic(-1)).toBe(0)
+  expect(easeOutCubic(5)).toBe(1)
+})
+
+test('discrete phase stays integer while fill interpolates', () => {
+  const p = createPhaseFill(200)
+  p.set(2, 0.5, 0)
+  expect(p.fill(0)).toBe(0.5) // first sight snaps
+  p.set(3, 0, 0)
+  expect(p.settled(100)).toBe(false)
+  for (let ms = 0; ms <= 200; ms += 10) expect(Number.isInteger(p.phase())).toBe(true)
+  expect(p.phase()).toBe(3)
+  const mid = p.fill(100)
+  expect(mid).toBeGreaterThan(0)
+  expect(mid).toBeLessThan(0.5)
+  p.set(3, 1, 100) // retarget from the sampled fill
+  expect(Math.abs(p.fill(100) - mid)).toBeLessThan(1e-9)
+  expect(p.fill(300)).toBe(1)
+  expect(p.settled(300)).toBe(true)
+  p.set(4, 0, 300, true) // snap
+  expect(p.fill(300)).toBe(0)
+  p.reset()
+  expect(p.phase()).toBe(0)
 })
