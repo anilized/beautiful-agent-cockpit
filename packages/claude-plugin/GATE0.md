@@ -1,6 +1,6 @@
 # Gate 0 report: host limits
 
-Status of every item: **pending**. Nothing is released. The default `CADENCE` stays `'conservative'` (`DEFAULT_CADENCE` in `hooks/limits.ts`) until a human fills in or explicitly waives each of the 7 items below.
+Status of every item: **pending**. The default `CADENCE` stays `'conservative'` (`DEFAULT_CADENCE` in `hooks/limits.ts`) until a human fills in or explicitly waives each of the 7 items below.
 The human approved the live-validation request but named no per-item waivers, so nothing is waived.
 Items map 1:1 to the fields of `HOST_LIMITS` in `hooks/limits.ts`.
 
