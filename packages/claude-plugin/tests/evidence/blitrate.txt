@@ -1,5 +1,5 @@
 blit-rate: mock clock, 10 s window after 1 s settle, 140 columns, baseline before this work = 112 blits/s (16/s x 7 keys)
-live {"COCKPIT_CADENCE":"conservative"}: total 54/s (48% of 112) per key {"orb-lead":3.6,"hero":12.8,"orb-w0":3.6,"pipeline":12.8,"meters":3.6,"divider":3.6,"progress":3.5,"spark":3.5,"underline":3.5,"orb-sup":3.5}
-live {"COCKPIT_CADENCE":"full"}: total 83.4/s (74% of 112) per key {"pipeline":20.9,"underline":5.3,"orb-sup":5.2,"hero":20.8,"orb-lead":5.2,"orb-w0":5.2,"meters":5.2,"divider":5.2,"progress":5.2,"spark":5.2}
-offline {"COCKPIT_CADENCE":"conservative"}: total 2/s (2% of 112) per key {"hero":2}
-live {"COCKPIT_CADENCE":"conservative","COCKPIT_REDUCED_MOTION":"1"}: total 2/s (2% of 112) per key {"hero":2}
+live {"COCKPIT_CADENCE":"conservative"}: total 375/s (335% of 112) per key {"hero":62.5,"divider":62.5,"pipeline":62.5,"progress":62.5,"spark":62.5,"orb-w0":62.5}
+live {"COCKPIT_CADENCE":"full"}: total 375/s (335% of 112) per key {"hero":62.5,"divider":62.5,"pipeline":62.5,"progress":62.5,"spark":62.5,"orb-w0":62.5}
+offline {"COCKPIT_CADENCE":"conservative"}: total 1/s (1% of 112) per key {"hero":1}
+live {"COCKPIT_CADENCE":"conservative","COCKPIT_REDUCED_MOTION":"1"}: total 0/s (0% of 112) per key {}
