@@ -17,24 +17,39 @@ const same = (a: Val, b: Val) => {
   return (b as Rgb).every((v, i) => v === ra[i])
 }
 
+const DEFAULT_MS = 250
+
 export const createTweens = () => {
   const m = new Map<string, Tween>()
   let run = ''
   let motion = true
   const k = (r: string, el: string) => `${r}:${el}`
   const at = (e: Tween, now: number): Val => mix(e.from, e.to, e.dur > 0 ? easeOutCubic((now - e.t0) / e.dur) : 1)
-  const sample = (r: string, el: string, now: number): Val | undefined => {
+  const peek = (r: string, el: string, now: number): Val | undefined => {
     const e = m.get(k(r, el))
     return e && at(e, now)
   }
+  /** Retargets from the currently sampled value. First sight, `snap`, motion off or zero duration jump straight to the value. */
+  const target = (r: string, el: string, value: Val, now: number, durMs: number, snap = false) => {
+    const e = m.get(k(r, el))
+    if (!e || snap || !motion || durMs <= 0) return void m.set(k(r, el), { run: r, from: value, to: value, t0: now, dur: 0 })
+    if (same(e.to, value)) return
+    m.set(k(r, el), { run: r, from: at(e, now), to: value, t0: now, dur: durMs })
+  }
+  function sample(r: string, el: string, now: number): Val | undefined
+  /** Target-driven: eases toward `value` over `opts.durMs` (default 250 ms) and returns what to draw at `now`. */
+  function sample<V extends Val>(r: string, el: string, value: V, now: number, opts?: { durMs?: number; snap?: boolean }): V
+  function sample(r: string, el: string, a: Val, now?: number, opts?: { durMs?: number; snap?: boolean }): Val | undefined {
+    if (now === undefined) return peek(r, el, a as number)
+    target(r, el, a, now, opts?.durMs ?? DEFAULT_MS, opts?.snap)
+    return peek(r, el, now)
+  }
   return {
     sample,
-    /** Retargets from the currently sampled value. First sight of an element, motion off or zero duration snaps. */
-    target(r: string, el: string, value: Val, now: number, durMs: number) {
-      const e = m.get(k(r, el))
-      if (!e || !motion || durMs <= 0) return void m.set(k(r, el), { run: r, from: value, to: value, t0: now, dur: 0 })
-      if (same(e.to, value)) return
-      m.set(k(r, el), { run: r, from: at(e, now), to: value, t0: now, dur: durMs })
+    target,
+    /** Drops one run's elements (run ended or was deselected). */
+    resetRun(r: string) {
+      for (const [key, e] of m) if (e.run === r) m.delete(key)
     },
     /** Another run's values never animate into this one: drop them, snap the rest. */
     switchRun(r: string) {

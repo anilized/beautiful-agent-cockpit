@@ -112,3 +112,78 @@ test('discrete phase stays integer while fill interpolates', () => {
   p.reset()
   expect(p.phase()).toBe(0)
 })
+
+// ---- sample(runId, element, target, nowMs, opts) ----
+test('sample: first sight and snap jump immediately; endpoints are exact', () => {
+  const t = createTweens()
+  expect(t.sample('r1', 'bar', 40, 0)).toBe(40) // first sight
+  expect(t.sample('r1', 'bar', 100, 0, { durMs: 200 })).toBe(40)
+  expect(t.sample('r1', 'bar', 100, 200, { durMs: 200 })).toBe(100)
+  expect(t.sample('r1', 'bar', 100, 9999, { durMs: 200 })).toBe(100)
+  expect(t.sample('r1', 'bar', 0, 300, { durMs: 200, snap: true })).toBe(0)
+  expect(t.sample('r1', 'bar', 0, 301, { durMs: 200 })).toBe(0)
+})
+
+test('sample: dense sweep is monotonic and eases out', () => {
+  const t = createTweens()
+  t.sample('r1', 'bar', 0, 0)
+  let prev = 0
+  for (let ms = 0; ms <= 400; ms++) {
+    const v = t.sample('r1', 'bar', 100, ms, { durMs: 300 })
+    expect(v).toBeGreaterThanOrEqual(prev)
+    expect(v).toBeLessThanOrEqual(100)
+    prev = v
+  }
+  expect(prev).toBe(100)
+  const u = createTweens()
+  u.sample('r1', 'bar', 0, 0)
+  u.sample('r1', 'bar', 100, 0, { durMs: 300 })
+  expect(u.sample('r1', 'bar', 100, 150, { durMs: 300 })).toBeGreaterThan(50)
+})
+
+test('sample: retargets from the sampled value, not the old target', () => {
+  const t = createTweens()
+  t.sample('r1', 'bar', 0, 0)
+  t.sample('r1', 'bar', 100, 0, { durMs: 200 })
+  const mid = t.sample('r1', 'bar', 100, 80, { durMs: 200 })
+  expect(mid).toBeGreaterThan(0)
+  expect(mid).toBeLessThan(100)
+  expect(Math.abs(t.sample('r1', 'bar', 0, 80, { durMs: 200 }) - mid)).toBeLessThan(1e-9)
+  expect(t.sample('r1', 'bar', 0, 280, { durMs: 200 })).toBe(0)
+})
+
+test('sample: colours ease per RGB channel', () => {
+  const red: [number, number, number] = [255, 0, 0]
+  const blue: [number, number, number] = [0, 0, 255]
+  const t = createTweens()
+  expect(t.sample('r1', 'c', red, 0)).toEqual(red)
+  t.sample('r1', 'c', blue, 0, { durMs: 100 })
+  const [r, g, b] = t.sample('r1', 'c', blue, 30, { durMs: 100 })
+  expect(g).toBe(0)
+  expect(r).toBeLessThan(255)
+  expect(r).toBeGreaterThan(0)
+  expect(b).toBeGreaterThan(0)
+  expect(b).toBeLessThan(255)
+  expect(t.sample('r1', 'c', blue, 100, { durMs: 100 })).toEqual(blue)
+})
+
+test('sample: runs are isolated; resetRun and reset drop state so a switch never eases', () => {
+  const t = createTweens()
+  t.sample('r1', 'bar', 10, 0)
+  t.sample('r2', 'bar', 90, 0)
+  t.sample('r1', 'bar', 50, 0, { durMs: 100 })
+  expect(t.sample('r2', 'bar', 90, 50, { durMs: 100 })).toBe(90) // r1 moving never affects r2
+  t.resetRun('r1')
+  expect(t.sample('r1', 'bar', 77, 60, { durMs: 100 })).toBe(77) // first sight again: no ease from the old value
+  expect(t.sample('r2', 'bar', 90, 60, { durMs: 100 })).toBe(90)
+  t.reset()
+  expect(t.sample('r2', 'bar', 5, 70, { durMs: 100 })).toBe(5)
+  expect(t.sample('r2', 'bar', 5, 70)).toBe(5)
+})
+
+test('sample: motion off snaps every target', () => {
+  const t = createTweens()
+  t.setMotion(false)
+  t.sample('r1', 'bar', 0, 0)
+  expect(t.sample('r1', 'bar', 100, 1, { durMs: 500 })).toBe(100)
+})
