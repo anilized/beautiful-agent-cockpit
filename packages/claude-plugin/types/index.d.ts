@@ -7,6 +7,10 @@ export type CockpitTask = {
   iteration: number
   dependsOn: string[]
   blockedReason: string | null
+  /** The kind of worker the task asks for (backend, frontend, test, ...); absent from an older orchestrator. */
+  specialty?: string
+  /** The worktree as it stands: changed files and a preview of the biggest change. */
+  live?: { files: { status: string; path: string }[]; preview: { file: string; diff: string } | null } | null
   /** The whole task, shown when its row is opened; absent from an older orchestrator. */
   detail?: {
     description: string
@@ -19,6 +23,8 @@ export type CockpitTask = {
     testCommand: string | null
     summary: string | null
     review: { iteration: number; verdict: string; summary: string; issues: { severity: string; file: string | null; description: string }[] } | null
+    /** The orchestrator's last run of the task's test command. */
+    validation?: { command: string | null; passed: boolean; skipped: boolean; output: string } | null
   }
 }
 

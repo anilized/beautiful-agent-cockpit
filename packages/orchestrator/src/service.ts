@@ -12,6 +12,7 @@ import { EventBus } from './event-bus';
 import { PermissionEngine } from './permission-engine';
 import { buildSnapshot, runView, writeSnapshot } from './snapshot';
 import { dashboardHtml, telemetryView } from './dashboard';
+import { LiveWorkspaces } from './live';
 
 export interface EngineOptions {
   /** Register extra adapter factories (tests use the fake adapter). */
@@ -52,6 +53,9 @@ export interface Daemon {
 }
 
 /** The orchestrator service: engine + local transport + snapshot projection for the cockpit. */
+/** How often the worktrees of live tasks are re-read for the cockpit. */
+const LIVE_REFRESH_MS = 3000;
+
 export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {}): Promise<Daemon> {
   const engine = await createEngine(config, opts);
   const { store, bus, telemetry } = engine.ctx;
@@ -65,13 +69,16 @@ export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {
     timer = setTimeout(() => {
       timer = null;
       try {
-        writeSnapshot(dataDir, buildSnapshot(store, config, { pid: process.pid, port }));
+        writeSnapshot(dataDir, buildSnapshot(store, config, { pid: process.pid, port }, (id) => live.get(id)));
       } catch {
         /* presentation only */
       }
     }, 300);
   };
   const unsubscribe = bus.subscribe(refreshSnapshot);
+  // The worktrees of live tasks, read every few seconds: the cockpit's changed files and code preview.
+  const live = new LiveWorkspaces(store, refreshSnapshot);
+  const liveTimer = setInterval(() => void live.refresh().catch(() => {}), LIVE_REFRESH_MS);
 
   const decision = (body: unknown): { decision: HumanDecision; response: string | null } => {
     const b = (body ?? {}) as { decision?: string; response?: string };
@@ -81,7 +88,7 @@ export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {
 
   server
     .route('GET', '/health', () => ({ ok: true, pid: process.pid }))
-    .route('GET', '/snapshot', () => buildSnapshot(store, config, { pid: process.pid, port }))
+    .route('GET', '/snapshot', () => buildSnapshot(store, config, { pid: process.pid, port }, (id) => live.get(id)))
     .route('GET', '/runs', () => store.runs(50))
     .route('POST', '/runs', async ({ body }) => engine.startRun(body as StartRunInput))
     .route('GET', '/runs/:id', ({ params }) => {
@@ -136,6 +143,7 @@ export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {
     if (stopped) return;
     stopped = true;
     unsubscribe();
+    clearInterval(liveTimer);
     await engine.shutdown();
     await server.close(dataDir);
     if (timer) clearTimeout(timer);

@@ -3,7 +3,8 @@ import { join } from 'node:path';
 import { ACTIVE_TASK_STATUSES, effortLevels, type AgentSessionRecord, type Approval, type CockpitEvent, type Run, type Task } from '@cockpit/core';
 import type { Store } from '@cockpit/persistence';
 import type { CockpitConfig } from '@cockpit/core';
-import type { RunMeta } from './context';
+import type { RunMeta, TaskContext } from './context';
+import type { TaskLive } from './live';
 
 /**
  * Read-only projection of workflow state for presentation layers. The cockpit
@@ -38,6 +39,8 @@ export interface RunView {
     key: string;
     title: string;
     status: string;
+    /** The kind of worker the task asks for (backend, frontend, test, ...). */
+    specialty: string;
     agentId: string | null;
     repo: string;
     iteration: number;
@@ -46,6 +49,8 @@ export interface RunView {
     blockedReason: string | null;
     /** The whole task as the Lead wrote it, and where it stands: what the cockpit shows when a row is opened. */
     detail: TaskDetail;
+    /** The worktree as it stands (changed files, a preview of the biggest change); null when there is none to read. */
+    live: TaskLive | null;
   }[];
   workers: { agentId: string; role: string; task: string | null; since: string }[];
   conflicts: { task: string; pattern: string; heldBy: string; ts: string }[];
@@ -69,6 +74,8 @@ export interface TaskDetail {
   summary: string | null;
   /** The latest review, if any. */
   review: { iteration: number; verdict: string; summary: string; issues: { severity: string; file: string | null; description: string }[] } | null;
+  /** The orchestrator's last run of the task's test command, its output's tail. */
+  validation: { command: string | null; passed: boolean; skipped: boolean; output: string } | null;
 }
 
 export interface MindView {
@@ -167,7 +174,7 @@ export function describe(e: CockpitEvent, keyOf: (id: unknown) => string): strin
   }
 }
 
-export function buildSnapshot(store: Store, config: CockpitConfig, daemon: { pid: number; port: number | null }): Snapshot {
+export function buildSnapshot(store: Store, config: CockpitConfig, daemon: { pid: number; port: number | null }, live?: (taskId: string) => TaskLive | undefined): Snapshot {
   const runs = store.runs(10);
   const visible = runs.filter((r, i) => i < 3 || !['completed', 'rejected', 'failed'].includes(r.status));
   return {
@@ -175,14 +182,14 @@ export function buildSnapshot(store: Store, config: CockpitConfig, daemon: { pid
     daemon,
     hierarchy: config.agents.hierarchy,
     agents: config.agents.agents.map((a) => ({ id: a.id, adapter: a.adapter, model: a.model, roles: [...a.roles], enabled: a.enabled, effort: a.effort, efforts: effortLevels(a.adapter) })),
-    runs: visible.map((r) => runView(store, config, r)),
+    runs: visible.map((r) => runView(store, config, r, live)),
     pendingApprovals: store.approvals({ status: 'pending' }).map((a) => ({
       id: a.id, runId: a.runId, kind: a.kind, operation: a.operation, summary: a.summary, text: approvalText(store, a), createdAt: a.createdAt,
     })),
   };
 }
 
-export function runView(store: Store, config: CockpitConfig, run: Run): RunView {
+export function runView(store: Store, config: CockpitConfig, run: Run, live?: (taskId: string) => TaskLive | undefined): RunView {
   const tasks = store.tasks(run.id);
   const keyById = new Map(tasks.map((t) => [t.id, t.key]));
   const keyOf = (id: unknown) => keyById.get(String(id)) ?? String(id ?? '');
@@ -235,6 +242,8 @@ export function runView(store: Store, config: CockpitConfig, run: Run): RunView 
       key: t.key, title: t.title, status: t.status, agentId: t.agentId, repo: repos.find((r) => r.id === t.repoId)?.name ?? t.repoId,
       iteration: t.iteration, branch: t.branch, dependsOn: deps.filter((d) => d.taskId === t.id).map((d) => keyOf(d.dependsOn)), blockedReason: t.blockedReason,
       detail: taskDetail(store, t),
+      specialty: t.specialty,
+      live: live?.(t.id) ?? null,
     })),
     workers: sessions.filter((s) => s.role === 'worker').map((s) => ({ agentId: s.agentId, role: s.role, task: s.taskId ? keyOf(s.taskId) : null, since: s.startedAt })),
     conflicts,
@@ -258,13 +267,18 @@ function approvalText(store: Store, a: Approval): string {
   return d.text ?? a.summary;
 }
 
+/** The tail of a test run kept for the cockpit's terminal view. */
+const VALIDATION_TAIL = 3000;
+
 function taskDetail(store: Store, t: Task): TaskDetail {
   const last = store.reviews(t.id).at(-1);
+  const v = store.taskContext<TaskContext>(t.id).validation;
   return {
     description: t.description, kind: t.kind, risk: t.risk, complexity: t.complexity, acceptanceCriteria: t.acceptanceCriteria,
     scope: { files: t.scope.files, modules: t.scope.modules, resources: t.scope.resources },
     testsRequired: t.testsRequired, testCommand: t.testCommand, summary: t.summary,
     review: last ? { iteration: last.iteration, verdict: last.verdict, summary: last.summary, issues: last.issues.map((i) => ({ severity: i.severity, file: i.file, description: i.description })) } : null,
+    validation: v ? { command: v.command, passed: v.passed, skipped: v.skipped, output: v.output.slice(-VALIDATION_TAIL) } : null,
   };
 }
 
