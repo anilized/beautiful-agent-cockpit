@@ -11,7 +11,11 @@ export const hexToRgb = (h: string): Rgb => [1, 3, 5].map(i => parseInt(h.slice(
 export const rgbToHex = (c: Rgb) => '#' + c.map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0')).join('')
 
 const mix = (a: Val, b: Val, t: number): Val => (typeof a === 'number' && typeof b === 'number' ? a + (b - a) * t : lerpRgb(a as Rgb, b as Rgb, t))
-const same = (a: Val, b: Val) => (typeof a === 'number' ? a === b : (b as Rgb).every((v, i) => v === a[i]))
+const same = (a: Val, b: Val) => {
+  if (typeof a === 'number') return a === b
+  const ra = a as Rgb
+  return (b as Rgb).every((v, i) => v === ra[i])
+}
 
 export const createTweens = () => {
   const m = new Map<string, Tween>()

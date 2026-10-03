@@ -125,6 +125,7 @@ export const createScheduler = (deps: SchedulerDeps): Scheduler => {
     for (const s of slots.values()) if (t - s.t > 2 * frameMs) bad(t)
     if (degraded && t - lastBad >= HEALTHY_MS) degraded = false
     if (!motion || degraded) probe(t)
+    else for (const e of entries.values()) e.visible = true
     const due: [string, Entry, number][] = []
     for (const [key, e] of entries) {
       if (!e.visible) continue

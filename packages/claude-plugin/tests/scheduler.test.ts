@@ -139,7 +139,7 @@ test('(e) 140-col live set for 10 s: <=60 blits/s total, Tier A <=30 fps, far be
   expect(host.count('pipeline') / 10).toBeLessThanOrEqual(30)
   for (const k of ['progress', 'spark', 'divider', 'underline', 'telemetry', 'orb0', 'orb1', 'orb2']) {
     expect(host.count(k) / 10).toBeLessThanOrEqual(15)
-    expect(host.count(k)).toBeGreaterThan(0)
+    expect(host.count(k) / 10).toBeGreaterThanOrEqual(2)
   }
   for (let sec = 0; sec < 10; sec++) expect(host.log.filter(l => l.t > sec * 1000 && l.t <= (sec + 1) * 1000).length).toBeLessThanOrEqual(61)
 })
@@ -265,6 +265,9 @@ test('panes() polling: <=1 Hz, only idle or degraded, never while healthy and mo
   const n = host.count('spark')
   await clock.advance(2000) // spark is not in the live set: not painted
   expect(host.count('spark')).toBe(n)
+  s.setMotion(true) // probing stops: hidden key paints again
+  await clock.advance(1000)
+  expect(host.count('spark')).toBeGreaterThan(n)
 })
 
 test('urgent repaint uses the reserve and still respects one pending slot', async () => {
