@@ -55,10 +55,10 @@ agent, task and change is on screen at once, in the same place every time.
 │ ▌● Job retry  3/8  ││ ● architect ─ ● debate ─ ● plan ─ ◉ build ─ ○ integrate …          ││ ● Implement retry endpoint backend ▕████▏ build │
 │   ✓ Audit log 4/4  ││ ▕████████████▏ 38%                                                 ││ ◉ Retry button UI      frontend ▕█████▏ review│
 ├ AGENTS ── 3 working┤│ 1 Log  2 Task  3 Events  4 Report                                   ││ ○ Integration tests    test     ▕     ▏ queued│
-│ ◉ super   opus  idle││ 15:24:20 [BACKEND ] ✔ completed: JobRetryController + tests        │├ AGENT: BACKEND ──────── ● working 2m18s ┤
-│ ◉ lead  sonnet think││ 15:24:12 [ORCH    ] ✔ test.passed task TASK-101                    ││ src/…/JobRetryService.java            M │
-│ ◉ backend sonnet run││ 15:23:58 [LEAD    ] ◎ Read src/…/JobRetryService.java              ││ src/…/JobRetryRequest.java            A │
-│ SEATS · SPEND      ││ 15:23:31 [BACKEND ] ✎ Edit src/…/JobRetryController.java          ││                                         │
+│ ○ opus · chair  idle││ 15:24:20 [BACKEND-DEV] ✔ completed: JobRetryController + tests     │├ AGENT: BACKEND-DEV ──── ● working 2m18s ┤
+│ ◉ codex · head think││ 15:24:12 [ORCH       ] ✔ test.passed task TASK-101                 ││ src/…/JobRetryService.java            M │
+│ ◉ backend-dev   run ││ 15:23:58 [LEAD       ] ◎ Read src/…/JobRetryService.java           ││ src/…/JobRetryRequest.java            A │
+│ CREW · PLAN LEFT   ││ 15:23:31 [BACKEND-DEV] ✎ Edit src/…/JobRetryController.java       ││                                         │
 ├────────────────────┤└─────────────────────────────────────────────────────────────────────┘└─────────────────────────────────────────┘
 │                    │┌ CODE PREVIEW  …/JobRetryController.java ──┐┌ TERMINAL ───────────────┐┌ AGENT OUTPUT (backend) ────────────────┐
 │                    ││   12   12   @RestController                ││ $ mvn test               ││ 15:24 ✦ completed: endpoint + 12 tests  │
@@ -67,12 +67,17 @@ agent, task and change is on screen at once, in the same place every time.
  j: down  k: up  h: agents  l: tasks  │ 1-4 view │  n: new  p: report  d: dashboard  x: stop
 ```
 
-- **Header:** the brand, and the mission's repository, status, working agents, spend and clock.
+- **Header:** the brand, and the mission's repository, status, working agents, spend, what is left
+  of each subscription (`◔ claude 86% · codex 100%`) and the clock.
 - **NEEDS YOU:** shows only while a decision waits on you (`a` approve, `c` changes, `r` reject).
+  For a **team** it lists each worker by name with its model and effort: press either to change
+  it, `⧉` adds a second one for parallel work, `×` drops one; `c` sends the plan back with a note.
 - **MISSIONS:** every run with its progress; a press switches (`m` cycles).
-- **AGENTS:** the Supervisor, the Lead and every working worker (tagged by its task's specialty),
-  each `running`, `thinking` or `idle`; earlier sessions to read back; the seats and efforts
-  (`v`/`b` seats, `f`/`g`/`w` effort, live on a running mission); spend per agent.
+- **AGENTS:** every council seat, every lead and every worker by its name (backend-dev, tester…),
+  each `running`, `thinking` or `idle`; earlier sessions to read back; the **CREW** (council and
+  leads with their efforts, editable live: `v`/`b` the chair / head lead, `f`/`g` their effort, or
+  press any chip); **PLAN LEFT**, each subscription window's remaining share and when it resets;
+  spend per agent.
 - **Centre:** the mission (repository / request, branch, run, status, elapsed), the animated
   lifecycle and progress, then `1` **Log** — one feed of every agent and the orchestrator, newest
   on top: what each model says it is doing, tools (`◎` read, `✎` edit, `❯` shell), reasoning
@@ -113,21 +118,35 @@ carries in its fragment (never sent to a server or logged) and that allows GETs 
 
 ## Choosing who leads
 
-You seat the Supervisor and the Lead; the Lead staffs the workers.
+You seat a council of Supervisors and one or more Leads; the head Lead staffs the workers, and you
+approve the team before any of them starts.
 
-- **Per run:** pick them in the cockpit's NEW MISSION form, or `cockpit run "..." --supervisor opus --lead sonnet`.
-  Unset, the run takes `hierarchy` from `config/agents.yaml`.
-- **Mid-run** (a limit ran out): the seats in the AGENTS panel (`v` / `b`), or `cockpit roles <runId> --lead opus`.
-  Later calls of that role go to the new agent; a call already in flight finishes where it started.
-- **Effort** is chosen per seat, so one model can lead at `high` and work at `medium`:
-  `cockpit run "..." --effort lead:sonnet=high --effort worker:sonnet=medium` (a bare `sonnet=high`
-  sets both), or `f` / `g` / `w` in the pane; on a live mission `cockpit effort <runId> lead:sonnet=high`.
+- **Per mission:** the NEW MISSION form lists the **council** and the **leads**: press a model to
+  change it, `⚡` for its effort, `@` for a lead's area (backend, frontend, tests, …); `+ add` seats
+  another, `×` removes one. The first of each list (★) chairs the council / is the head lead. From the
+  CLI: `cockpit run "..." --council opus:high,codex:low --leads codex:medium@backend,sonnet:low@frontend`.
+  Unset, the run takes `hierarchy` from `config/agents.yaml` (`--supervisor` / `--lead` still work).
+- **The council:** the chair writes the architecture; the other members review it in parallel and
+  any "revise" makes the chair answer their concerns once. Before the chair rules on the Lead's
+  proposals the members give their view; at the end they judge the result with the chair, and a
+  member's "revise" sends the work back. A council of one costs nothing extra.
+- **The leads:** the head lead reviews the architecture, plans and integrates; each task names the
+  lead that owns it (by area), and that lead answers its worker and reviews its work.
+- **The team:** the head lead's plan names its workers after their jobs (`backend-dev`, `tester`,
+  `db-engineer`, …), each a worker model at an effort, and gives every task one. The mission waits
+  in NEEDS YOU until you approve the team (`engine.team.approval: false` in `cockpit.yaml` skips it);
+  edit it there, or `cockpit team <runId> '<json>'`. Sending it back drops the unstarted tasks and
+  the head lead plans again with your note. A later round only asks again for new or changed workers.
+- **Efforts are never shared:** every seat and every worker carries its own level, so one model can
+  chair at `high`, lead at `medium` and work as `tester` at `low`.
+- **Mid-run** (a limit ran out): edit the CREW in the AGENTS panel, or
+  `cockpit seats <runId> --council opus,sonnet --leads codex:high`. Later calls use the new seats; a
+  call already in flight finishes where it started.
 - **Who may sit where:** an agent takes a seat only if the role is in its `roles` list in `agents.yaml`
-  (`cockpit agents` lists them). Supervisor and Lead must differ.
-- **Workers:** the Lead names a worker per task in its plan (`worker`), chosen from the enabled workers it is shown.
-  If that worker is at capacity or unknown, or the Lead leaves it null, `routing.yaml` decides.
-
-
+  (`cockpit agents` lists them); workers come from the enabled `worker` agents.
+- **Subscription limits:** Claude Code reports its five-hour and weekly windows on every call;
+  Codex's come from its own session logs (`~/.codex/sessions`), re-read every minute. The latest
+  is kept in `<dataDir>/limits.json`, so the cockpit shows them before the first call of a day.
 
 ```
 packages/

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, InputProps, Register, RenderChildren, RenderInput } from 'claude-code'
 
-import type { CockpitApproval, CockpitMind, CockpitRun, CockpitSnapshot, CockpitTab, CockpitTask, CockpitUi, CockpitView } from '../types'
+import type { CockpitApproval, CockpitLimits, CockpitMind, CockpitPersona, CockpitRun, CockpitSeat, CockpitSeatPick, CockpitSnapshot, CockpitTab, CockpitTask, CockpitUi, CockpitView } from '../types'
 import * as paint from './raster'
 import { COCKPIT_ROOT } from './root'
 import { createScheduler, makeClock, type RasterScheduler, type RasterSpec } from './scheduler'
@@ -14,7 +14,7 @@ import { createTweens, type Tweens } from './tween'
 
 const PANE = 'agent-cockpit'
 const EMPTY: CockpitView = { snapshot: null, error: null, message: null }
-const UI0: CockpitUi = { selectedRun: null, tab: 'live', composing: null, nonce: 0, busy: null, report: null, failure: null, seats: { supervisor: null, lead: null }, efforts: {}, mind: null, open: [], focus: 'tasks', task: null, scroll: {} }
+const UI0: CockpitUi = { selectedRun: null, tab: 'live', composing: null, nonce: 0, busy: null, report: null, failure: null, crew: null, mind: null, open: [], focus: 'tasks', task: null, scroll: {} }
 const view = atom({ plugin: 'agent-cockpit', key: 'view' } as const, EMPTY)
 const ui = atom({ plugin: 'agent-cockpit', key: 'ui' } as const, UI0)
 const tickAtom = atom({ plugin: 'agent-cockpit', key: 'tick' } as const, 0)
@@ -145,6 +145,9 @@ const smoothBar = (frac: number, w: number) => {
 const isDone = (t: CockpitTask) => t.status === 'approved' || t.status === 'integrated'
 const clip = (s: string, n: number) => (n <= 1 ? '' : s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const firstLine = (s: string) => s.split('\n')[0]!.trim()
+/** Who does a task: its persona (and the model under it), else the model. */
+const who = (t: CockpitTask) => (t.persona ? (t.agentId ? `${t.persona} · ${t.agentId}` : t.persona) : t.agentId ?? '')
+
 const compact = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : `${n}`)
 function ago(ms: number): string {
   const s = Math.max(0, Math.floor(ms / 1000))
@@ -364,14 +367,10 @@ async function startRun($: EngineInterface, text: string) {
   if (!request) return 'Usage: /cockpit run <request> [--test "<cmd>"] [--repo <path> ...]'
   // Default target: the repository the session sits in, at its root.
   const repo = rest.includes('--repo') ? [] : ['--repo', await gitRoot($, await $.session.cwd())]
-  // The seats picked in the composer, unless the request names them itself.
-  const { seats } = await readUi($)
-  const picked = [
-    ...(seats.supervisor && !rest.includes('--supervisor') ? ['--supervisor', seats.supervisor] : []),
-    ...(seats.lead && !rest.includes('--lead') ? ['--lead', seats.lead] : []),
-  ]
-  const { efforts } = await readUi($)
-  for (const [agent, level] of Object.entries(efforts)) if (!flags.some(f => f.startsWith(`${agent}=`))) picked.push('--effort', `${agent}=${level}`)
+  // The council and leads picked in the composer, unless the request names its own.
+  const { crew } = await readUi($)
+  const own = ['--council', '--leads', '--supervisor', '--lead'].some(f => rest.includes(f))
+  const picked = crew && !own ? ['--council', crewArg(crew.council), '--leads', crewArg(crew.leads)] : []
   const res = await busy($, 'launching run…', () => cli($, ['run', request, ...repo, ...flags, ...picked]))
   if (res.ok) {
     await say($, res.text)
@@ -387,17 +386,19 @@ async function startRun($: EngineInterface, text: string) {
   return res.text
 }
 
-async function setEffort($: EngineInterface, runId: string, efforts: Record<string, string>) {
-  const pairs = Object.entries(efforts).map(([a, l]) => `${a}=${l}`)
-  if (!pairs.length) return
-  const res = await busy($, `effort ${pairs.join(' ')}…`, () => cli($, ['effort', runId, ...pairs]))
+/** Seats as the CLI takes them: agent[:effort][@area], comma-separated. */
+const crewArg = (seats: CockpitSeatPick[]) => seats.map(x => `${x.agent}${x.effort ? `:${x.effort}` : ''}${x.area ? `@${x.area}` : ''}`).join(',')
+
+async function setSeats($: EngineInterface, runId: string, crew: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }) {
+  const res = await busy($, 'reseating the council and leads…', () => cli($, ['seats', runId, '--council', crewArg(crew.council), '--leads', crewArg(crew.leads)]))
   await say($, res.text)
   lastGenerated = ''
   await refresh($)
 }
 
-async function setSeat($: EngineInterface, runId: string, role: 'supervisor' | 'lead', agent: string) {
-  const res = await busy($, `handing the ${role} seat to ${agent}…`, () => cli($, ['roles', runId, `--${role}`, agent]))
+async function setTeam($: EngineInterface, runId: string, team: CockpitPersona[]) {
+  const body = team.map(p => ({ id: p.id, title: p.title, specialty: p.specialty, agent: p.agent, effort: p.effort }))
+  const res = await busy($, 'revising the team…', () => cli($, ['team', runId, JSON.stringify(body)]))
   await say($, res.text)
   lastGenerated = ''
   await refresh($)
@@ -665,117 +666,73 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       </Box>
     ) : null
 
-    // Seats: every enabled agent tagged for a role is a chip; a click seats it, and
-    // a hotkey cycles to the next one. The other seat's holder is skipped (they must differ).
-    type Seats = { supervisor: string; lead: string }
-    type Role = keyof Seats
-    const eligible = (role: Role) => (s?.agents ?? []).filter(a => a.enabled && a.roles.includes(role))
-    const nextSeats: Seats | null = s ? { supervisor: u.seats.supervisor ?? s.hierarchy.supervisor, lead: u.seats.lead ?? s.hierarchy.lead } : null
-    const pickNext = (role: Role, agent: string) => void patchUi($, x => ({ seats: { ...x.seats, [role]: agent } }))
-    const effortNext = (changes: Record<string, string | null>) =>
-      void patchUi($, x => {
-        const efforts = { ...x.efforts }
-        for (const [agent, level] of Object.entries(changes)) if (level === null) delete efforts[agent]; else efforts[agent] = level
-        return { efforts }
-      })
-    // Effort: each agent's levels come from the snapshot; null means the CLI's own default.
+    // The crew: a council of supervisors (the first chairs) and leads (the first is the head), each its own
+    // model at its own effort. A press on the model cycles it, on ⚡ the effort, on @ a lead's area; + adds, × removes.
+    type Kind = 'council' | 'leads'
+    const eligible = (role: 'supervisor' | 'lead' | 'worker') => (s?.agents ?? []).filter(a => a.enabled && a.roles.includes(role))
     const agentInfo = (id: string) => (s?.agents ?? []).find(a => a.id === id)
     const levelsOf = (id: string) => agentInfo(id)?.efforts ?? []
-    const EffortChip = ({ id, keyId, level, live, hotkey, onCycle }: { id: string; keyId: string; level: string | null; live: boolean; hotkey?: string; onCycle: (next: string | null) => void }) => {
-      const levels = levelsOf(id)
-      if (!levels.length) return null
-      const ring: (string | null)[] = live ? levels : [null, ...levels]
-      const next = ring[(ring.indexOf(level) + 1) % ring.length] ?? null
+    const cycle = <T,>(list: T[], cur: T): T => list[(list.indexOf(cur) + 1) % Math.max(1, list.length)] ?? cur
+    const AREAS: (string | null)[] = [null, 'backend', 'frontend', 'tests', 'data', 'infra', 'docs']
+    const defaultCrew = (): { council: CockpitSeatPick[]; leads: CockpitSeatPick[] } => ({
+      council: [{ agent: s?.hierarchy.supervisor ?? 'opus', effort: null, area: null }],
+      leads: [{ agent: s?.hierarchy.lead ?? 'codex', effort: null, area: null }],
+    })
+    const nextCrew = u.crew ?? defaultCrew()
+    const heat = (agent: string, level: string | null) => {
+      const levels = levelsOf(agent)
       const at = level ? levels.indexOf(level) : -1
-      const meter = levels.map((_, i) => (i <= at ? '▮' : '▯')).join('')
-      const heat = at < 0 ? C.dim : gradient([C.cyan, C.violet, C.pink, C.accent], at / Math.max(1, levels.length - 1))
-      return (
-        <Box marginLeft={1} key={`effort-box-${keyId}`} hover={{ backgroundColor: C.baseline }}>
-          <Text color={heat}>⚡{meter} </Text>
-          <Button plain hotkey={hotkey} dimColor={!level} key={`effort-${keyId}`} label={level ?? 'default'} onPress={() => onCycle(next)} />
-        </Box>
-      )
+      return at < 0 ? C.dim : gradient([C.cyan, C.violet, C.pink, C.accent], at / Math.max(1, levels.length - 1))
     }
-    const SeatBar = ({ seats, onPick, keys, note, efforts, live, onEffort, compact }: { seats: Seats; onPick: (role: Role, agent: string) => void; keys: boolean; note: string; efforts: Record<string, string>; live: boolean; onEffort: (changes: Record<string, string | null>) => void; compact?: boolean }) => {
-      // Keyed by seat (`lead:sonnet`), so one agent in two seats keeps two levels; a bare id is the fallback.
-      const levelOf = (role: Role | 'worker', id: string) => efforts[`${role}:${id}`] ?? efforts[id] ?? agentInfo(id)?.effort ?? null
-      const row = (role: Role) => {
-        const current = seats[role]
-        const other = seats[role === 'supervisor' ? 'lead' : 'supervisor']
-        const list = eligible(role)
-        const tone = role === 'supervisor' ? C.violet : C.cyan
-        const choices = list.map(a => a.id).filter(id => id !== other)
-        const next = choices[(choices.indexOf(current) + 1) % Math.max(1, choices.length)]
-        return (
-          <Box>
-            <Box width={15}><Text color={tone} bold>{role === 'supervisor' ? '◆ SUPERVISOR' : '◇ LEAD'}</Text></Box>
-            {list.length === 0 ? <Text color={C.text} bold> {current}</Text> : list.map(a => {
-              const on = a.id === current
-              if (a.id === other && !on) return <Text color={C.faint} strikethrough> {a.id} </Text>
-              return (
-                <Box key={`chip-${role}-${a.id}`} backgroundColor={on ? (role === 'supervisor' ? C.seatSupervisor : C.seatLead) : undefined} paddingX={1} hover={{ backgroundColor: C.baseline }}>
-                  <Button plain dimColor={!on} key={`seat-${role}-${a.id}`} label={`${on ? '● ' : ''}${a.id}`} onPress={() => { if (!on) onPick(role, a.id) }} />
-                </Box>
-              )
-            })}
-            {keys && next && next !== current ? (
-              <Box marginLeft={1}><Button plain dimColor hotkey={role === 'supervisor' ? 'v' : 'b'} key={`cycle-${role}`} label={`→ ${next}`} onPress={() => onPick(role, next)} /></Box>
-            ) : null}
-            <EffortChip id={current} keyId={`${role}:${current}`} level={levelOf(role, current)} live={live} hotkey={keys ? (role === 'supervisor' ? 'f' : 'g') : undefined} onCycle={lv => onEffort({ [`${role}:${current}`]: lv })} />
-          </Box>
-        )
-      }
-      // Workers: one control for every enabled worker (each takes the level if its CLI accepts it).
-      const workers = eligible('worker' as Role)
-      const lead = workers[0]
-      const workersRow = lead ? (
-        <Box>
-          <Box width={15}><Text color={C.green} bold>◈ WORKERS</Text></Box>
-          <Text color={C.dim}>{workers.map(w => w.id).join(' · ')} </Text>
-          <EffortChip id={lead.id} keyId={`worker:${lead.id}`} level={levelOf('worker', lead.id)} live={live} hotkey={keys ? 'w' : undefined} onCycle={lv => onEffort(Object.fromEntries(workers.filter(w => lv === null || levelsOf(w.id).includes(lv)).map(w => [`worker:${w.id}`, lv])))} />
-          <Text color={C.dim}>  staffed by the lead</Text>
-        </Box>
-      ) : null
-      if (compact) {
-        // One line: each seat's holder (press to hand it to the next eligible agent) and its effort.
-        const seat = (role: Role, glyphs: string, tone: string) => {
-          const current = seats[role]
-          const other = seats[role === 'supervisor' ? 'lead' : 'supervisor']
-          const choices = eligible(role).map(a => a.id).filter(id => id !== other)
-          const next = choices[(choices.indexOf(current) + 1) % Math.max(1, choices.length)]
-          return (
-            <Box marginRight={2}>
-              <Text color={tone} bold>{glyphs} </Text>
-              {keys && next && next !== current
-                ? <Button plain hotkey={role === 'supervisor' ? 'v' : 'b'} key={`cycle-${role}`} label={current} onPress={() => onPick(role, next)} />
-                : <Text color={C.text} bold>{current}</Text>}
-              <EffortChip id={current} keyId={`${role}:${current}`} level={levelOf(role, current)} live={live} hotkey={keys ? (role === 'supervisor' ? 'f' : 'g') : undefined} onCycle={lv => onEffort({ [`${role}:${current}`]: lv })} />
-            </Box>
-          )
+    const CrewRows = ({ crew, states, keys, onChange }: { crew: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }; states?: Record<string, string>; keys: boolean; onChange: (next: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }) => void }) => {
+      const row = (kind: Kind) => {
+        const role = kind === 'council' ? 'supervisor' : 'lead'
+        const seats = crew[kind]
+        const ids = eligible(role).map(a => a.id)
+        const tone = kind === 'council' ? C.violet : C.cyan
+        const put = (i: number, seat: CockpitSeatPick | null) => {
+          const list = seats.slice()
+          if (seat) list[i] = seat
+          else list.splice(i, 1)
+          onChange({ ...crew, [kind]: list })
+        }
+        const add = () => {
+          const fresh = ids.find(id => !seats.some(x => x.agent === id)) ?? ids[0]
+          if (fresh) onChange({ ...crew, [kind]: [...seats, { agent: fresh, effort: null, area: null }] })
         }
         return (
           <Box flexWrap="wrap">
-            {seat('supervisor', '◆', C.violet)}
-            {seat('lead', '◇', C.cyan)}
-            {lead ? (
-              <Box>
-                <Text color={C.green} bold>◈ </Text>
-                <Text color={C.text}>{workers.map(w => w.id).join('·')}</Text>
-                <EffortChip id={lead.id} keyId={`worker:${lead.id}`} level={levelOf('worker', lead.id)} live={live} hotkey={keys ? 'w' : undefined} onCycle={lv => onEffort(Object.fromEntries(workers.filter(w => lv === null || levelsOf(w.id).includes(lv)).map(w => [`worker:${w.id}`, lv])))} />
-              </Box>
-            ) : null}
+            <Box width={11} flexShrink={0}><Text color={tone} bold>{kind === 'council' ? '◆ COUNCIL' : '◇ LEADS'}</Text></Box>
+            {seats.map((x, i) => {
+              const state = states?.[`${kind === 'council' ? 'sup' : 'lead'}-${i + 1}`]
+              const busyNow = !!state && state !== 'idle'
+              const nextAgent = cycle(ids, x.agent)
+              const levels = levelsOf(x.agent)
+              return (
+                <Box key={`crew-${kind}-${i}`} marginRight={2} backgroundColor={i === 0 ? (kind === 'council' ? C.seatSupervisor : C.seatLead) : undefined} paddingX={i === 0 ? 1 : 0} hover={{ backgroundColor: C.baseline }}>
+                  <Text color={busyNow ? pulse(n, tone, C.white, 0.35) : tone}>{i === 0 ? '★' : `${i + 1}`} </Text>
+                  <Button plain hotkey={keys && i === 0 ? (kind === 'council' ? 'v' : 'b') : undefined} key={`seat-${kind}-${i}`} label={x.agent} onPress={() => { if (nextAgent !== x.agent) put(i, { ...x, agent: nextAgent, effort: levelsOf(nextAgent).includes(x.effort ?? '') ? x.effort : null }) }} />
+                  {levels.length ? (
+                    <Box marginLeft={1}><Text color={heat(x.agent, x.effort)}>⚡</Text><Button plain dimColor={!x.effort} hotkey={keys && i === 0 ? (kind === 'council' ? 'f' : 'g') : undefined} key={`effort-${kind}-${i}`} label={x.effort ?? 'default'} onPress={() => put(i, { ...x, effort: cycle([null, ...levels], x.effort) })} /></Box>
+                  ) : null}
+                  {kind === 'leads' ? <Box marginLeft={1}><Button plain dimColor={!x.area} key={`area-${i}`} label={`@${x.area ?? 'any'}`} onPress={() => put(i, { ...x, area: cycle(AREAS, x.area) })} /></Box> : null}
+                  {seats.length > 1 ? <Box marginLeft={1}><Button plain dimColor key={`drop-${kind}-${i}`} label="×" onPress={() => put(i, null)} /></Box> : null}
+                </Box>
+              )
+            })}
+            {ids.length ? <Button plain dimColor key={`add-${kind}`} label="+ add" onPress={add} /> : null}
           </Box>
         )
       }
       return (
         <Box flexDirection="column">
-          {row('supervisor')}
-          {row('lead')}
-          {workersRow}
-          <Text color={C.dim} wrap="truncate-end">{note}</Text>
+          {row('council')}
+          {row('leads')}
         </Box>
       )
     }
+    const pickCrew = (crew: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }) => void patchUi($, { crew })
+    const COMPOSER_H = 8
 
     const composer = (
       <Box flexDirection="column" borderStyle="round" borderColor={pulse(n, C.accent, C.violet, 0.2)} paddingX={1}>
@@ -791,9 +748,10 @@ async function drawPane($: EngineInterface, e: PaneRender) {
             void patchUi($, x => ({ composing: null, nonce: x.nonce + 1 })).then(() => startRun($, text))
           }}
         />
-        {nextSeats ? <SeatBar seats={nextSeats} onPick={pickNext} keys={false} efforts={u.efforts} live={false} onEffort={effortNext} note="click a chip to change a seat or an effort for this mission" /> : null}
+        {s ? <CrewRows crew={nextCrew} keys={false} onChange={pickCrew} /> : null}
+        <Text wrap="truncate-end"><Text color={C.green} bold>◈ TEAM      </Text><Text color={C.dim}>the head lead names the workers (backend-dev, tester, …) · you approve the team before any starts</Text></Text>
         <Box>
-          <Text color={C.dim}>workers are staffed by the lead · runs in this session's folder unless --repo is given · </Text>
+          <Text color={C.dim}>★ chairs / leads · press a model, ⚡ effort or @ area to change it · runs in this folder unless --repo · </Text>
           <Button plain dimColor key="cancel-run" label="cancel" onPress={() => void patchUi($, { composing: null })} />
         </Box>
       </Box>
@@ -832,11 +790,12 @@ async function drawPane($: EngineInterface, e: PaneRender) {
                 <Text> </Text>
                 <Button variant="primary" hotkey="n" label="  n · New mission  " autoFocus onPress={() => void patchUi($, { composing: { kind: 'run' } })} />
                 <Text> </Text>
-                {nextSeats ? <SeatBar seats={nextSeats} onPick={pickNext} keys efforts={u.efforts} live={false} onEffort={effortNext} note="v / b seats · f / g / w effort · or click" /> : null}
+                <CrewRows crew={nextCrew} keys onChange={pickCrew} />
+                <Text color={C.dim}>v / b the chair / head lead · f / g their effort · or press any chip</Text>
               </Box>
             )}
           </Box>
-          {keybar([['n', 'new mission'], ['v b', 'seats'], ['f g w', 'effort'], ['x', 'stop']])}
+          {keybar([['n', 'new mission'], ['v b', 'seats'], ['f g', 'effort'], ['x', 'stop']])}
         </Box>
       )
     }
@@ -879,7 +838,13 @@ async function drawPane($: EngineInterface, e: PaneRender) {
 
     // ── header: one row of aurora, the mission and its vitals ──
 
-    const vitals = () => `⎇ ${run.repositories[0]?.name ?? 'workspace'}   ● ${run.status.replace(/_/g, ' ')}   ${(run.minds ?? []).filter(m => m.status === 'active').length || run.workers.length} agents   ${tel.costUsd ? `$${tel.costUsd.toFixed(2)}   ` : ''}${hms(l.wall)}`
+    // The tightest window left per subscription, for the header.
+    const headLimits = (['claude', 'codex'] as const)
+      .map(p => [p, s.limits?.[p]?.windows ?? []] as const)
+      .filter(([, w]) => w.length)
+      .map(([p, w]) => `${p} ${Math.round(Math.max(0, 100 - Math.max(...w.map(x => x.usedPercent))))}%`)
+      .join(' · ')
+    const vitals = () => `⎇ ${run.repositories[0]?.name ?? 'workspace'}   ● ${run.status.replace(/_/g, ' ')}   ${(run.minds ?? []).filter(m => m.status === 'active').length || run.workers.length} agents   ${tel.costUsd ? `$${tel.costUsd.toFixed(2)}   ` : ''}${headLimits ? `◔ ${headLimits}   ` : ''}${hms(l.wall)}`
     const header = raster('hero', cols, 1, true, t => paint.hero(cols, 1, t, { online, alert: runAttention, brand: `◎ ${l.brand}`, left: '// MULTI-AGENT CODING COCKPIT', right: vitals() }), (
       <Box justifyContent="space-between" paddingX={1}>
         <Text wrap="truncate-end">
@@ -903,7 +868,72 @@ async function drawPane($: EngineInterface, e: PaneRender) {
 
     // ── approval: the NEEDS YOU strip ──
 
+    const team = run.team ?? []
+    const TeamCard = ({ a }: { a: CockpitApproval }) => {
+      const writing = u.composing?.kind === 'changes' && u.composing.approvalId === a.id
+      const workers = eligible('worker').map(w => w.id)
+      const edit = (next: CockpitPersona[]) => void setTeam($, run.id, next)
+      const put = (i: number, p: CockpitPersona | null) => {
+        const list = team.slice()
+        if (p) list[i] = p
+        else list.splice(i, 1)
+        edit(list)
+      }
+      const nameW = Math.min(18, Math.max(8, ...team.map(p => p.id.length)) + 1)
+      return (
+        <Box flexDirection="column" borderStyle="round" borderColor={pulse(n, C.yellow, C.accent, 0.5)} paddingX={1}>
+          <Box justifyContent="space-between">
+            <Text><Pill label={`${n % 8 < 4 ? '◆' : '◇'} NEEDS YOU`} bg={C.yellow} /> <Text color={C.dim}>team · {team.length} workers · round {run.round + 1}</Text></Text>
+            {writing ? null : (
+              <Box gap={1}>
+                <Button variant="primary" hotkey="a" key={`approve-${a.id}`} label="a · Approve team" autoFocus onPress={() => void decide($, 'approve', a.id, '')} />
+                <Button hotkey="c" key={`changes-${a.id}`} label="c · Send back" onPress={() => void patchUi($, { composing: { kind: 'changes', approvalId: a.id } })} />
+                <Button hotkey="r" key={`reject-${a.id}`} label="r · Reject" onPress={() => void decide($, 'reject', a.id, '')} />
+              </Box>
+            )}
+          </Box>
+          {team.map((p, i) => {
+            const levels = levelsOf(p.agent)
+            const color = SPEC_COLOR[p.specialty] ?? C.orange
+            const clone = () => {
+              let k = 2
+              while (team.some(x => x.id === `${p.id}-${k}`)) k++
+              edit([...team.slice(0, i + 1), { ...p, id: `${p.id}-${k}`, tasks: [] }, ...team.slice(i + 1)])
+            }
+            return (
+              <Box key={`persona-${p.id}`} hover={{ backgroundColor: C.hover }}>
+                <Text color={color}>◈ </Text>
+                <Box width={nameW} flexShrink={0}><Text color={C.ink} bold wrap="truncate-end">{p.id}</Text></Box>
+                <Box flexShrink={0}><Button plain key={`team-agent-${p.id}`} label={p.agent} onPress={() => { const next = cycle(workers, p.agent); if (next !== p.agent) put(i, { ...p, agent: next, effort: levelsOf(next).includes(p.effort ?? '') ? p.effort : null }) }} /></Box>
+                {levels.length ? <Box marginLeft={1} flexShrink={0}><Text color={heat(p.agent, p.effort)}>⚡</Text><Button plain dimColor={!p.effort} key={`team-effort-${p.id}`} label={p.effort ?? 'default'} onPress={() => put(i, { ...p, effort: cycle([null, ...levels], p.effort) })} /></Box> : null}
+                <Box marginLeft={2} flexShrink={1}><Text color={C.dim} wrap="truncate-end">{p.title !== p.id ? `${p.title} · ` : ''}{p.tasks.join(' ') || 'no task yet'}</Text></Box>
+                <Box marginLeft={1} flexShrink={0}><Button plain dimColor key={`team-clone-${p.id}`} label="⧉" onPress={clone} /></Box>
+                {team.length > 1 ? <Box marginLeft={1} flexShrink={0}><Button plain dimColor key={`team-drop-${p.id}`} label="×" onPress={() => put(i, null)} /></Box> : null}
+              </Box>
+            )
+          })}
+          <Text color={C.dim} wrap="truncate-end">press a model or ⚡ to change it · ⧉ a second one for parallel work · × drops one (its tasks move) · c sends the plan back with a note</Text>
+          {writing ? (
+            <Box flexDirection="column">
+              <Input
+                key={`changes-${a.id}-${u.nonce}`}
+                label="note › "
+                placeholder="What should the lead change in the team or the plan?"
+                submitLabel="send back"
+                autoFocus
+                onSubmit={(t: string) => {
+                  if (!t.trim()) return
+                  void patchUi($, x => ({ composing: null, nonce: x.nonce + 1 })).then(() => decide($, 'changes', a.id, t))
+                }}
+              />
+              <Button plain dimColor key="cancel-changes" label="cancel" onPress={() => void patchUi($, { composing: null })} />
+            </Box>
+          ) : null}
+        </Box>
+      )
+    }
     const ApprovalCard = ({ a }: { a: CockpitApproval }) => {
+      if (a.kind === 'team' && team.length) return <TeamCard a={a} />
       const writing = u.composing?.kind === 'changes' && u.composing.approvalId === a.id
       const text = a.text ?? a.summary
       const total = wrapped(text, inner - 2)
@@ -944,6 +974,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       )
     }
     const approvalRows = approvals.reduce((acc, a) => {
+      if (a.kind === 'team' && team.length) return acc + 4 + team.length
       const total = wrapped(a.text ?? a.summary, inner - 2)
       return acc + 3 + (u.open.includes(`apr-${a.id}`) ? total : Math.min(total, APPROVAL_PREVIEW)) + (total > APPROVAL_PREVIEW ? 1 : 0)
     }, 0)
@@ -962,16 +993,31 @@ async function drawPane($: EngineInterface, e: PaneRender) {
 
     const roles = run.roles ?? s.hierarchy
     const minds = run.minds ?? []
-    type AgentRow = { id: string; orb: string | null; name: string; role: 'supervisor' | 'lead' | 'worker'; active: boolean; mind: CockpitMind | null; task: string | null; since: string | null }
+    type AgentRow = { id: string; name: string; title: string; role: 'supervisor' | 'lead' | 'worker'; active: boolean; mind: CockpitMind | null; task: string | null; since: string | null }
     const latestOf = (role: string, agent: string) => minds.find(m => m.role === role && m.agentId === agent && m.status === 'active') ?? minds.find(m => m.role === role && m.agentId === agent) ?? null
-    const supMind = latestOf('supervisor', roles.supervisor)
-    const leadMind = latestOf('lead', roles.lead)
+    // A seat's session: named on the call; an older orchestrator's first seat falls back to its agent's latest.
+    const seatMind = (id: string, role: string, agent: string, first: boolean) =>
+      minds.find(m => m.seat === id && m.status === 'active') ?? minds.find(m => m.seat === id) ?? (first && !minds.some(m => m.seat) ? latestOf(role, agent) : null)
+    const council: CockpitSeat[] = run.council?.length ? run.council : [{ id: 'sup-1', agent: roles.supervisor, effort: null, area: null, state: run.leadership.supervisor }]
+    const leadSeats: CockpitSeat[] = run.leads?.length ? run.leads : [{ id: 'lead-1', agent: roles.lead, effort: null, area: null, state: run.leadership.lead }]
+    const seatRow = (x: CockpitSeat, i: number, role: 'supervisor' | 'lead'): AgentRow => {
+      const m = seatMind(x.id, role, x.agent, i === 0)
+      const on = m?.status === 'active'
+      const title = role === 'supervisor' ? (i === 0 ? 'chair' : `council ${i + 1}`) : x.area ? `${x.area} lead` : i === 0 ? 'head lead' : `lead ${i + 1}`
+      return { id: x.id, name: x.agent, title, role, active: x.state !== 'idle', mind: m, task: on ? m!.task : null, since: on ? m!.startedAt : null }
+    }
+    const personaOfTask = new Map(run.tasks.filter(t => t.persona).map(t => [t.key, t.persona!]))
     const agentRows: AgentRow[] = [
-      { id: 'sup', orb: 'orb-sup', name: roles.supervisor, role: 'supervisor', active: run.leadership.supervisor !== 'idle', mind: supMind, task: supMind?.status === 'active' ? supMind.task : null, since: supMind?.status === 'active' ? supMind.startedAt : null },
-      { id: 'lead', orb: 'orb-lead', name: roles.lead, role: 'lead', active: run.leadership.lead !== 'idle', mind: leadMind, task: leadMind?.status === 'active' ? leadMind.task : null, since: leadMind?.status === 'active' ? leadMind.startedAt : null },
-      ...run.workers.map((w, i): AgentRow => {
+      ...council.map((x, i) => seatRow(x, i, 'supervisor')),
+      ...leadSeats.map((x, i) => seatRow(x, i, 'lead')),
+      ...team.map((p): AgentRow => {
+        const m = minds.find(x => x.seat === p.id && x.status === 'active') ?? minds.find(x => x.seat === p.id) ?? null
+        const on = m?.status === 'active'
+        return { id: p.id, name: p.id, title: p.agent, role: 'worker', active: p.state !== 'idle', mind: m, task: on ? m!.task : p.tasks[0] ?? null, since: on ? m!.startedAt : null }
+      }),
+      ...run.workers.filter(w => !w.task || !personaOfTask.has(w.task) || !team.length).map((w, i): AgentRow => {
         const m = minds.find(x => x.role === 'worker' && x.status === 'active' && x.task === w.task) ?? null
-        return { id: `w${i}`, orb: `orb-w${i}`, name: w.agentId, role: 'worker', active: true, mind: m, task: w.task, since: w.since }
+        return { id: `w${i}`, name: w.agentId, title: 'worker', role: 'worker', active: true, mind: m, task: w.task, since: w.since }
       }),
     ]
     // Earlier sessions, newest first: selectable to read back what they did.
@@ -992,12 +1038,12 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         <Box key={`agent-${r.id}`} width={compactCard ? 30 : undefined} hover={{ backgroundColor: C.hover }} backgroundColor={picked ? C.chipOn : undefined}>
           <Text color={focused ? C.accent : picked ? C.dim : C.bgDeep}>▌</Text>
           <Box flexDirection="column" marginRight={1}>
-            <Text backgroundColor={r.active ? pulse(n, color, C.white, 0.25) : C.chip} color={r.active ? C.bgDeep : color} bold> {r.role === 'supervisor' ? 'S' : r.role === 'lead' ? 'L' : 'W'} </Text>
+            <Text backgroundColor={r.active ? pulse(n, color, C.white, 0.25) : C.chip} color={r.active ? C.bgDeep : color} bold> {r.role === 'supervisor' ? 'S' : r.role === 'lead' ? 'L' : r.name[0]!.toUpperCase()} </Text>
             <Text color={r.active ? color : C.faint}>{r.active ? ` ${SPIN[(n + agentRows.indexOf(r)) % SPIN.length]} ` : ' · '}</Text>
           </Box>
           <Box flexDirection="column" flexShrink={1}>
             <Box justifyContent="space-between">
-              <Button plain dimColor={!picked} key={`agent-pick-${r.id}`} label={`${r.name} · ${r.role}`} onPress={() => followMind(r.mind)} />
+              <Button plain dimColor={!picked} key={`agent-pick-${r.id}`} label={`${r.name} · ${r.title}`} onPress={() => followMind(r.mind)} />
               <Text color={r.active ? color : C.faint}>{r.since ? ago(now - Date.parse(r.since)) : ''}</Text>
             </Box>
             <Text color={r.active ? color : C.dim} wrap="truncate-end">{compactCard || !lastWords ? doingNow : `${doingNow} · ${firstLine(lastWords)}`}</Text>
@@ -1011,71 +1057,38 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         <Box key={`earlier-${m.sessionId}`} hover={{ backgroundColor: C.hover }} backgroundColor={picked ? C.chipOn : undefined}>
           <Text color={picked && u.focus === 'agents' ? C.accent : C.bgDeep}>▌</Text>
           <Text color={m.status === 'failed' ? C.red : C.faint}>{m.status === 'failed' ? '✗' : '✓'} </Text>
-          <Button plain dimColor key={`agent-pick-${m.sessionId}`} label={clip(`${m.agentId} ${m.role} ${m.task ?? ''} ${doing(m)}`, agentsW - 8)} onPress={() => followMind(m)} />
+          <Button plain dimColor key={`agent-pick-${m.sessionId}`} label={clip(`${m.seat && m.role === 'worker' ? m.seat : m.agentId} ${m.role === 'worker' ? m.agentId : m.seat ?? m.role} ${m.task ?? ''} ${doing(m)}`, agentsW - 8)} onPress={() => followMind(m)} />
         </Box>
       )
     }
-    const SeatLines = ({ seats, isLive }: { seats: Seats; isLive: boolean }) => {
-      const efforts = isLive ? run.efforts ?? {} : u.efforts
-      const levelOf = (role: Role | 'worker', id: string) => efforts[`${role}:${id}`] ?? efforts[id] ?? agentInfo(id)?.effort ?? null
-      const ring = (id: string, level: string | null) => {
-        const levels = levelsOf(id)
-        const all: (string | null)[] = isLive ? levels : [null, ...levels]
-        return all[(all.indexOf(level) + 1) % Math.max(1, all.length)] ?? null
-      }
-      const setLevel = (changes: Record<string, string | null>) =>
-        isLive ? void setEffort($, run.id, Object.fromEntries(Object.entries(changes).filter((kv): kv is [string, string] => kv[1] !== null))) : effortNext(changes)
-      const pick = (role: Role, agent: string) => (isLive ? void setSeat($, run.id, role, agent) : pickNext(role, agent))
-      const line = (role: Role, glyphs: string, tone: string, seatKey: string, effortKey: string) => {
-        const current = seats[role]
-        const other = seats[role === 'supervisor' ? 'lead' : 'supervisor']
-        const choices = eligible(role).map(a => a.id).filter(id => id !== other)
-        const next = choices[(choices.indexOf(current) + 1) % Math.max(1, choices.length)]
-        const level = levelOf(role, current)
-        return (
-          <Box>
-            <Text color={tone} bold>{glyphs} </Text>
-            {next && next !== current
-              ? <Button plain hotkey={seatKey} key={`cycle-${role}`} label={current} onPress={() => pick(role, next)} />
-              : <Text color={C.text}>{current}</Text>}
-            <Text color={C.faint}>  </Text>
-            {levelsOf(current).length ? <Button plain hotkey={effortKey} dimColor={!level} key={`effort-${role}:${current}`} label={level ?? 'default'} onPress={() => setLevel({ [`${role}:${current}`]: ring(current, level) })} /> : null}
-          </Box>
-        )
-      }
-      const workers = eligible('worker' as Role)
-      const w0 = workers[0]
-      const wLevel = w0 ? levelOf('worker', w0.id) : null
+    // The live crew, editable: a change re-seats the run (later calls use it; a call in flight finishes where it is).
+    const liveCrew = { council: council.map(x => ({ agent: x.agent, effort: x.effort, area: null })), leads: leadSeats.map(x => ({ agent: x.agent, effort: x.effort, area: x.area })) }
+    const seatStates = Object.fromEntries([...council, ...leadSeats].map(x => [x.id, x.state]))
+    const crewHere = live
+      ? <CrewRows crew={liveCrew} states={seatStates} keys onChange={next => void setSeats($, run.id, next)} />
+      : <CrewRows crew={nextCrew} keys onChange={pickCrew} />
+    // Subscription limits: what is left of each window, the tightest one first.
+    const limitsOf = s.limits ?? {}
+    const limitRows = (Object.entries(limitsOf) as [string, NonNullable<CockpitLimits['claude']>][]).flatMap(([provider, l]) => l.windows.map(w => ({ provider, ...w, left: Math.max(0, 100 - w.usedPercent) })))
+    const leftTone = (left: number) => (left > 50 ? C.green : left > 20 ? C.yellow : C.red)
+    const tightest = (provider: string) => {
+      const rowsOf = limitRows.filter(r => r.provider === provider)
+      return rowsOf.length ? Math.min(...rowsOf.map(r => r.left)) : null
+    }
+    const limitsLine = ['claude', 'codex'].map(p => [p, tightest(p)] as const).filter(([, v]) => v !== null).map(([p, v]) => `${p} ${Math.round(v!)}%`).join(' · ')
+    const limitBars = limitRows.map(r => {
+      const w = Math.max(4, Math.min(agentsW, 44) - 26)
+      const bar = smoothBar(r.left / 100, w)
+      const resets = r.resetsAt ? Date.parse(r.resetsAt) - now : NaN
       return (
-        <Box flexDirection="column">
-          {line('supervisor', '◆', C.violet, 'v', 'f')}
-          {line('lead', '◇', C.cyan, 'b', 'g')}
-          {w0 ? (
-            <Box>
-              <Text color={C.green} bold>◈ </Text>
-              <Text color={C.text}>{clip(workers.map(w => w.id).join('·'), 12)}</Text>
-              <Text color={C.faint}>  </Text>
-              <Button plain hotkey="w" dimColor={!wLevel} key={`effort-worker:${w0.id}`} label={wLevel ?? 'default'} onPress={() => {
-                const lv = ring(w0.id, wLevel)
-                setLevel(Object.fromEntries(workers.filter(w => lv === null || levelsOf(w.id).includes(lv)).map(w => [`worker:${w.id}`, lv])))
-              }} />
-            </Box>
-          ) : null}
-        </Box>
+        <Text wrap="truncate-end" key={`limit-${r.provider}-${r.name}`}>
+          <Text color={C.mute}>{`${r.provider} ${r.name}`.padEnd(10).slice(0, 10)}</Text>
+          <Text color={C.faint}>▕</Text><Text color={leftTone(r.left)}>{bar.fill}</Text><Text color={C.track}>{bar.rest}</Text><Text color={C.faint}>▏</Text>
+          <Text color={leftTone(r.left)} bold> {Math.round(r.left)}%</Text>
+          <Text color={C.dim}>{resets > 0 ? ` ⟳${ago(resets)}` : ''}</Text>
+        </Text>
       )
-    }
-    const seatsLive = (
-      <SeatBar
-        compact
-        seats={roles}
-        onPick={(role, agent) => void setSeat($, run.id, role, agent)}
-        keys
-        efforts={run.efforts ?? {}}
-        live={live}
-        onEffort={changes => void setEffort($, run.id, Object.fromEntries(Object.entries(changes).filter((kv): kv is [string, string] => kv[1] !== null)))}
-        note=""
-      />
-    )
+    })
     const byAgent = tel.byAgent ?? []
     const maxCost = Math.max(0.01, ...byAgent.map(a => a.costUsd || a.calls / 100))
     const meterW = Math.max(4, Math.min(agentsW, 44) - 6)
@@ -1173,8 +1186,8 @@ async function drawPane($: EngineInterface, e: PaneRender) {
 
     // ── body height: what the header, the strips and the footer leave ──
 
-    const chrome = 1 + 2 + 1 + 2 + approvalRows + (u.failure ? 5 : 0) + (u.composing?.kind === 'run' ? 9 : 0) + (run.error ? 1 : 0)
-    const agentsStripH = wide ? 0 : 4 + (agentRows.length > Math.max(1, Math.floor((cols - 4) / 30)) ? 2 : 0) + (tel.byAgent?.length ?? 0)
+    const chrome = 1 + 2 + 1 + 2 + approvalRows + (u.failure ? 5 : 0) + (u.composing?.kind === 'run' ? COMPOSER_H : 0) + (run.error ? 1 : 0)
+    const agentsStripH = wide ? 0 : 4 + (agentRows.length > Math.max(1, Math.floor((cols - 4) / 30)) ? 2 : 0) + (tel.byAgent?.length ?? 0) + (limitsLine ? 1 : 0)
     const missionsStripH = wide ? 0 : 3 + Math.ceil(missionRows.length / Math.max(1, Math.floor((cols - 4) / 32)))
     const bodyH = Math.max(12, rows - chrome - agentsStripH - missionsStripH)
 
@@ -1185,7 +1198,8 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           <Text color={C.yellow} bold>{tel.costUsd ? `$${tel.costUsd.toFixed(2)}` : ''}</Text>
         </Box>
         <Box flexWrap="wrap">{agentRows.map(r => <AgentCard r={r} compactCard />)}</Box>
-        {live && u.composing?.kind !== 'run' ? seatsLive : null}
+        {live && u.composing?.kind !== 'run' ? crewHere : null}
+        {limitsLine ? <Text color={C.dim} wrap="truncate-end">◔ left: {limitsLine}</Text> : null}
         {byAgent.length ? <Box flexDirection="column" width={Math.min(cols - 4, meterW + 2)}>{meterBars}</Box> : null}
       </Box>
     )
@@ -1222,7 +1236,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       const moving = MOVING.has(t.status)
       const fin = isDone(t) || t.status === 'cancelled'
       const picked = t.key === selTask?.key
-      const meta = [t.agentId, t.iteration > 1 ? `↺${t.iteration}` : '', t.dependsOn.length && !fin ? `⇠${t.dependsOn.join(',')}` : ''].filter(Boolean).join(' ')
+      const meta = [who(t), t.iteration > 1 ? `↺${t.iteration}` : '', t.dependsOn.length && !fin ? `⇠${t.dependsOn.join(',')}` : ''].filter(Boolean).join(' ')
       return (
         <Box key={`task-${t.key}`} justifyContent="space-between" hover={{ backgroundColor: C.hover }} backgroundColor={picked ? C.chipOn : undefined}>
           <Box flexShrink={1}>
@@ -1243,7 +1257,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       const verdictColor = d?.review ? (d.review.verdict === 'approve' ? C.green : d.review.verdict === 'escalate' ? C.yellow : C.red) : C.dim
       return (
         <Box flexDirection="column">
-          <Text wrap="truncate-end"><Pill label={t.status.replace(/_/g, ' ')} bg={color} /><Text color={C.ink} bold> {t.key}</Text><Text color={C.dim}>  {[t.agentId, t.iteration > 1 ? `${t.iteration} tries` : '', t.repo].filter(Boolean).join(' · ')}</Text></Text>
+          <Text wrap="truncate-end"><Pill label={t.status.replace(/_/g, ' ')} bg={color} /><Text color={C.ink} bold> {t.key}</Text><Text color={C.dim}>  {[who(t), t.iteration > 1 ? `${t.iteration} tries` : '', t.repo].filter(Boolean).join(' · ')}</Text></Text>
           <Text color={C.ink} bold wrap="wrap">{t.title}</Text>
           {t.dependsOn.length ? <Text color={C.dim} wrap="truncate-end">after {t.dependsOn.join(', ')}</Text> : null}
           {t.blockedReason ? <Text color={C.yellow} wrap="wrap">↳ {t.blockedReason}</Text> : null}
@@ -1390,7 +1404,10 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       documentation: C.text, refactoring: C.violet, research: C.cyan, generalist: C.mint,
     }
     const specOf = (key: string | null | undefined) => run.tasks.find(t => t.key === key)?.specialty ?? null
-    const tagOf = (role: string, task: string | null) => (role === 'supervisor' ? 'SUPER' : role === 'lead' ? 'LEAD' : (specOf(task) ?? 'worker').toUpperCase().slice(0, 8))
+    const tagOf = (role: string, task: string | null, seat?: string | null) =>
+      role === 'supervisor' ? (seat && seat !== 'sup-1' ? `SUPER ${seat.slice(4)}` : 'SUPER')
+        : role === 'lead' ? (seat && seat !== 'lead-1' ? `LEAD ${seat.slice(5)}` : 'LEAD')
+          : (seat ?? personaOfTask.get(task ?? '') ?? specOf(task) ?? 'worker').toUpperCase().slice(0, 12)
     const tagColor = (role: string, task: string | null) => (role === 'supervisor' ? C.violet : role === 'lead' ? C.cyan : SPEC_COLOR[specOf(task) ?? ''] ?? C.orange)
     const toolIcon = (name: string) => (/^(read|glob|grep|ls)$/i.test(name) ? '◎' : /^(edit|write|multiedit|apply_patch)$/i.test(name) ? '✎' : /^(bash|shell|powershell)$/i.test(name) ? '❯' : /^web/i.test(name) ? '⌕' : '•')
     const Panel = ({ title, right, children, width, height, color, grow }: { title: RenderChildren; right?: RenderChildren; children: RenderChildren; width?: number; height?: number; color?: string; grow?: boolean }) => (
@@ -1408,7 +1425,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const MILESTONES = /^(task\.(created|assigned|blocked|completed|failed)|test\.(passed|failed)|review\.(passed|issue_found)|integration\.|merge\.|approval\.|escalation\.|proposal\.|validation\.|plan\.|run\.(started|completed))/
     const logLines: LogLine[] = []
     for (const m of minds) {
-      const tag = tagOf(m.role, m.task), color = tagColor(m.role, m.task)
+      const tag = tagOf(m.role, m.task, m.seat), color = tagColor(m.role, m.task)
       for (const a of m.activity) {
         if (a.kind === 'tool') {
           const at = a.text.indexOf(': ')
@@ -1423,6 +1440,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       logLines.push({ ts: ev.ts, tag: 'ORCH', color: C.accent, tone, text: ev.text })
     }
     logLines.sort((a, b) => b.ts.localeCompare(a.ts))
+    const tagW = Math.max(8, ...logLines.slice(0, 200).map(l => l.tag.length))
     const LogView = ({ max, skip = 0 }: { max: number; skip?: number }) => (
       <Box flexDirection="column">
         {logLines.length ? logLines.slice(skip, skip + max).map((ln, i) => {
@@ -1432,7 +1450,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           return (
             <Text wrap="truncate-end">
               <Text color={i === 0 && live ? C.accent : C.dim}>{ln.ts.slice(11, 19)} </Text>
-              <Text color={ln.color}>[{ln.tag.padEnd(8)}]</Text>
+              <Text color={ln.color}>[{ln.tag.padEnd(tagW)}]</Text>
               <Text color={color} italic={ln.tone === 'thinking'} bold={ln.tone === 'result'}> {mark}{ln.text}</Text>
             </Text>
           )
@@ -1450,8 +1468,8 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       approved: [0.95, 'approved'], integrated: [1, 'done'], failed: [1, 'failed'], cancelled: [0, 'cancelled'],
     }
     const TaskRow = ({ t, w }: { t: CockpitTask; w: number }) => {
-      const spec = t.specialty ?? 'task'
-      const color = SPEC_COLOR[spec] ?? C.text
+      const spec = t.persona ?? t.specialty ?? 'task'
+      const color = SPEC_COLOR[t.specialty ?? ''] ?? C.text
       const [frac, stage] = STAGE[t.status] ?? [0, t.status]
       const picked = t.key === selTask?.key
       const moving = MOVING.has(t.status)
@@ -1601,7 +1619,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const taskRows = (t: CockpitTask): Row[] => {
       const d = t.detail
       const rows: Row[] = [
-        { text: `${t.key} · ${t.status.replace(/_/g, ' ')}${t.agentId ? ` · ${t.agentId}` : ''}${t.iteration > 1 ? ` · ${t.iteration} tries` : ''}`, color: STATUS_COLOR[t.status] ?? C.text, bold: true },
+        { text: `${t.key} · ${t.status.replace(/_/g, ' ')}${who(t) ? ` · ${who(t)}` : ''}${t.iteration > 1 ? ` · ${t.iteration} tries` : ''}`, color: STATUS_COLOR[t.status] ?? C.text, bold: true },
         ...para(t.title, { color: C.ink, bold: true }),
         ...(t.dependsOn.length ? [{ text: `after ${t.dependsOn.join(', ')}`, color: C.dim }] : []),
         ...(t.blockedReason ? para(`↳ ${t.blockedReason}`, { color: C.yellow }) : []),
@@ -1698,7 +1716,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         <TaskList w={rightW - 4} max={sized ? tasksH - 3 : 40} />
       </Panel>
     )
-    const focusRole = followed ? tagOf(followed.role, followed.task) : 'AGENT'
+    const focusRole = followed ? tagOf(followed.role, followed.task, followed.seat) : 'AGENT'
     const focusState = followed?.status === 'active' ? (followed.activity.at(-1)?.kind === 'thinking' ? 'thinking' : 'working') : followed ? followed.status : 'idle'
     const focusPanel = (
       <Panel
@@ -1727,7 +1745,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     )
 
     if (sized) {
-      const bodyTop = 1 + (run.error ? 1 : 0) + (u.failure ? 5 : 0) + approvalRows + (u.composing?.kind === 'run' ? 9 : 0)
+      const bodyTop = 1 + (run.error ? 1 : 0) + (u.failure ? 5 : 0) + approvalRows + (u.composing?.kind === 'run' ? COMPOSER_H : 0)
       const right0 = agentsW + tasksW
       regions = [
         { id: 'centre', x0: agentsW, x1: right0, y0: bodyTop, y1: bodyTop + topH, max: centreMax },
@@ -1740,7 +1758,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
 
     // Agents, one line each: the role's ring, who holds it, and whether it is running, thinking or idle.
     const AgentLine = ({ r }: { r: AgentRow }) => {
-      const color = r.role === 'worker' ? SPEC_COLOR[specOf(r.task) ?? ''] ?? C.orange : ROLE_COLOR[r.role] ?? C.text
+      const color = r.role === 'worker' ? SPEC_COLOR[team.find(p => p.id === r.id)?.specialty ?? specOf(r.task) ?? ''] ?? C.orange : ROLE_COLOR[r.role] ?? C.text
       const picked = !!r.mind && r.mind.sessionId === followed?.sessionId
       const state = !r.active ? 'idle' : r.mind?.status === 'active' && (r.mind.activity.at(-1)?.kind === 'thinking' || !r.mind.activity.length) ? 'thinking' : 'running'
       return (
@@ -1748,7 +1766,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           <Box flexShrink={1}>
             <Text color={picked && u.focus === 'agents' ? C.accent : C.bgDeep}>▌</Text>
             <Text color={r.active ? pulse(n, color, C.white, 0.35) : color}>{r.active ? '◉' : '○'} </Text>
-            <Button plain dimColor={!picked} key={`agent-pick-${r.id}`} label={clip(`${tagOf(r.role, r.task).toLowerCase()} ${r.name}`, agentsW - 16)} onPress={() => followMind(r.mind)} />
+            <Button plain dimColor={!picked} key={`agent-pick-${r.id}`} label={clip(`${r.name} · ${r.title}`, agentsW - 16)} onPress={() => followMind(r.mind)} />
           </Box>
           <Text color={state === 'running' ? C.green : state === 'thinking' ? C.cyan : C.dim}>{state}</Text>
         </Box>
@@ -1759,8 +1777,10 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         {agentRows.map(r => <AgentLine r={r} />)}
         {earlier.length ? <Section title="EARLIER" right={<Text color={C.dim}>{minds.length} sessions</Text>} /> : null}
         {earlier.map(m => <EarlierRow m={m} />)}
-        {u.composing?.kind === 'run' ? null : <Section title="SEATS" right={<Text color={C.dim}>{live ? 'live' : 'next run'}</Text>} />}
-        {u.composing?.kind === 'run' ? null : <SeatLines seats={live ? roles : nextSeats!} isLive={live} />}
+        {u.composing?.kind === 'run' ? null : <Section title="CREW" right={<Text color={C.dim}>{live ? 'live' : 'next run'}</Text>} />}
+        {u.composing?.kind === 'run' ? null : crewHere}
+        {limitBars.length ? <Section title="PLAN LEFT" right={<Text color={C.dim}>subscription</Text>} /> : null}
+        {limitBars}
         <Section title="SPEND" right={<Text color={C.yellow} bold>{tel.costUsd ? `$${tel.costUsd.toFixed(2)}` : '—'}</Text>} />
         <Text color={C.dim} wrap="truncate-end">{tel.calls} calls · ↓{compact(tel.inputTokens)} ↑{compact(tel.outputTokens)}</Text>
         {meterBars}
@@ -1809,7 +1829,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           <Box flexWrap="wrap" gap={2}>
             {nav.map(([k, label, fn]) => <Button plain hotkey={k} key={`nav-${k}`} label={label} onPress={fn} />)}
             <Text color={C.faint}>│</Text>
-            {u.focus === 'agents' ? <Text color={C.dim}>v b seats · f g w effort</Text> : u.focus === 'centre' ? <Text color={C.dim}>j k scroll · 1-4 view</Text> : <Text color={C.dim}>1-4 view</Text>}
+            {u.focus === 'agents' ? <Text color={C.dim}>v b seats · f g effort</Text> : u.focus === 'centre' ? <Text color={C.dim}>j k scroll · 1-4 view</Text> : <Text color={C.dim}>1-4 view</Text>}
             <Text color={C.faint}>│</Text>
             {actions.map(([k, label, fn]) => <Button plain hotkey={k} key={keyName[k] ?? `act-${k}`} label={label} onPress={fn} />)}
           </Box>

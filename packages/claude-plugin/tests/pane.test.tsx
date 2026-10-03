@@ -63,15 +63,26 @@ test('a refused launch shows a failure card with the fix', async ($, on) => {
   await ui.unmount()
 })
 
-test('seats picked in the composer go to the run, and a live run can hand a seat over', async ($, on) => {
+test('the mission form takes a council and leads at their own efforts; a live run re-seats; the team waits for approval', async ($, on) => {
   const snap = JSON.parse(LIVE)
   snap.agents = [
     { id: 'opus', adapter: 'claude', model: 'opus', roles: ['supervisor', 'lead'], enabled: true, effort: null, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
     { id: 'codex', adapter: 'codex', model: null, roles: ['lead', 'supervisor'], enabled: true, effort: 'medium', efforts: ['minimal', 'low', 'medium', 'high', 'xhigh'] },
     { id: 'sonnet', adapter: 'claude', model: 'sonnet', roles: ['worker', 'lead', 'supervisor'], enabled: true, effort: null, efforts: ['low', 'medium', 'high', 'xhigh', 'max'] },
+    { id: 'haiku', adapter: 'claude', model: 'haiku', roles: ['worker'], enabled: true, effort: null, efforts: ['low', 'medium', 'high'] },
   ]
-  snap.runs[0].roles = { supervisor: 'opus', lead: 'codex' }
-  snap.runs[0].status = 'executing'
+  const r = snap.runs[0]
+  r.roles = { supervisor: 'opus', lead: 'codex' }
+  r.status = 'awaiting_human_decision'
+  r.council = [{ id: 'sup-1', agent: 'opus', effort: 'high', area: null, state: 'idle' }, { id: 'sup-2', agent: 'codex', effort: 'low', area: null, state: 'idle' }]
+  r.leads = [{ id: 'lead-1', agent: 'codex', effort: 'medium', area: 'backend', state: 'idle' }]
+  r.team = [
+    { id: 'backend-dev', title: 'Backend developer', specialty: 'backend', agent: 'sonnet', effort: 'high', tasks: ['TASK-102'], state: 'idle' },
+    { id: 'tester', title: 'Test engineer', specialty: 'test', agent: 'haiku', effort: null, tasks: [], state: 'idle' },
+  ]
+  r.tasks[1].persona = 'backend-dev'
+  snap.pendingApprovals = [{ id: 'apr_team', runId: r.id, kind: 'team', operation: null, summary: 'Team for round 1', text: 'Proposed team' }]
+  snap.limits = { claude: { windows: [{ name: '5h', usedPercent: 14, resetsAt: null }, { name: '7d', usedPercent: 40, resetsAt: null }], at: 'now' }, codex: { windows: [{ name: '5h', usedPercent: 0, resetsAt: null }], at: 'now' } }
   const calls: string[][] = []
   on('fs.read', async () => ({ value: JSON.stringify(snap) }))
   on('process.run', async (_, e) => {
@@ -86,27 +97,42 @@ test('seats picked in the composer go to the run, and a live run can hand a seat
   on('ui.status', async () => ({ value: undefined }) as never)
   on('ui.toast', async () => ({ value: undefined }) as never)
   await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
-  const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(100) })
-  // a live run: v hands the supervisor seat to the next eligible agent (codex holds lead, so sonnet)
-  await ui.press({ key: 'cycle-supervisor' })
-  expect(calls.some(c => c.includes('roles') && c.includes('--supervisor') && c.includes('sonnet'))).toBe(true)
-  // live effort: g steps the lead (codex, default medium) up to high right away
-  await ui.press({ key: 'effort-lead:codex' })
-  expect(calls.some(c => c.includes('effort') && c.includes('lead:codex=high'))).toBe(true)
+  const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(140) })
+  const last = (cmd: string) => [...calls].reverse().find(c => c.includes(cmd))!
+
+  // what is left of each subscription, the tightest window per provider in the header
+  expect(await ui.find({ type: 'Text', text: /claude 7d.*60%/ })).toBeDefined()
+  // the team card: personas by name, with their models and efforts, editable before approving
+  expect(await ui.find({ key: 'approve-apr_team' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /backend-dev/ })).toBeDefined()
+  await ui.press({ key: 'team-effort-tester' }) // default -> low
+  let team = JSON.parse(last('team').at(-1)!)
+  expect(team.map((p: { id: string; agent: string; effort: string | null }) => `${p.id}:${p.agent}:${p.effort}`)).toEqual(['backend-dev:sonnet:high', 'tester:haiku:low'])
+  await ui.press({ key: 'team-clone-backend-dev' })
+  team = JSON.parse(last('team').at(-1)!)
+  expect(team.map((p: { id: string }) => p.id)).toEqual(['backend-dev', 'backend-dev-2', 'tester'])
+  await ui.press({ key: 'approve-apr_team' })
+  expect(calls.some(c => c.includes('approve') && c.includes('apr_team'))).toBe(true)
+
+  // the live crew: the second council seat steps its effort; the run is re-seated with both
+  await ui.press({ key: 'effort-council-1' }) // low -> medium
+  const seats = last('seats')
+  expect(seats.slice(seats.indexOf('--council'), seats.indexOf('--council') + 2)).toEqual(['--council', 'opus:high,codex:medium'])
+  expect(seats.slice(seats.indexOf('--leads'), seats.indexOf('--leads') + 2)).toEqual(['--leads', 'codex:medium@backend'])
+
+  // the next mission: two leads, each at its own level, one model in two seats
   await ui.press({ key: 'new' })
-  await ui.press({ key: 'seat-lead-sonnet' })
-  await ui.press({ key: 'effort-supervisor:opus' }) // default -> low for the next mission
-  // sonnet leads and works: each seat keeps its own level
-  await ui.press({ key: 'effort-lead:sonnet' }) // default -> low
-  await ui.press({ key: 'effort-worker:sonnet' })
-  await ui.press({ key: 'effort-worker:sonnet' }) // default -> low -> medium
+  await ui.press({ key: 'add-leads' }) // + opus
+  await ui.press({ key: 'effort-leads-1' }) // default -> low
+  await ui.press({ key: 'area-1' }) // any -> backend
+  await ui.press({ key: 'area-1' }) // -> frontend
+  await ui.press({ key: 'add-council' }) // + codex
+  await ui.press({ key: 'effort-council-1' }) // default -> minimal
   await ui.input({ key: 'compose-0', text: 'add a readme' })
-  const run = calls.find(c => c.includes('run'))!
-  expect(run.slice(run.indexOf('--lead'), run.indexOf('--lead') + 2)).toEqual(['--lead', 'sonnet'])
+  const run = last('run')
+  expect(run.slice(run.indexOf('--council'), run.indexOf('--council') + 2)).toEqual(['--council', 'opus,codex:minimal'])
+  expect(run.slice(run.indexOf('--leads'), run.indexOf('--leads') + 2)).toEqual(['--leads', 'codex,opus:low@frontend'])
   expect(run.includes('--supervisor')).toBe(false)
-  expect(run).toContain('supervisor:opus=low')
-  expect(run).toContain('lead:sonnet=low')
-  expect(run).toContain('worker:sonnet=medium')
   await ui.unmount()
 })
 

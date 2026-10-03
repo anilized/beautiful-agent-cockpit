@@ -22,6 +22,9 @@ const USAGE = `cockpit - hierarchical multi-agent coding cockpit
                                             several supervisors (the first chairs) / leads (the first is the head)
   cockpit agents                            configured agents and the roles each may take
   cockpit effort <runId> [<role>:]<agent>=<level> ...  change reasoning effort per agent (or per seat) on a live run
+  cockpit seats <runId> [--council <agent>[:<effort>],...] [--leads <agent>[:<effort>][@<area>],...]
+                                            replace a live run's council and/or leads
+  cockpit team <runId> '<json>'             revise a run's worker team: [{"id","title","specialty","agent","effort"}, ...]
   cockpit roles <runId> [--supervisor <agent>] [--lead <agent>]
                                             hand a live run's Supervisor or Lead seat to another agent
   cockpit status [<runId>] [--json]         leadership, tasks, workers, conflicts, tests
@@ -261,6 +264,23 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       if (!rest[0] || rest.length < 2) throw new Error('usage: cockpit effort <runId> <agent>=<level> ...');
       const efforts = await client(cfg).request<Record<string, string>>('POST', `/runs/${rest[0]}/efforts`, parseEfforts(rest.slice(1)));
       return void console.log(Object.entries(efforts).map(([a, l]) => `${a} ${l}`).join(' · ') || 'defaults');
+    }
+    case 'seats': {
+      if (!rest[0]) throw new Error('usage: cockpit seats <runId> [--council ...] [--leads ...]');
+      const council = parseSeats(args.flags.get('council') ?? []);
+      const leads = parseSeats(args.flags.get('leads') ?? []);
+      const r = await client(cfg).request<{ council: { id: string; agent: string; effort: string | null }[]; leads: { id: string; agent: string; effort: string | null; area: string | null }[] }>('POST', `/runs/${rest[0]}/seats`, {
+        ...(council.length ? { council } : {}), ...(leads.length ? { leads } : {}),
+      });
+      const fmt = (s: { agent: string; effort: string | null; area?: string | null }) => `${s.agent}${s.effort ? `@${s.effort}` : ''}${s.area ? ` [${s.area}]` : ''}`;
+      return void console.log(`council ${r.council.map(fmt).join(', ')} · leads ${r.leads.map(fmt).join(', ')}`);
+    }
+    case 'team': {
+      if (!rest[0] || !rest[1]) throw new Error(`usage: cockpit team <runId> '[{"id":"backend-dev","agent":"sonnet","effort":"high"}]'`);
+      const team = JSON.parse(rest.slice(1).join(' ')) as unknown;
+      if (!Array.isArray(team)) throw new Error('team: expected a JSON array of personas');
+      const r = await client(cfg).request<{ id: string; agent: string; effort: string | null }[]>('POST', `/runs/${rest[0]}/team`, { team });
+      return void console.log(`team ${r.map((p) => `${p.id} ${p.agent}${p.effort ? `@${p.effort}` : ''}`).join(' · ')}`);
     }
     case 'roles': {
       if (!rest[0]) throw new Error('usage: cockpit roles <runId> [--supervisor <agent>] [--lead <agent>]');
