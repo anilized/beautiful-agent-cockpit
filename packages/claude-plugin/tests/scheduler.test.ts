@@ -132,6 +132,9 @@ test('(e) 140-col live set for 10 s: <=60 blits/s total, Tier A <=30 fps, far be
   await clock.advance(10_000)
   expect(host.count() / 10).toBeLessThanOrEqual(CADENCE.conservative.totalPerSec)
   expect(host.count() / 10).toBeLessThan(112)
+  expect(host.count() / 10).toBeGreaterThanOrEqual(45) // budget is realised, not truncated
+  expect(host.count('hero') / 10).toBeGreaterThanOrEqual(10)
+  expect(host.count('pipeline') / 10).toBeGreaterThanOrEqual(10)
   expect(host.count('hero') / 10).toBeLessThanOrEqual(30)
   expect(host.count('pipeline') / 10).toBeLessThanOrEqual(30)
   for (const k of ['progress', 'spark', 'divider', 'underline', 'telemetry', 'orb0', 'orb1', 'orb2']) {
@@ -218,6 +221,33 @@ test('(i) idle: <=2 fps per key with motion off, back to frame rate on motion', 
   expect(s.stats().timerMs).toBe(16)
   s.sync(new Map())
   expect(clock.everyActive()).toBe(0)
+})
+
+test('idle: every one of 10 keys paints within ~1 s of mounting with motion off', async () => {
+  const { clock, host, s } = setup()
+  s.setMotion(false)
+  s.sync(live140())
+  await clock.advance(1000)
+  for (const k of live140().keys()) expect(host.count(k)).toBeGreaterThanOrEqual(1)
+})
+
+test('deny unregisters even after an unrelated generation bump', async () => {
+  const { clock, host, s } = setup('manual')
+  s.sync(new Map([['hero', spec('A', 1)], ['spark', spec('B', 1)]]))
+  await clock.advance(50)
+  const d = host.pending.find(p => p.key === 'hero')!
+  s.sync(new Map([['hero', spec('A', 1)]])) // spark dropped: gen bump, hero unchanged
+  d.res({ deny: true })
+  await clock.advance(10)
+  expect(s.stats().live).toBe(0)
+})
+
+test('a blit pending past the stall age is aborted so the key can paint again', async () => {
+  const { clock, host, s } = setup('never')
+  s.sync(new Map([['hero', spec('A')]]))
+  await clock.advance(8000)
+  expect(host.count('hero')).toBeGreaterThanOrEqual(2)
+  expect(s.stats().pending).toBeLessThanOrEqual(1)
 })
 
 test('panes() polling: <=1 Hz, only idle or degraded, never while healthy and moving', async () => {

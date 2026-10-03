@@ -32,7 +32,8 @@ const WATCH_PERIODS = 3 // no tick for this many periods => interval presumed de
 const HEALTHY_MS = 2000 // degrade restores after this long without a stall or deny
 const DENY_WINDOW_MS = 2000
 const DENY_LIMIT = 2
-const BUCKET_CAP = 1
+const BUCKET_MIN = 2
+const STALL_MS = 6000 // a blit pending this long is aborted by the watchdog so the key can paint again
 
 export const createScheduler = (deps: SchedulerDeps): Scheduler => {
   const { clock } = deps
@@ -79,19 +80,23 @@ export const createScheduler = (deps: SchedulerDeps): Scheduler => {
     void p.then(r => settle(key, slot, r ?? undefined), () => settle(key, slot, undefined, true))
   }
 
-  // A resolve frees the key only when its token still owns the slot; effects apply only for the current generation.
+  // A resolve frees the key only when its token still owns the slot. A deny unregisters whenever the raster (uid) is
+  // still the one that was blitted; other effects apply only for the current generation.
   const settle = (key: string, slot: Slot, r: BlitResult, failed = false) => {
     if (slots.get(key)?.token !== slot.token) return
     slots.delete(key)
-    if (slot.gen !== gen) return
     const t = clock.now()
-    if (r && 'deny' in r && r.deny) {
+    const denied = !!(r && 'deny' in r && r.deny)
+    if (denied && entries.get(key)?.uid === slot.uid) {
       tr().record(key, 'deny', t)
       if (t - denyAt > DENY_WINDOW_MS) denyN = 0
       denyAt = t
       if (++denyN >= DENY_LIMIT) bad(t)
-      if (entries.get(key)?.uid === slot.uid) entries.delete(key), gen++, refresh()
-    } else {
+      entries.delete(key), gen++, refresh()
+      return
+    }
+    if (slot.gen !== gen || denied) return
+    {
       if (failed) bad(t)
       tr().record(key, 'resolve', t)
     }
@@ -113,8 +118,9 @@ export const createScheduler = (deps: SchedulerDeps): Scheduler => {
     if (!entries.size) return
     const t = clock.now()
     lastTick = t
-    main = Math.min(BUCKET_CAP, main + (t - lastRefill) * mainRate)
-    reserve = Math.min(BUCKET_CAP, reserve + (t - lastRefill) * resRate)
+    // Burst cap covers what one period earns, so the refill rate is realised at any cadence (idle ticks refill ~27).
+    main = Math.min(Math.max(BUCKET_MIN, Math.ceil(mainRate * timerMs)), main + (t - lastRefill) * mainRate)
+    reserve = Math.min(Math.max(BUCKET_MIN, Math.ceil(resRate * timerMs)), reserve + (t - lastRefill) * resRate)
     lastRefill = t
     for (const s of slots.values()) if (t - s.t > 2 * frameMs) bad(t)
     if (degraded && t - lastBad >= HEALTHY_MS) degraded = false
@@ -138,6 +144,7 @@ export const createScheduler = (deps: SchedulerDeps): Scheduler => {
       cancelWatch = null
       if (!entries.size) return
       const t = clock.now()
+      for (const [k, s] of slots) if (t - s.t > STALL_MS) slots.delete(k)
       if (motion && t - lastTick > WATCH_PERIODS * frameMs) rearm(t)
       if (entries.size) watch()
     })
