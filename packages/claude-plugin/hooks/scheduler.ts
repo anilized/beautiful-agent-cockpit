@@ -1,6 +1,6 @@
 // Raster blit scheduler: one pending {token, gen} slot per key, token buckets, watchdog, degrade. Pure logic; clock and blit are injected.
 // Nothing is queued: a key with a pending slot or without a token is skipped this tick and judged again on the next.
-import { CADENCE, HOST_LIMITS, trace as globalTrace, type Cadence, type Trace } from './limits'
+import { CADENCE, HOST_LIMITS, PANES_POLL_MAX_HZ, trace as globalTrace, type Cadence, type Trace } from './limits'
 
 export type Tier = 'A' | 'B'
 /** `id` marks the raster instance: a changed id under the same key is a replacement (gen bump, fresh entry). */
@@ -39,7 +39,7 @@ export const createScheduler = (deps: SchedulerDeps): Scheduler => {
   const { clock } = deps
   const cad = deps.cadence ?? CADENCE.conservative
   const tr = () => deps.trace ?? globalTrace
-  const minMs = HOST_LIMITS.clockMinMs.value
+  const minMs = HOST_LIMITS.clockMinPeriodMs.value
   const frameMs = Math.max(minMs, cad.framePeriodMs)
   const idleMs = Math.max(minMs, cad.idlePeriodMs)
   const mainRate = (cad.totalPerSec * (1 - cad.urgentReserve)) / 1000
@@ -104,7 +104,7 @@ export const createScheduler = (deps: SchedulerDeps): Scheduler => {
 
   const probe = (t: number) => {
     // $.ui.panes() (d.ts:2308-2319) cost is undocumented: poll <=1 Hz, only idle or degraded, advisory visibility only.
-    if (!deps.probeLive || probing || t - lastProbe < 1000 / HOST_LIMITS.panesPollMaxHz.value) return
+    if (!deps.probeLive || probing || t - lastProbe < 1000 / PANES_POLL_MAX_HZ) return
     probing = true, lastProbe = t
     const g = gen
     deps.probeLive().then(live => {
