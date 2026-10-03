@@ -173,13 +173,13 @@ test('COCKPIT_REDUCED_MOTION=1: animation time frozen, status changes still rend
   expect(st.blits.length / 5).toBeLessThanOrEqual(2.1)
   const b = await cellsOf()
   for (const [k, cells] of a) if (k !== 'hero') expect([k, b.get(k)]).toEqual([k, cells]) // hero carries the wall clock string
-  expect(await ui.find({ type: 'Text', text: /AWAITING APPROVAL/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /awaiting approval/i })).toBeDefined()
   const next = live()
   next.runs[0].status = 'executing'
   set(next)
   await clock.advance(1200)
-  expect(await ui.find({ type: 'Text', text: /EXECUTING/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /AWAITING APPROVAL/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /executing/i })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /awaiting approval/i })).toBeUndefined()
   await ui.unmount()
 })
 

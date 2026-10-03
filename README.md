@@ -46,46 +46,57 @@ install it as a plugin). Then:
 
 #### The pane: a command center
 
-Modelled on lazygit-style persistent panels and agent managers such as Claude Squad: everything
-that matters is on screen at once, in the same place every time.
+A dense, panel-per-concern layout after lazygit and agent managers such as Claude Squad: every
+agent, task and change is on screen at once, in the same place every time.
 
 ```
-◆ AGENT COCKPIT  <mission>                         executing · 13/27 · $36.20 · 3h21m  ● 16:12:35
-◉ EXECUTING   ● architect ─ ● debate ─ ● plan ─ ◉ build ─ ○ integrate ─ ○ validate ─ ○ approve ─ ○ merge
-┌ NEEDS YOU ─────────────────────────────────────────────────── a · Approve  c · Changes  r · Reject ┐
-┌ MISSIONS ────────┐┌ TASKS 13/27 ▕██████████▏ 48% ┐┌ 1 Live  2 Task  3 Events  4 Report ─────────────┐
-│ ▌⠋ Modernize UI  ││ NEEDS ATTENTION               ││ WORKER sonnet  implementing TASK-305  ⠋ 2m13s   │
-│   ✓ Add utils 4/4││ RUNNING                       ││ 16:50 ✦ completed: theme tokens in theme.ts…    │
-┌ AGENTS ──────────┐│ ▌⠋ TASK-305 theme tokens   ↺2 ││ 16:50 ▍ Fixing the empty-input case next…      │
-│ S opus     idle  ││ IN REVIEW                     ││ 16:49 ✎ hooks/theme.ts                          │
-│ L sonnet   ⠙ 302 ││ ◎ TASK-302 limits.ts          ││ 16:49 ❯ npm test 2>&1 | tail -15                │
-│ W sonnet   ⠋ 305 ││ QUEUED · DONE ▸ 13            ││                                                 │
-└──────────────────┘└───────────────────────────────┘└─────────────────────────────────────────────────┘
+◎ ANILDEV  // MULTI-AGENT CODING COCKPIT                ⎇ api   ● executing   3 agents   $12.40   15:24:36
+┌ MISSIONS ──────────┐┌ API / ADD JOB RETRY ENDPOINT   ⎇ main  #a1b2c3  ● executing  12m ┐┌ TASKS (8)  3 done ────── + New mission ┐
+│ ▌● Job retry  3/8  ││ ● architect ─ ● debate ─ ● plan ─ ◉ build ─ ○ integrate …          ││ ● Implement retry endpoint backend ▕████▏ build │
+│   ✓ Audit log 4/4  ││ ▕████████████▏ 38%                                                 ││ ◉ Retry button UI      frontend ▕█████▏ review│
+├ AGENTS ── 3 working┤│ 1 Log  2 Task  3 Events  4 Report                                   ││ ○ Integration tests    test     ▕     ▏ queued│
+│ ◉ super   opus  idle││ 15:24:20 [BACKEND ] ✔ completed: JobRetryController + tests        │├ AGENT: BACKEND ──────── ● working 2m18s ┤
+│ ◉ lead  sonnet think││ 15:24:12 [ORCH    ] ✔ test.passed task TASK-101                    ││ src/…/JobRetryService.java            M │
+│ ◉ backend sonnet run││ 15:23:58 [LEAD    ] ◎ Read src/…/JobRetryService.java              ││ src/…/JobRetryRequest.java            A │
+│ SEATS · SPEND      ││ 15:23:31 [BACKEND ] ✎ Edit src/…/JobRetryController.java          ││                                         │
+├────────────────────┤└─────────────────────────────────────────────────────────────────────┘└─────────────────────────────────────────┘
+│                    │┌ CODE PREVIEW  …/JobRetryController.java ──┐┌ TERMINAL ───────────────┐┌ AGENT OUTPUT (backend) ────────────────┐
+│                    ││   12   12   @RestController                ││ $ mvn test               ││ 15:24 ✦ completed: endpoint + 12 tests  │
+│                    ││        15 + @PostMapping("/{id}/retry")    ││ Tests run: 34, Failures 0││ 15:23 ▍ Writing the audit test next…    │
+└────────────────────┘└────────────────────────────────────────────┘└──────────────────────────┘└─────────────────────────────────────────┘
  j: down  k: up  h: agents  l: tasks  │ 1-4 view │  n: new  p: report  d: dashboard  x: stop
 ```
 
-- **Header:** one animated row with the mission and its vitals; below it the run's status and the
-  lifecycle stepper.
-- **NEEDS YOU:** shows only while a decision waits on you; long texts open with *show all*.
+- **Header:** the brand, and the mission's repository, status, working agents, spend and clock.
+- **NEEDS YOU:** shows only while a decision waits on you (`a` approve, `c` changes, `r` reject).
 - **MISSIONS:** every run with its progress; a press switches (`m` cycles).
-- **AGENTS:** the Supervisor and Lead seats and every working worker: what each is doing and its
-  last words; earlier sessions to read back; the seats and their efforts (`v`/`b` seats,
-  `f`/`g`/`w` effort, live on a running mission); spend per agent.
-- **TASKS:** grouped by what they need (attention, running, review, queued; done and cancelled
-  folded, `o` opens them), the selection always in view; a press opens the task.
-- **Right panel:** `1` **Live** — the followed agent's stream, newest on top: `▍` what it says it is
-  doing (every model narrates one line per step), `∴` reasoning where the model publishes it
-  (Codex), tool calls (`◎` read, `✎` edit, `❯` shell; ▸ opens the whole call) and `✦` what the
-  call concluded (a plan's tasks, a review's verdict and issues, a ruling); `2` **Task** — the
-  whole task: description, acceptance criteria, scope, worker summary, latest review; `3`
+- **AGENTS:** the Supervisor, the Lead and every working worker (tagged by its task's specialty),
+  each `running`, `thinking` or `idle`; earlier sessions to read back; the seats and efforts
+  (`v`/`b` seats, `f`/`g`/`w` effort, live on a running mission); spend per agent.
+- **Centre:** the mission (repository / request, branch, run, status, elapsed), the animated
+  lifecycle and progress, then `1` **Log** — one feed of every agent and the orchestrator, newest
+  on top: what each model says it is doing, tools (`◎` read, `✎` edit, `❯` shell), reasoning
+  where the model publishes it (`∴`, Codex), `✔` outcomes (a plan, a verdict, a ruling) and
+  milestones (tests, reviews, integration); `2` **Task** — the selected task in full; `3`
   **Events**; `4` **Report** (long reports render in parts).
-- **Keys:** `j`/`k` move in the focused list, `h`/`l` switch between agents and tasks, `n` new
-  mission, `a`/`c`/`r` decide, `p` report, `d` dashboard, `t` retry a failed mission, `s`/`x`
-  start/stop the orchestrator. The footer shows what the focus offers.
+- **TASKS:** each task's specialty, title and how far through the pipeline it is (queued, build,
+  test, review, done); finished work folds (`o`). A press selects it.
+- **AGENT:** the followed agent's state and the files its task changed in its worktree (`M`/`A`/`D`).
+- **CODE PREVIEW:** the biggest change of the task in focus, with old and new line numbers.
+- **TERMINAL:** the orchestrator's last run of that task's tests, and its `git status`.
+- **AGENT OUTPUT:** the followed agent's own stream (▸ opens a tool call or an outcome whole).
+- **Keys:** `j`/`k` move in the focused list, `h`/`l` switch between agents and tasks, `1`–`4`
+  pick the centre view, `n` new mission, `p` report, `d` dashboard, `t` retry a failed mission,
+  `s`/`x` start/stop the orchestrator.
+- **Look:** phosphor green by default; `COCKPIT_THEME=neon` for the violet/cyan/pink palette.
+  `COCKPIT_BRAND` sets the name in the header (default `ANILDEV`).
 - **Motion:** 60 fps while a mission runs (the header at the 16 ms frame; the other animated
   rasters every ≥ 66 ms; all of them under 100 blits/s, below the host's ~120/s intake), 1/s at
-  rest, frozen with `COCKPIT_REDUCED_MOTION=1`. Narrower panes put the missions and agents in
-  strips above the tasks and the right panel.
+  rest, frozen with `COCKPIT_REDUCED_MOTION=1`. From 130 columns the pane is the grid above;
+  narrower, it becomes two columns, then one.
+
+The worktree data (changed files, code preview) is read by the daemon every 3 s for tasks in
+progress; the rest comes from the snapshot it writes on every event.
 
 A toast announces every new decision request. The cockpit is presentation only: it reads the
 snapshot the orchestrator writes and sends decisions through the CLI.

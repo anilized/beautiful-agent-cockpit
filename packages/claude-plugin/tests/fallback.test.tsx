@@ -163,7 +163,7 @@ test('desktop: no raster, no blits, hero and telemetry as text', async ($, on) =
   const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'desktop', ...pane(100) })
   await clock.advance(3000)
   expect(st.blits).toEqual([])
-  expect(await ui.find({ type: 'Text', text: /AGENT COCKPIT/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /MULTI-AGENT CODING COCKPIT/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /▕/ })).toBeDefined() // telemetry bars
   await ui.unmount()
 })

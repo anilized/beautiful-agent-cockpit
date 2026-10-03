@@ -184,6 +184,7 @@ test('rows open to show the whole task, event or Minds entry', async ($, on) => 
   const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(100) })
   expect(await ui.find({ type: 'Text', text: /collapses repeated dashes/ })).toBeUndefined()
   await ui.press({ key: 'task-pick-TASK-102' })
+  await ui.press({ key: 'tab-task' })
   expect(await ui.find({ type: 'Text', text: /collapses repeated dashes/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /empty input throws/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /test\/strings\.test\.js/ })).toBeDefined()
@@ -265,4 +266,55 @@ test('every mission is listed and a press switches to it, at every width', async
     expect([cols, !!(await ui.find({ type: 'Text', text: /mission 1\/2/ }))]).toEqual([cols, true])
     await ui.unmount()
   }
+})
+
+test('the grid shows the unified log, the agent focus files, a code preview and the terminal', async ($, on) => {
+  const snap = JSON.parse(LIVE)
+  const run = snap.runs[0]
+  const t = run.tasks[1] // TASK-102, running
+  t.specialty = 'backend'
+  t.live = {
+    files: [{ status: 'M', path: 'src/strings.js' }, { status: 'A', path: 'test/strings.test.js' }],
+    preview: { file: 'src/strings.js', diff: '@@ -1,2 +1,3 @@\n export const a = 1\n-export const slug = s => s\n+export const slug = s => s.toLowerCase()\n+export const cap = s => s' },
+  }
+  t.detail = {
+    description: 'strings', kind: 'implementation', risk: 'low', complexity: 'low', acceptanceCriteria: [], scope: { files: ['src/strings.js'], modules: [], resources: [] },
+    testsRequired: true, testCommand: 'node --test', summary: null, review: null,
+    validation: { command: 'node --test test/strings.test.js', passed: true, skipped: false, output: 'TAP version 13\nok 1 - slugify\n# pass 1' },
+  }
+  run.minds = [{
+    sessionId: 'ses_w', agentId: 'sonnet', role: 'worker', task: 'TASK-102', contract: 'WorkerResult', effort: null, status: 'active',
+    startedAt: '2026-10-03T13:23:33.674Z', endedAt: null,
+    activity: [
+      { ts: '2026-10-03T13:23:40.000Z', kind: 'text', text: 'Writing the slugify edge cases first.' },
+      { ts: '2026-10-03T13:23:41.000Z', kind: 'tool', text: 'Edit: src/strings.js' },
+    ],
+  }]
+  on('fs.read', async () => ({ value: JSON.stringify(snap) }))
+  mock.clock(on)
+  mock.env(on, { COCKPIT_DATA_DIR: '/data', COCKPIT_THEME: 'neon', COCKPIT_BRAND: 'TESTCO' })
+  on('command.register', async () => ({ value: undefined }) as never)
+  on('session.start', async (_, e) => ({ cwd: e.cwd }))
+  on('ui.status', async () => ({ value: undefined }) as never)
+  on('ui.toast', async () => ({ value: undefined }) as never)
+  on('process.run', async () => ({ value: { exitCode: 0, stdout: '', stderr: '' } }) as never)
+  await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
+  for (const cols of [60, 140]) {
+    const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: cols === 60 ? 'desktop' : 'terminal', ...pane(cols) })
+    const has = async (re: RegExp) => expect([String(re), cols, !!(await ui.find({ type: 'Text', text: re }))]).toEqual([String(re), cols, true])
+    await has(/\[BACKEND +\]/) // the worker's tag comes from its task's specialty
+    await has(/Writing the slugify edge cases/)
+    await has(/\[ORCH +\]/) // orchestrator milestones join the log
+    await has(/AGENT: BACKEND/)
+    await has(/test\/strings\.test\.js/) // focus files
+    await has(/toLowerCase/) // code preview
+    await has(/node --test test\/strings\.test\.js/) // terminal
+    await has(/✔ passed/)
+    await has(/new file:/) // git status in the terminal
+    await ui.unmount()
+  }
+  // the brand and theme came from the environment
+  const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'desktop', ...pane(140) })
+  expect(await ui.find({ type: 'Text', text: /TESTCO/ })).toBeDefined()
+  await ui.unmount()
 })

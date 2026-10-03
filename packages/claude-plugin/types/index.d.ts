@@ -5,6 +5,8 @@ export type CockpitTask = {
   agentId: string | null
   repo: string
   iteration: number
+  /** The task's branch in its worktree, once it started. */
+  branch?: string | null
   dependsOn: string[]
   blockedReason: string | null
   /** The kind of worker the task asks for (backend, frontend, test, ...); absent from an older orchestrator. */
