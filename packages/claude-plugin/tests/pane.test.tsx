@@ -244,3 +244,25 @@ test('a report longer than one Markdown element is drawn whole, in parts', async
   expect(await ui.find({ key: 'tab-live' })).toBeDefined()
   await ui.unmount()
 })
+
+test('every mission is listed and a press switches to it, at every width', async ($, on) => {
+  on('fs.read', async () => ({ value: LIVE }))
+  mock.clock(on)
+  mock.env(on, { COCKPIT_DATA_DIR: '/data' })
+  on('command.register', async () => ({ value: undefined }) as never)
+  on('session.start', async (_, e) => ({ cwd: e.cwd }))
+  on('ui.status', async () => ({ value: undefined }) as never)
+  on('ui.toast', async () => ({ value: undefined }) as never)
+  on('process.run', async () => ({ value: { exitCode: 0, stdout: '', stderr: '' } }) as never)
+  await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
+  for (const cols of [60, 100, 140]) {
+    const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(cols) })
+    expect(await ui.find({ key: 'pick-run_41bbf3a0c6ee44bf' })).toBeDefined()
+    expect(await ui.find({ key: 'pick-run_older0000000001' })).toBeDefined()
+    await ui.press({ key: 'pick-run_older0000000001' })
+    expect([cols, !!(await ui.find({ type: 'Text', text: /mission 2\/2/ }))]).toEqual([cols, true])
+    await ui.press({ key: 'pick-run_41bbf3a0c6ee44bf' })
+    expect([cols, !!(await ui.find({ type: 'Text', text: /mission 1\/2/ }))]).toEqual([cols, true])
+    await ui.unmount()
+  }
+})

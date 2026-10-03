@@ -847,7 +847,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         ))}
       </Text>
     )
-    const missionNav = s.runs.length > 1 ? 16 : 0
+    const missionNav = 0
     const statusLabel = `${glyph(run.status, n)} ${run.status.replace(/_/g, ' ').toUpperCase()}`
     const statusW = statusLabel.length + 3
     const pipeW = Math.max(20, cols - 2 - missionNav - statusW)
@@ -858,12 +858,6 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           <Text color={C.dim}>{run.round ? `round ${run.round}` : ''}</Text>
         </Box>
         {raster('pipeline', pipeW, 2, live, t => paint.pipeline(pipeW, 2, t, { steps: stepNames, phase, fill: fillE(t), failed, color: paint.hex(runColor) }), textStepper)}
-        {missionNav ? (
-          <Box flexDirection="column" width={missionNav} alignItems="flex-end">
-            <Text color={C.dim}>mission {runIdx + 1}/{s.runs.length}</Text>
-            <Button plain dimColor hotkey="m" key="next" label="next" onPress={() => select(s.runs[(runIdx + 1) % s.runs.length]!.id)} />
-          </Box>
-        ) : null}
       </Box>
     )
     const dividerW = Math.max(1, cols - 2)
@@ -1088,14 +1082,70 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       </Box>
     )
 
+    // ── missions: every run at a glance; a press (or m) switches ──
+
+    const MISSION_ROWS = 6
+    const missionRows = s.runs.slice(0, MISSION_ROWS)
+    const waiting = (id: string) => s.pendingApprovals.some(a => a.runId === id)
+    const missionTitle = (
+      <Box justifyContent="space-between">
+        <Text color={C.mute} bold>MISSIONS <Text color={C.dim}>mission {runIdx + 1}/{s.runs.length}</Text></Text>
+        {s.runs.length > 1 ? <Button plain dimColor hotkey="m" key="next" label="next" onPress={() => select(s.runs[(runIdx + 1) % s.runs.length]!.id)} /> : null}
+      </Box>
+    )
+    const MissionRow = ({ r }: { r: CockpitRun }) => {
+      const picked = r.id === run.id
+      const rc = STATUS_COLOR[r.status] ?? C.text
+      const rd = r.tasks.filter(isDone).length
+      const meta = `${r.tasks.length ? `${rd}/${r.tasks.length}` : r.status.replace(/_/g, ' ')}`
+      return (
+        <Box key={`row-${r.id}`} justifyContent="space-between" hover={{ backgroundColor: C.hover }} backgroundColor={picked ? C.chipOn : undefined}>
+          <Box flexShrink={1}>
+            <Text color={picked ? C.accent : C.bgDeep}>▌</Text>
+            <Text color={MOVING.has(r.status) ? pulse(n, rc, C.white, 0.4) : rc}>{glyph(r.status, n)} </Text>
+            <Button plain dimColor={!picked} key={`pick-${r.id}`} label={clip(firstLine(r.request), Math.max(8, agentsW - 14 - meta.length))} onPress={() => select(r.id)} />
+          </Box>
+          <Text>
+            {waiting(r.id) ? <Text color={pulse(n, C.yellow, C.accent, 0.5)}>● </Text> : null}
+            <Text color={C.dim}>{meta}</Text>
+          </Text>
+        </Box>
+      )
+    }
+    const missionsH = wide ? Math.min(s.runs.length, MISSION_ROWS) + (s.runs.length > MISSION_ROWS ? 1 : 0) + 3 : 0
+    const missionsPanel = wide ? (
+      <Box flexDirection="column" borderStyle="round" borderColor={C.border} paddingX={1} width={agentsW} height={missionsH} overflow="hidden">
+        {missionTitle}
+        {missionRows.map(r => <MissionRow r={r} />)}
+        {s.runs.length > MISSION_ROWS ? <Text color={C.dim}>  … {s.runs.length - MISSION_ROWS} older (dashboard lists all)</Text> : null}
+      </Box>
+    ) : (
+      <Box flexDirection="column" borderStyle="round" borderColor={C.border} paddingX={1}>
+        {missionTitle}
+        <Box flexWrap="wrap" gap={1}>
+          {missionRows.map(r => {
+            const picked = r.id === run.id
+            return (
+              <Box key={`chip-${r.id}`} backgroundColor={picked ? C.chipOn : undefined} paddingX={1} hover={{ backgroundColor: C.hover }}>
+                <Text color={STATUS_COLOR[r.status] ?? C.text}>{glyph(r.status, n)} </Text>
+                <Button plain dimColor={!picked} key={`pick-${r.id}`} label={clip(firstLine(r.request), 26)} onPress={() => select(r.id)} />
+                {waiting(r.id) ? <Text color={pulse(n, C.yellow, C.accent, 0.5)}> ●</Text> : null}
+              </Box>
+            )
+          })}
+        </Box>
+      </Box>
+    )
+
     // ── body height: what the header, the strips and the footer leave ──
 
     const chrome = 1 + 2 + 1 + 2 + approvalRows + (u.failure ? 5 : 0) + (u.composing?.kind === 'run' ? 9 : 0) + (run.error ? 1 : 0)
     const agentsStripH = wide ? 0 : 4 + (agentRows.length > Math.max(1, Math.floor((cols - 4) / 30)) ? 2 : 0) + (tel.byAgent?.length ?? 0)
-    const bodyH = Math.max(12, rows - chrome - agentsStripH)
+    const missionsStripH = wide ? 0 : 3 + Math.ceil(missionRows.length / Math.max(1, Math.floor((cols - 4) / 32)))
+    const bodyH = Math.max(12, rows - chrome - agentsStripH - missionsStripH)
 
     const agentsPanel = wide ? (
-      <Box flexDirection="column" borderStyle="round" borderColor={u.focus === 'agents' ? C.violet : C.border} paddingX={1} width={agentsW} height={bodyH} overflow="hidden">
+      <Box flexDirection="column" borderStyle="round" borderColor={u.focus === 'agents' ? C.violet : C.border} paddingX={1} width={agentsW} height={Math.max(8, bodyH - missionsH)} overflow="hidden">
         <Box justifyContent="space-between">
           <Text color={u.focus === 'agents' ? C.violet : C.mute} bold>AGENTS</Text>
           <Text color={C.dim}>{minds.filter(m => m.status === 'active').length || run.workers.length} working</Text>
@@ -1404,17 +1454,22 @@ async function drawPane($: EngineInterface, e: PaneRender) {
 
     const body = wide ? (
       <Box>
-        {agentsPanel}
+        <Box flexDirection="column" width={agentsW}>
+          {missionsPanel}
+          {agentsPanel}
+        </Box>
         {tasksPanel}
         {rightPanel}
       </Box>
     ) : medium ? (
       <Box flexDirection="column">
+        {missionsPanel}
         {agentsPanel}
         <Box>{tasksPanel}{rightPanel}</Box>
       </Box>
     ) : (
       <Box flexDirection="column">
+        {missionsPanel}
         {agentsPanel}
         {tasksPanel}
         {rightPanel}
