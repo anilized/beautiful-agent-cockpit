@@ -184,7 +184,7 @@ async function createLife($: EngineInterface): Promise<Life> {
       every: (ms, fn) => { const t = $.clock.every(ms, stamp(fn)); return () => t.cancel() },
       after: (ms, fn) => { const t = $.clock.after(ms, stamp(fn)); return () => t.cancel() },
     },
-    blit: async (key, cells) => {
+    blit: async (key, cells) => { // UiBlitResult.deny: absent when taken, else why not (d.ts)
       const r = await $.ui.blit({ requestId: PANE, key, cells })
       if (r && 'deny' in r && r.deny) l.denied.set(key, l.T) // the next render must not re-register it at once
       return r
