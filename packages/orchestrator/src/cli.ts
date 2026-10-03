@@ -93,9 +93,13 @@ function printRun(r: RunView & { report?: string | null }): void {
   console.log(`\n${r.id}  [${r.status}]  round ${r.round}${r.error ? `  error: ${r.error}` : ''}`);
   console.log(`  request:    ${r.request.split('\n')[0]!.slice(0, 100)}`);
   const seat = (s: RunView['council'][number]) => `${s.id} ${s.agent}${s.effort ? `@${s.effort}` : ''}${s.area ? ` [${s.area}]` : ''} (${s.state})`;
-  console.log(`  council:    ${r.council.map(seat).join(' · ')}`);
-  console.log(`  leads:      ${r.leads.map(seat).join(' · ')}`);
-  if (r.team.length) console.log(`  team:       ${r.team.map((p) => `${p.id} ${p.agent}${p.effort ? `@${p.effort}` : ''}`).join(' · ')}`);
+  // An older daemon sends only the two seats.
+  if (!r.council) console.log(`  supervisor: ${r.roles.supervisor} (${r.leadership.supervisor})   lead: ${r.roles.lead} (${r.leadership.lead})`);
+  else {
+    console.log(`  council:    ${r.council.map(seat).join(' · ')}`);
+    console.log(`  leads:      ${r.leads.map(seat).join(' · ')}`);
+  }
+  if (r.team?.length) console.log(`  team:       ${r.team.map((p) => `${p.id} ${p.agent}${p.effort ? `@${p.effort}` : ''}`).join(' · ')}`);
   for (const repo of r.repositories) console.log(`  repo ${repo.name}: ${repo.path} (${repo.baseBranch})${repo.integration ? ` -> ${repo.integration.branch} tests ${repo.integration.passed ? 'passed' : 'FAILED'}` : ''}`);
   if (r.tasks.length) {
     console.log('  tasks:');
