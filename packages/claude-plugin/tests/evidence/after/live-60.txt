@@ -1,14 +1,14 @@
 # after @ 60 columns, LIVE fixture, harness mock t=0 (decoded Raster cells; not a terminal screenshot)
 
-## hero 60x4 colour-pairs=101
+## hero 60x4 colour-pairs=111
 row0 chars |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
 row0 fg    24233a 2c2751 22d3ee 4cbdf2 4cbdf2 2a2a51 75a6f6 9f90f9 9f90f9 29294e d27dd4 d27dd4 ea75bf 29264c f6779f 292448 fa7e7a 292448 fd8654 ff913a ff913a 292448 fda132 fcb22a edc031 282145 aac770 aac770 66cdaf 282145 1d1927 151310 151310 151310 151310 151310 151310 151310 151310 161816 161816 161816 161816 161816 161816 161816 161816 161d1d 161d1d 161d1d 161d1d 161d1d 161d1d 161d1d 162222 162222 162222 162222 162222 162222
-row0 bg    232b3d 2c2d53 22d3ee 2b2b51 2b2b51 2b2b51 75a6f6 2b294e 9f90f9 2b294e d27dd4 2b294e 2a264a 2a264a f6779f 2a264a fa7e7a 2a2247 fd8654 2a2247 ff913a 2a2247 2a2247 fcb22a 2a2247 201b2a 2a2247 aac770 2a2247 201b2a 181513 181513 181513 181513 181513 181513 181513 181513 181513 181513 181513 181513 191c1a 191c1a 191c1a 191c1a 191c1a 191c1a 1a2221 1a2221 1a2221 1a2221 1a2221 1a2221 1a2727 1a2727 1a2727 1a2727 1a2727 1a2727
+row0 bg    232b3d 2c2d53 20c6e0 2b2b51 2b2b51 2b2b51 6e9ce7 2b294e 9587ea 2b294e c576c7 2b294e 2a264a 2a264a e77095 2a264a eb7673 2a2247 ee7e4f 2a2247 f08837 2a2247 2a2247 eda727 2a2247 201b2a 2a2247 a0bb69 2a2247 201b2a 181513 181513 181513 181513 181513 181513 181513 181513 181513 181513 181513 181513 191c1a 191c1a 191c1a 191c1a 191c1a 191c1a 1a2221 1a2221 1a2221 53536a 1a2221 1a2221 1a2727 1a2727 1a2727 1a2727 1a2727 1a2727
 row1 chars |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
-row1 fg    232b3d 2b2b51 22d3ee 2b2b51 212939 2b2b51 75a6f6 2b294e 9f90f9 2b294e d27dd4 2a264a 20202f 2a264a f6779f f6779f 2a2247 2a2247 fd8654 ff913a ff913a 2a2247 2a2247 fcb22a 2a2247 201b2a 2a2247 aac770 2a2247 201b2a 181513 181513 181513 181513 181513 181513 181513 181513 181513 191c1a 191c1a 191c1a 191c1a 191c1a 191c1a 191c1a 1a2221 1a2221 1a2221 1a2221 1a2221 1a2221 1a2727 1a2727 1a2727 1a2727 1a2727 1c2a2c 1c2a2c 1c2a2c
-row1 bg    252f42 2d2f56 22d3ee 2c2e53 2c2e53 2c2e53 75a6f6 2c2b50 9f90f9 2c2b50 d27dd4 2c2b50 2c274c 2c274c f6779f 2c274c fa7e7a 2c274c fd8654 2c274c 2c274c 221d2b 2b2448 fcb22a 2b2448 221d2b 2b2448 aac770 2b2448 221d2b 1b1815 1b1815 1c1f1d 1c1f1d 1c1f1d 1c1f1d 1c1f1d 1c1f1d 1c1f1d 1c1f1d 1c1f1d 1d2625 1d2625 1d2625 1d2625 1d2625 1d2625 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1f2f32 1f2f32 1f2f32 1f2f32 1f2f32 1f2f32 252834 252834
+row1 fg    232b3d 2b2b51 1ebad1 2b2b51 212939 2b2b51 6792d8 2b294e 8c7fdb 2b294e b96ebb 2a264a 20202f 2a264a d8698c d8698c 2a2247 2a2247 df764a e08033 e08033 2a2247 2a2247 de9d25 2a2247 201b2a 2a2247 96af63 2a2247 201b2a 181513 181513 181513 181513 181513 181513 181513 181513 181513 191c1a 191c1a 191c1a 191c1a 191c1a 191c1a 191c1a 1a2221 1a2221 1a2221 1a2221 1a2221 1a2221 1a2727 1a2727 1a2727 1a2727 1a2727 1c2a2c 1c2a2c 1c2a2c
+row1 bg    252f42 2d2f56 1cadc3 2c2e53 2c2e53 2c2e53 6088ca 2c2b50 8276cc 2c2b50 ac67ae 2c2b50 2c274c 2c274c ca6282 2c274c cd6764 2c274c cf6e45 2c274c 2c274c 221d2b 2b2448 cf9222 2b2448 221d2b 2b2448 8ba35c 2b2448 221d2b 1b1815 1b1815 1c1f1d 1c1f1d 1c1f1d 1c1f1d 1c1f1d 545168 1c1f1d 1c1f1d 1c1f1d 1d2625 1d2625 1d2625 1d2625 1d2625 1d2625 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1f2f32 1f2f32 1f2f32 1f2f32 1f2f32 1f2f32 252834 252834
 row2 chars |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
-row2 fg    252f42 2d2f56 22d3ee 4cbdf2 4cbdf2 2c2e53 75a6f6 9f90f9 9f90f9 2c2e53 d27dd4 d27dd4 ea75bf 2c2b50 f6779f 2c2b50 fa7e7a 2c2b50 fd8654 2c2b50 242838 2c274c fda132 fcb22a edc031 2c274c 2c274c aac770 2c274c 242838 1d2625 1d2625 1d2625 1d2625 1d2625 1d2625 1d2625 1d2625 1d2625 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1f2f32 1f2f32 1f2f32 1f2f32 1f2f32 1f2f32 252834 252834 252834 252834 252834 252834 2b2036 2b2036
+row2 fg    252f42 2d2f56 1aa0b5 3a90b8 3a90b8 2c2e53 597ebb 796dbd 796dbd 2c2e53 a05fa1 a05fa1 b25991 2c2b50 bb5a79 2c2b50 be605d 2c2b50 c06640 2c2b50 242838 2c274c c07a26 c08720 b49225 2c274c 2c274c 819755 2c274c 242838 1d2625 1d2625 1d2625 1d2625 1d2625 1d2625 1d2625 1d2625 1d2625 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1f2f32 1f2f32 1f2f32 1f2f32 1f2f32 1f2f32 252834 252834 252834 252834 252834 252834 2b2036 2b2036
 row2 bg    252834 2a2a43 302c57 302c57 302c57 2a2a43 2d2f56 2d2f56 2d2f56 252f42 2d2f56 2d2f56 2d2f56 242d3d 2c2e53 242d3d 2c2e53 242d3d 2c2e53 242d3d 1d2c2c 242d3d 2c2e53 2c2e53 2c2e53 242d3d 242d3d 2c2e53 242d3d 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1d2c2c 1f2f32 1f2f32 1f2f32 1f2f32 1f2f32 1f2f32 1f2f32 1f2f32 252834 252834 252834 252834 252834 252834 2b2036 2b2036 2b2036 2b2036 2b2036 2b2036 2b2036 2b2036
 row3 chars |▀▀opus ▸ codex ▸ workers▀▀▀▀▀▀▀▀▀▀●▀online :4317  00:00:00▀▀|
 row3 fg    24192a 261c30 c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd 232b3d 1c2a2c 1c2a2c 232b3d 1c2a2c 1c2a2c 1c2a2c 1c2a2c 1c2a2c 1c2a2c 1d9970 1c2a2c e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb 24192a 24192a
@@ -19,9 +19,9 @@ row0 chars |──────────────────────�
 row0 fg    4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b
 row0 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
 
-## pipeline 56x2 colour-pairs=17
+## pipeline 56x2 colour-pairs=18
 row0 chars |   ●━━━━━━●━━━━━━●━━━━━━●━━━━━━●━━━━━━●━━━━━━◉━━━━━━○   |
-row0 fg    dflt   dflt   dflt   34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 fcd266 715610 715610 8d6b14 a88018 c4951c d5a52b 52525b dflt   dflt   dflt  
+row0 fg    dflt   dflt   dflt   34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 8a7238 fcd266 8a7238 715610 8d6b14 a88018 c4951c d5a52b 52525b dflt   dflt   dflt  
 row0 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
 row1 chars | archi  debat  plan   build  integ  valid  appro  merge |
 row1 fg    dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   ffffff ffffff ffffff ffffff ffffff dflt   dflt   71717a 71717a 71717a 71717a 71717a dflt  
@@ -44,27 +44,27 @@ row0 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
 
 ## orb-sup 4x2 colour-pairs=3
 row0 chars |▄▀▀▄|
-row0 fg    211c32 211c32 211c32 211c32
-row0 bg    dflt   69579c 69579c dflt  
+row0 fg    332b4d 332b4d 332b4d 332b4d
+row0 bg    dflt   574882 574882 dflt  
 row1 chars |▀▀▀▀|
-row1 fg    211c32 69579c 69579c 211c32
-row1 bg    dflt   211c32 211c32 dflt  
+row1 fg    332b4d 574882 574882 332b4d
+row1 bg    dflt   332b4d 332b4d dflt  
 
 ## orb-lead 4x2 colour-pairs=3
 row0 chars |▄▀▀▄|
-row0 fg    072a30 072a30 072a30 072a30
-row0 bg    dflt   168495 168495 dflt  
+row0 fg    0b4149 0b4149 0b4149 0b4149
+row0 bg    dflt   126e7c 126e7c dflt  
 row1 chars |▀▀▀▀|
-row1 fg    072a30 168495 168495 072a30
-row1 bg    dflt   072a30 072a30 dflt  
+row1 fg    0b4149 126e7c 126e7c 0b4149
+row1 bg    dflt   0b4149 0b4149 dflt  
 
-## orb-w0 4x2 colour-pairs=4
+## orb-w0 4x2 colour-pairs=6
 row0 chars |▄▀▀▄|
-row0 fg    0a2a1f 0a2a1f 0a2a1f 0a2a1f
-row0 bg    dflt   a5c7bb 1d7454 dflt  
+row0 fg    335a4c 335a4c 0f3d2c 0f3d2c
+row0 bg    dflt   80a99a 3b7a63 dflt  
 row1 chars |▀▀▀▀|
-row1 fg    0a2a1f 1d7454 1d7454 0a2a1f
-row1 bg    dflt   0a2a1f 0a2a1f dflt  
+row1 fg    0f3d2c 3b7a63 186247 0f3d2c
+row1 bg    dflt   0f3d2c 0f3d2c dflt  
 
 ## meters 56x3 colour-pairs=22
 row0 chars |codex 7  ███████████████████████████████████████████████|
@@ -75,5 +75,163 @@ row1 fg    9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af dflt   dflt   dflt   5c4c8a
 row1 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26
 row2 chars |sonnet 5 █████████████████████████████████▌             |
 row2 fg    9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af dflt   1d7454 1d7454 1d7454 1d7454 218460 218460 218460 218460 218460 218460 218460 218460 25946b 25946b 25946b 25946b 25946b 25946b 25946b 25946b 29a477 29a477 29a477 29a477 29a477 29a477 29a477 2cb382 2cb382 2cb382 2cb382 2cb382 96d9c1 2cb382 dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+row2 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26
+
+# after @ 60 columns, LIVE fixture, harness mock t=500 (decoded Raster cells; not a terminal screenshot)
+
+## hero 60x4 colour-pairs=118
+row0 chars |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+row0 fg    28212f 2e284a 9fe0cd 4bdbf1 22d3ee 2e284a 4cbdf2 75a6f6 9f90f9 2d2748 ba85e9 ba85e9 d27dd4 2d2647 ea75bf 2d2647 f6779f 2d2647 fa7e7a fd8654 fd8654 2d2445 fda132 fda132 fcb22a 2d2445 edc031 edc031 aac770 2d2445 251e27 1f1910 1f1910 1f1910 1f1c14 1f1c14 1f1c14 1f1c14 1f1c14 1f1c14 1f1c14 1f1c14 1f1c14 1f1f16 1f1f16 1f1f16 1f1f16 1f1f16 1f1f16 1f1f16 1f1f16 21211a 21211a 21211a 21211a 21211a 21211a 21211a 21211a 21211a
+row0 bg    2a2731 302a4c 95d3c1 302a4a 302a4a 302a4a 47b2e3 302849 9587ea 302849 af7ddb 302647 302647 302647 dc6eb4 302647 e77095 302647 eb7673 2f2444 ee7e4f 2f2444 2f2444 ee972f 2f2444 281e26 2f2444 dfb42e 2f2444 281e26 23190e 23190e 241c13 241c13 241c13 241c13 241c13 241c13 241c13 241c13 241c13 241c13 242017 242017 242017 242017 242017 595264 242017 24241a 24241a 595466 24241a 24241a 24241a 24241a 24241a 25251d 25251d 25251d
+row1 chars |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+row1 fg    29262f 302a4a 8cc5b4 302849 29232d 302849 43a6d5 302849 8c7fdb 302647 a475cd 302647 29202a 2f2444 ce67a8 d8698c 2f2444 2f2444 dc6f6b df764a df764a 2f2444 2f2444 df8e2c 2f2444 281e26 2f2444 d1a92b 2f2444 281e26 23190e 23190e 23190e 23190e 23190e 23190e 241c13 241c13 241c13 241c13 241c13 241c13 241c13 242017 242017 242017 242017 242017 242017 242017 24241a 24241a 24241a 24241a 24241a 24241a 24241a 25251d 25251d 25251d
+row1 bg    2c2a31 322a4a 82b8a8 322a4a 322a4a 322a4a 3e9bc6 322848 8276cc 322848 996dbf 322848 312645 312645 c0609d 312645 ca6282 312645 cd6764 312645 312645 2b2027 312645 cf8429 312645 2b2027 312645 c29d28 312645 2b2027 271c10 271c10 271c10 271c10 282015 282015 282015 282015 282015 282015 282015 28241a 28241a 28241a 28241a 28241a 28241a 28281d 28281d 28281d 28281d 28281d 28281d 2a2a21 2a2a21 2a2a21 2a2a21 2a2a21 2a2a21 2a2a21
+row2 chars |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+row2 fg    2c2a31 322c4c 79aa9c 39a6b7 1aa0b5 322a4a 3a90b8 597ebb 796dbd 322848 8d65b1 8d65b1 a05fa1 322848 b25991 322848 bb5a79 312645 be605d 312645 2b2027 312645 c07a26 c07a26 c08720 312645 322848 b49225 322848 2c232b 282015 282015 282015 282015 282015 282015 28241a 28241a 28241a 28241a 28241a 28241a 28281d 28281d 28281d 28281d 28281d 28281d 2a2a21 2a2a21 2a2a21 2a2a21 2a2a21 2a2a21 2d2522 2d2522 2d2522 2d2522 2d2522 2d2522
+row2 bg    28281d 2c2a31 322c4c 322c4c 322c4c 2c2a31 322a4a 322a4a 322a4a 2c262f 322a4a 322a4a 322a4a 2c262f 322a4a 2c262f 322848 2c232b 322848 2c232b 282015 2c232b 322848 322848 322a4a 2c262f 2c262f 322a4a 2c262f 28241a 28241a 28241a 28241a 28241a 28241a 28281d 28281d 28281d 28281d 28281d 28281d 2a2a21 2a2a21 2a2a21 2a2a21 2a2a21 2a2a21 2d2522 2d2522 2d2522 2d2522 2d2522 2d2522 2d2522 312123 312123 312123 312123 312123 312123
+row3 chars |▀▀opus ▸ codex ▸ workers▀▀▀▀▀▀▀▀▀▀●▀online :4317  00:00:00▀▀|
+row3 fg    28211e 25251d c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd 29262f 24241a 24241a 29262f 24241a 24241a 24241a 24241a 24241a 25251d 065f46 25251d e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb 2b1b1c 2b1b1c
+row3 bg    2b1d1f 2b1d1f 2b2228 292428 292428 27231e 292428 292428 292427 26231c 292427 272626 272626 25251c 272626 25251c 272626 25251c 272626 25251c 25251c 25251c 272626 272626 25251d 25251d 25251d 25251d 25251d 25251d 25251d 25251d 25251d 28211e 27231e 28211e 27231e 27231e 27231e 27231e 27231e 28211e 28211e 2a1f1f 2a1f1f 2a1f1f 2a1f1f 2b1d1f 2b1d1f 2b1d1f 2b1d1f 2b1d1f 2b1c1e 2b1c1e 2b1c1e 2b1b1c 2b1b1c 2b1b1c 2b1b1c 2b1b1c
+
+## divider 58x1 colour-pairs=6
+row0 chars |━━━━━━━───────────────────────────────────────────────────|
+row0 fg    b5891a b5891a d8a41f fbbf24 d8a41f b5891a b5891a 916f15 6e5410 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b
+row0 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+
+## pipeline 56x2 colour-pairs=18
+row0 chars |   ●━━━━━━●━━━━━━●━━━━━━●━━━━━━●━━━━━━●━━━━━━◉━━━━━╌○   |
+row0 fg    dflt   dflt   dflt   34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 947937 fdd97c 947937 c4951c dfaa20 fbbf24 715610 3f3f46 52525b dflt   dflt   dflt  
+row0 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+row1 chars | archi  debat  plan   build  integ  valid  appro  merge |
+row1 fg    dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   ffffff ffffff ffffff ffffff ffffff dflt   dflt   71717a 71717a 71717a 71717a 71717a dflt  
+row1 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+
+## progress 50x1 colour-pairs=13
+row0 chars |█████████████████████████████████████▌            |
+row0 fg    c1aefc b49cfb b49cfb 9197f8 9197f8 9197f8 9197f8 7ba3f6 7ba3f6 7ba3f6 7ba3f6 65aff4 65aff4 65aff4 65aff4 4ebbf2 4ebbf2 4ebbf2 4ebbf2 38c7f0 38c7f0 38c7f0 38c7f0 22d3ee 22d3ee 22d3ee 22d3ee 25d3e0 25d3e0 25d3e0 25d3e0 28d3d2 28d3d2 28d3d2 28d3d2 2bd3c4 72e2d8 2bd3c4 dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+row0 bg    1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26
+
+## spark 47x1 colour-pairs=1
+row0 chars |▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁|
+row0 fg    27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a
+row0 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+
+## underline 56x1 colour-pairs=6
+row0 chars |━━━━━━━━━━━─────────────────────────────────────────────|
+row0 fg    cc6e31 cc6e31 d2804b d99265 dfa47e e6b798 dfa47e d99265 d2804b cc6e31 cc6e31 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a
+row0 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+
+## orb-sup 4x2 colour-pairs=3
+row0 chars |▄▀▀▄|
+row0 fg    332b4d 332b4d 332b4d 332b4d
+row0 bg    dflt   574882 574882 dflt  
+row1 chars |▀▀▀▀|
+row1 fg    332b4d 574882 574882 332b4d
+row1 bg    dflt   332b4d 332b4d dflt  
+
+## orb-lead 4x2 colour-pairs=3
+row0 chars |▄▀▀▄|
+row0 fg    0b4149 0b4149 0b4149 0b4149
+row0 bg    dflt   126e7c 126e7c dflt  
+row1 chars |▀▀▀▀|
+row1 fg    0b4149 126e7c 126e7c 0b4149
+row1 bg    dflt   0b4149 0b4149 dflt  
+
+## orb-w0 4x2 colour-pairs=3
+row0 chars |▄▀▀▄|
+row0 fg    1e7858 408c71 408c71 1e7858
+row0 bg    dflt   66b599 66b599 dflt  
+row1 chars |▀▀▀▀|
+row1 fg    1e7858 25956d 25956d 1e7858
+row1 bg    dflt   1e7858 1e7858 dflt  
+
+## meters 56x3 colour-pairs=21
+row0 chars |codex 7  ███████████████████████████████████████████████|
+row0 fg    9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af dflt   dflt   137483 137483 137483 137483 168495 168495 168495 168495 168495 168495 168495 168495 1894a7 1894a7 1894a7 1894a7 1894a7 1894a7 1894a7 1894a7 1ba4b9 1ba4b9 1ba4b9 1ba4b9 1ba4b9 1ba4b9 1ba4b9 1db3ca 1db3ca 1db3ca 1db3ca 1db3ca 1db3ca 1db3ca 1db3ca 20c3dc 20c3dc 20c3dc 20c3dc 20c3dc 20c3dc 20c3dc 20c3dc 22d3ee 22d3ee 22d3ee 91e9f7
+row0 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26
+row1 chars |opus 3   ████████████████████▏                          |
+row1 fg    9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af dflt   dflt   dflt   5c4c8a 5c4c8a 5c4c8a 5c4c8a 69579d 69579d 69579d 69579d 69579d 69579d 69579d 69579d 7561af 7561af 7561af 7561af 7561af 7561af 7561af 9889c3 826cc2 dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+row1 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26
+row2 chars |sonnet 5 █████████████████████████████████▌             |
+row2 fg    9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af dflt   1d7454 1d7454 1d7454 1d7454 218460 218460 218460 218460 218460 218460 218460 218460 25946b 25946b 25946b 25946b 25946b 25946b 25946b 25946b 29a477 29a477 29a477 29a477 29a477 29a477 29a477 2cb382 2cb382 2cb382 2cb382 2cb382 2cb382 2cb382 dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+row2 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26
+
+# after @ 60 columns, LIVE fixture, harness mock t=1056 (decoded Raster cells; not a terminal screenshot)
+
+## hero 60x4 colour-pairs=113
+row0 chars |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+row0 fg    192a43 262c57 aac770 66cdaf 83d6be 242a54 b1e2f9 d2effc c3d8fb 242a54 b1a5fa 9f90f9 ba85e9 242a54 d27dd4 242750 ea75bf 242750 f6779f fa7e7a fd8654 242750 ff913a ff913a fda132 242a54 fcb22a edc031 edc031 242a54 17273e 0d252d 0d252d 0d252d 0d252d 0d252d 102834 102834 102834 102834 102834 102834 102834 102834 162135 162135 162135 162135 162135 162135 162135 162135 505278 162135 162135 162135 162135 162135 162135 1d1838
+row0 bg    1b2e49 272f5b a0bb69 252d57 252d57 252d57 a6d4ea 252953 b7cbec 252953 a69beb 252953 252953 252953 c576c7 252953 dc6eb4 25254e e77095 25254e ee7e4f 25254e 25254e f08837 25254e 181f35 252953 dfb42e 252953 19263c 0f232b 0f232b 0f232b 0f232b 0f232b 0f232b 0f232b 0f2b33 0f2b33 0f2b33 0f2b33 0f2b33 0f2b33 0f2b33 0f2b33 0f2b33 122e3b 4d5b7c 122e3b 122e3b 122e3b 4d5b7c 122e3b 122e3b 122e3b 122e3b 122e3b 122e3b 122e3b 122e3b
+row1 chars |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+row1 fg    192c43 252d57 96af63 252953 19263c 252953 9cc7db 252953 acbedd 25254e 9c91dc 25254e 181f35 25254e b96ebb ce67a8 25254e 25254e d8698c dc6f6b df764a 242149 242149 e08033 25254e 181f35 25254e d1a92b 25254e 181f35 0e1b22 0e1b22 0e1b22 0e1b22 0e1b22 0e1b22 0f232b 0f232b 0f232b 0f232b 0f232b 0f232b 0f232b 0f232b 0f2b33 0f2b33 0f2b33 0f2b33 0f2b33 0f2b33 0f2b33 0f2b33 0f2b33 122e3b 122e3b 122e3b 122e3b 122e3b 122e3b 122e3b
+row1 bg    1a2941 262b56 8ba35c 262b56 262750 262750 91b9cc 262750 a0b1ce 262750 9187cd 25224a 25224a 25224a ac67ae 25224a c0609d 25224a ca6282 25224a 25224a 181a2f 25224a d17730 25224a 181a2f 25224a c29d28 25224a 181a2f 101e26 101e26 101e26 101e26 101e26 101e26 101e26 101e26 112731 112731 112731 112731 112731 112731 112731 11303a 11303a 11303a 11303a 11303a 11303a 11303a 11303a 143443 143443 143443 143443 143443 143443 143443
+row2 chars |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+row2 fg    1a2941 262b56 819755 4e9c85 64a390 262750 87acbd a0b6c0 94a4bf 25224a 877dbe 796dbd 8d65b1 25224a a05fa1 25224a b25991 25224a bb5a79 25224a 181a2f 25224a c26e2c c26e2c c07a26 25224a 25224a b49225 25224a 192238 101e26 101e26 101e26 101e26 101e26 101e26 112731 112731 112731 112731 112731 112731 11303a 11303a 11303a 11303a 11303a 11303a 11303a 143443 143443 143443 143443 143443 143443 143443 143443 1c2a45 1c2a45 1c2a45
+row2 bg    112731 1a2941 262b56 262750 262750 192238 262750 262750 262750 192238 262750 262750 25224a 181a2f 25224a 181a2f 25224a 181a2f 25224a 181a2f 0e141a 192238 262750 262750 262750 192238 192238 262750 192238 101e26 101e26 112731 112731 112731 112731 112731 112731 11303a 11303a 11303a 11303a 11303a 11303a 143443 143443 143443 143443 143443 143443 143443 1c2a45 1c2a45 1c2a45 1c2a45 1c2a45 1c2a45 1c2a45 1c2a45 251f48 251f48
+row3 chars |▀▀opus ▸ codex ▸ workers▀▀▀▀▀▀▀▀▀▀●▀online :4317  00:00:01▀▀|
+row3 fg    0f2b33 0f232b c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd c4b5fd 19263c 0f232b 0f232b 19263c 0f232b 0f232b 0f2b33 0f2b33 0f2b33 0f2b33 25ac7d 0f2b33 e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb e5e7eb 211c40 211c40
+row3 bg    122e3b 122e3b 142938 142938 142938 0f272f 142938 142938 142938 0f272f 142938 142534 142534 0f232b 142534 0f232b 142534 0f232b 142534 0f272f 0f272f 0f272f 142938 142938 0f2b33 0f2b33 0f2b33 0f2b33 122e3b 122e3b 122e3b 122e3b 122e3b 122e3b 112d37 122e3b 142838 162a3c 162a3c 162a3c 162a3c 162a3c 162a3c 1d213f 1d213f 1d213f 1d213f 1d213f 1d213f 1d213f 211c40 20193c 20193c 20193c 20193c 20193c 20193c 20193c 1e1637 1e1637
+
+## divider 58x1 colour-pairs=6
+row0 chars |───────────────━━━━━━━────────────────────────────────────|
+row0 fg    4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 6e5410 916f15 b5891a b5891a d8a41f fbbf24 d8a41f b5891a b5891a 916f15 6e5410 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b 4b390b
+row0 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+
+## pipeline 56x2 colour-pairs=17
+row0 chars |   ●━━━━━━●━━━━━━●━━━━━━●━━━━━━●━━━━━━●━━━━━━◉━━━━━━○   |
+row0 fg    dflt   dflt   dflt   34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 2ec492 34d399 158675 1b957c 22a584 22a584 28b48b 816c3a fccc50 816c3a 715610 715610 8d6b14 a88018 b08c32 52525b dflt   dflt   dflt  
+row0 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+row1 chars | archi  debat  plan   build  integ  valid  appro  merge |
+row1 fg    dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   6ee7b7 6ee7b7 6ee7b7 6ee7b7 6ee7b7 dflt   dflt   ffffff ffffff ffffff ffffff ffffff dflt   dflt   71717a 71717a 71717a 71717a 71717a dflt  
+row1 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+
+## progress 50x1 colour-pairs=16
+row0 chars |█████████████████████████████████████▌            |
+row0 fg    b49cfb c1aefc cfbffc c3c6fb d3d5fc c3c6fb b2b6fa 8fb1f7 8fb1f7 7ba3f6 7ba3f6 65aff4 65aff4 65aff4 65aff4 4ebbf2 4ebbf2 4ebbf2 4ebbf2 38c7f0 38c7f0 38c7f0 38c7f0 22d3ee 22d3ee 22d3ee 22d3ee 25d3e0 25d3e0 25d3e0 25d3e0 28d3d2 28d3d2 28d3d2 28d3d2 2bd3c4 2bd3c4 2bd3c4 dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+row0 bg    1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26
+
+## spark 47x1 colour-pairs=1
+row0 chars |▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁|
+row0 fg    27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a
+row0 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+
+## underline 56x1 colour-pairs=2
+row0 chars |━━━━━━━━━━━─────────────────────────────────────────────|
+row0 fg    cc6e31 cc6e31 cc6e31 cc6e31 cc6e31 cc6e31 cc6e31 cc6e31 cc6e31 cc6e31 cc6e31 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a 27272a
+row0 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+
+## orb-sup 4x2 colour-pairs=3
+row0 chars |▄▀▀▄|
+row0 fg    332b4d 332b4d 332b4d 332b4d
+row0 bg    dflt   574882 574882 dflt  
+row1 chars |▀▀▀▀|
+row1 fg    332b4d 574882 574882 332b4d
+row1 bg    dflt   332b4d 332b4d dflt  
+
+## orb-lead 4x2 colour-pairs=3
+row0 chars |▄▀▀▄|
+row0 fg    0b4149 0b4149 0b4149 0b4149
+row0 bg    dflt   126e7c 126e7c dflt  
+row1 chars |▀▀▀▀|
+row1 fg    0b4149 126e7c 126e7c 0b4149
+row1 bg    dflt   0b4149 0b4149 dflt  
+
+## orb-w0 4x2 colour-pairs=6
+row0 chars |▄▀▀▄|
+row0 fg    134c38 366756 366756 366756
+row0 bg    dflt   45a280 87c3ad dflt  
+row1 chars |▀▀▀▀|
+row1 fg    134c38 249169 45a280 134c38
+row1 bg    dflt   134c38 134c38 dflt  
+
+## meters 56x3 colour-pairs=20
+row0 chars |codex 7  ███████████████████████████████████████████████|
+row0 fg    9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af dflt   dflt   137483 137483 137483 137483 168495 168495 168495 168495 168495 168495 168495 168495 1894a7 1894a7 1894a7 1894a7 1894a7 1894a7 1894a7 1894a7 1ba4b9 1ba4b9 1ba4b9 1ba4b9 1ba4b9 1ba4b9 1ba4b9 1db3ca 1db3ca 1db3ca 1db3ca 1db3ca 1db3ca 1db3ca 1db3ca 20c3dc 20c3dc 20c3dc 20c3dc 20c3dc 20c3dc 20c3dc 20c3dc 22d3ee 22d3ee 22d3ee 59def2
+row0 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26
+row1 chars |opus 3   ████████████████████▏                          |
+row1 fg    9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af dflt   dflt   dflt   5c4c8a 5c4c8a 5c4c8a 5c4c8a 69579d 69579d 69579d 69579d 69579d 69579d 69579d 69579d 7561af 7561af 7561af 7561af 7561af 7561af 7561af 7561af 826cc2 dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
+row1 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26
+row2 chars |sonnet 5 █████████████████████████████████▌             |
+row2 fg    9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af 9ca3af dflt   1d7454 1d7454 1d7454 1d7454 218460 218460 218460 218460 218460 218460 218460 218460 25946b 25946b 25946b 25946b 25946b 25946b 25946b 25946b 29a477 29a477 29a477 29a477 29a477 29a477 29a477 2cb382 2cb382 2cb382 2cb382 2cb382 2cb382 2cb382 dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt  
 row2 bg    dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   dflt   1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26 1f1f26
 

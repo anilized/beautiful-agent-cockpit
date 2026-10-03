@@ -1,8 +1,11 @@
-// HARNESS SNAPSHOT (the tree the mod returns under the test kit at mock t=0), not a terminal paint, of the pane at 60 and 140 columns.
+// HARNESS SNAPSHOT (the tree the mod returns under the test kit at mock t=0, then at later mock times to show motion), not a terminal paint, of the pane at 60 and 140 columns.
 // Every element's props are dumped as JSON; every Raster keeps its full base64 payload plus each decoded [glyph fg bg] triplet. Run by `npm run capture` (scratch copy as capture.test.tsx; tests have no fs).
 import { test } from 'claude-code/testing'
 
 import { LIVE, OFFLINE } from './fixture'
+
+// Mock times in ms; t=0 is the primary dump, the rest show motion.
+const STAMPS = [0, 500, 1056]
 
 declare const console: { log(...a: unknown[]): void }
 
@@ -69,22 +72,28 @@ for (const [name, snap] of [['live', LIVE], ['offline', OFFLINE]] as const) {
   test(`capture ${name}`, async ($, on) => {
     const { mock } = await import('claude-code/testing')
     on('fs.read', async () => ({ value: snap }))
-    mock.clock(on)
+    const clock = mock.clock(on)
     mock.env(on, { COCKPIT_DATA_DIR: '/data' })
     on('command.register', async () => ({ value: undefined }) as never)
     on('session.start', async (_, e) => ({ cwd: e.cwd }))
+    on('ui.blit', async () => ({ value: {} }) as never)
     on('ui.status', async () => ({ value: undefined }) as never)
     on('ui.toast', async () => ({ value: undefined }) as never)
     on('process.run', async () => ({ value: { exitCode: 0, stdout: '', stderr: '' } }) as never)
     await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
     for (const cols of [60, 140]) {
       const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(cols) })
-      const out: string[] = []
-      const pairs = { total: new Set<string>(), per: [] as string[] }
-      walk((await ui.drawn()) as unknown as N, 0, out, pairs)
-      out.push(`## raster colour pairs (per raster): ${pairs.per.join(' ')}`)
-      console.log(`CAP${cols}|=== ${name} @ ${cols} cols (mock t=0) ===`)
-      for (const l of out) console.log(`CAP${cols}|${l}`)
+      let t = 0
+      for (const at of STAMPS) {
+        if (at > t) await clock.advance(at - t)
+        t = at
+        const out: string[] = []
+        const pairs = { total: new Set<string>(), per: [] as string[] }
+        walk((await ui.drawn()) as unknown as N, 0, out, pairs)
+        out.push(`## raster colour pairs (per raster): ${pairs.per.join(' ')}`)
+        console.log(`CAP${cols}|=== ${name} @ ${cols} cols (mock t=${at}) ===`)
+        for (const l of out) console.log(`CAP${cols}|${l}`)
+      }
       await ui.unmount()
     }
   })
