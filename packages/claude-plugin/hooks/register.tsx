@@ -4,6 +4,9 @@ import type { EngineInterface, InputProps, Register, RenderChildren, RenderInput
 import type { CockpitApproval, CockpitMind, CockpitRun, CockpitSnapshot, CockpitTab, CockpitTask, CockpitUi, CockpitView } from '../types'
 import * as paint from './raster'
 import { COCKPIT_ROOT } from './root'
+import { createScheduler, makeClock, type RasterScheduler, type RasterSpec } from './scheduler'
+import { C, K, LOGO_GRADIENT } from './theme'
+import { createTweens, type Tweens } from './tween'
 
 // Presentation only: the orchestrator owns all workflow state. This mod reads the
 // snapshot the orchestrator projects to <dataDir>/snapshot.json and sends human
@@ -14,16 +17,9 @@ const EMPTY: CockpitView = { snapshot: null, error: null, message: null }
 const UI0: CockpitUi = { selectedRun: null, tab: 'tasks', composing: null, nonce: 0, busy: null, report: null, failure: null, seats: { supervisor: null, lead: null }, efforts: {}, mind: null, open: [] }
 const view = atom({ plugin: 'agent-cockpit', key: 'view' } as const, EMPTY)
 const ui = atom({ plugin: 'agent-cockpit', key: 'ui' } as const, UI0)
-const tick = atom({ plugin: 'agent-cockpit', key: 'tick' } as const, 0)
+const tickAtom = atom({ plugin: 'agent-cockpit', key: 'tick' } as const, 0)
 
 // ── palette ──────────────────────────────────────────────────────────────────
-
-const C = {
-  accent: '#ff8a3d', violet: '#a78bfa', cyan: '#22d3ee', blue: '#60a5fa', green: '#34d399', yellow: '#fbbf24',
-  red: '#f87171', pink: '#f472b6', text: '#e5e7eb', mute: '#9ca3af', dim: '#6b7280', faint: '#3f3f46', line: '#52525b',
-}
-const LOGO_GRADIENT = [C.cyan, C.violet, C.pink, C.accent, C.yellow, C.cyan]
-const BAR_GRADIENT = [C.violet, C.cyan, C.green]
 
 const STATUS_COLOR: Record<string, string> = {
   running: C.cyan, needs_input: C.yellow, validating: C.blue, in_review: C.violet, changes_requested: C.yellow,
@@ -153,11 +149,78 @@ const doing = (m: CockpitMind) => (m.contract ? DOING[m.contract] ?? m.contract 
 // ── orchestrator I/O ─────────────────────────────────────────────────────────
 
 let lastGenerated = ''
-// Rasters drawn by the last render, repainted by the animation clock until a blit is refused.
-const rasters = new Map<string, { paint: (f: number) => string }>()
-let frame = 0
-let nowMs = 0
-let motion = false
+
+// One lifecycle per session: scheduler, clock, tweens, text tick. `clock` is elapsed animation time (frozen under COCKPIT_REDUCED_MOTION,
+// read once at session.start); wall time only feeds the clock strings. Exactly one timer advances it: the scheduler's loop while it runs,
+// else the text tick, re-anchored from the prefetched $.clock.now() about once a second. No per-tick awaits.
+type Life = {
+  sched: RasterScheduler
+  clock: ReturnType<typeof makeClock>
+  tweens: Tweens
+  open: boolean
+  reduced: boolean
+  motion: boolean
+  run: string
+  wall: number
+  seen: number
+  tick: (() => void) | null
+  setMotion: (on: boolean) => void
+  arm: () => void
+  close: () => void
+}
+let life: Promise<Life> | null = null
+let stopPoll: (() => void) | null = null
+const TICK_MS = 125 // text spinners and pulses: <=10 fps with motion
+const IDLE_TICK_MS = 1000
+const STALE_MS = 1500 // the host has no unmount event: no render for longer than ~1.5x the idle beat means the pane was gone, tweens snap
+
+async function createLife($: EngineInterface): Promise<Life> {
+  const reduced = (await $.env.get('COCKPIT_REDUCED_MOTION')) === '1'
+  const wall = await $.clock.now()
+  const clock = makeClock({ fetch: () => $.clock.now() })
+  if (reduced) clock.freeze(true)
+  const l: Life = {
+    sched: null as never, clock, tweens: createTweens(), open: true, reduced, motion: false, run: '', wall, seen: wall, tick: null,
+    setMotion(on) {
+      if (on === l.motion || !l.open) return
+      l.motion = on
+      l.sched.setMotion(on)
+      l.arm()
+    },
+    arm() {
+      l.tick?.()
+      const ms = l.motion ? TICK_MS : IDLE_TICK_MS
+      const t = $.clock.every(ms, () => {
+        if (!l.sched.stats().periodMs) clock.tick(ms) // the scheduler's loop owns the clock while it runs
+        void update($, tickAtom, n => n + 1)
+      })
+      l.tick = () => t.cancel()
+    },
+    close() {
+      l.open = false
+      l.sched.stop()
+      l.tick?.()
+      l.tick = null
+      l.tweens.reset()
+    },
+  }
+  l.sched = createScheduler({
+    now: clock.now,
+    every: (ms, fn) => { const t = $.clock.every(ms, () => (clock.tick(ms), fn())); return () => t.cancel() },
+    blit: (key, cells) => $.ui.blit({ requestId: PANE, key, cells }), // {} when taken, else { deny } (d.ts)
+  })
+  l.sched.setMotion(false)
+  l.arm()
+  clock.refresh()
+  return l
+}
+let ended = false // a render after session.end gets an inert Life: no timers, no blits
+const getLife = ($: EngineInterface) => (life ??= createLife($).then(l => (ended && l.close(), l)))
+function closeLife() {
+  const p = life
+  life = null
+  void p?.then(l => l.close())
+}
 const seenApprovals = new Set<string>()
 let paths: { root: string; dataDir: string } | null = null
 
@@ -179,13 +242,14 @@ async function cli($: EngineInterface, args: string[], timeoutMs = 60_000) {
 
 async function refresh($: EngineInterface) {
   const { dataDir } = await locate($)
+  const l = await life
+  if (l?.open) l.wall = await $.clock.now(), l.clock.refresh() // 1 Hz poll: re-anchor elapsed time
   let snapshot: CockpitSnapshot | null = null
   try {
     snapshot = JSON.parse(await $.fs.read(`${dataDir}/snapshot.json`)) as CockpitSnapshot
   } catch {
     if (lastGenerated !== 'missing') {
       lastGenerated = 'missing'
-      motion = false
       await update($, view, v => ({ ...v, snapshot: null, error: 'Orchestrator not started' }))
     }
     return
@@ -201,7 +265,6 @@ async function refresh($: EngineInterface) {
   }
   // The run's one-line summary is drawn by the HUD mod's band, which reads the same snapshot.
   const run = activeRun(snapshot)
-  motion = snapshot.daemon.port !== null && (snapshot.pendingApprovals.length > 0 || (!!run && !TERMINAL.includes(run.status)))
 }
 
 // $.state outlives a reload, so a value saved by an older build may lack newer fields.
@@ -339,23 +402,28 @@ export const register: Register = on => {
       description: 'Agent cockpit: /cockpit [start|stop|run <request>|status|approve|changes <text>|reject|report|dashboard]',
     })
     $.ui.status(undefined) // no text status line: the HUD band draws it
+    ended = false
+    closeLife()
+    await getLife($)
     await refresh($)
-    $.clock.every(1000, () => void refresh($))
-    // Text animation (spinners, pulses): ~8 fps while something moves, one beat a second at rest.
-    let beat = 0
-    $.clock.every(125, () => {
-      beat++
-      if (motion || beat % 8 === 0) void update($, tick, n => n + 1)
-    })
-    // Raster animation: every mounted Raster is repainted in place at ~16 fps, no render pass.
-    $.clock.every(60, () => {
-      frame++
-      if (frame % 20 === 0) void $.clock.now().then(t => (nowMs = t))
-      for (const [key, r] of rasters)
-        void $.ui.blit({ requestId: PANE, key, cells: r.paint(frame) }).then(res => {
-          if ('deny' in res && res.deny && rasters.get(key) === r) rasters.delete(key)
-        })
-    })
+    stopPoll?.()
+    const poll = $.clock.every(1000, () => void refresh($))
+    stopPoll = () => poll.cancel()
+    return next(e)
+  })
+
+  on('ui.close', async ($, e, next) => {
+    const r = await next(e) // a hook may keep the pane open: tear down only after it is really closing
+    if (e.id === PANE) {
+      closeLife()
+    }
+    return r
+  })
+  on('session.end', async ($, e, next) => {
+    ended = true
+    closeLife()
+    stopPoll?.()
+    stopPoll = null
     return next(e)
   })
 
@@ -422,34 +490,55 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const T = $.ui.resolve(e)
     const { Box, Text, Button, Markdown } = T
     // Surfaces without text fields (mobile) get a hint to use the slash command instead.
-    const Input = e.surface !== 'mobile' ? $.ui.resolve(e).Input : (_: InputProps) => Text({ color: C.dim, children: 'type it as /cockpit run … or /cockpit changes …' })
-    // Every table names every element (a missing one draws a fragment): ask the surface.
-    const RasterEl = e.surface === 'terminal' ? $.ui.resolve(e).Raster : null
+    const Input = 'Input' in T ? T.Input : (_: InputProps) => Text({ color: C.dim, children: 'type it as /cockpit run … or /cockpit changes …' })
+    // Desktop and mobile draw no cell grid: they get the designed text fallbacks instead.
+    const RasterEl = e.surface === 'terminal' && 'Raster' in T ? T.Raster : null
     const v = await read($, view)
     const u = await readUi($)
-    const n = await read($, tick)
-    const now = (nowMs = await $.clock.now())
+    await read($, tickAtom)
+    const l = await getLife($)
+    const wall = await $.clock.now()
+    if (wall - l.seen > STALE_MS) l.tweens.reset(), (l.run = '') // the pane was gone: nothing eases across the gap
+    l.seen = l.wall = wall
+    const now = wall
+    const anim = l.clock.now()
+    const n = Math.floor(anim / TICK_MS) // text beat: derived from animation time, so it stops with it
     const s = v.snapshot
     const cols = Math.max(40, e.props.bodyColumns ?? e.viewport?.columns ?? 100)
     const rows = e.props.scroll?.bodyRows ?? e.viewport?.rows ?? 40
     const online = !!s && s.daemon.port !== null
-    rasters.clear()
+    const specs = new Map<string, RasterSpec>()
 
-    // A Raster that keeps animating: drawn now, repainted by the clock afterwards.
-    const raster = (key: string, columns: number, height: number, fn: (f: number) => string, fallback: RenderChildren = null) => {
+    // A Raster drawn now at the current elapsed time; `animated` ones are repainted by the scheduler afterwards.
+    const raster = (key: string, columns: number, height: number, animated: boolean, fn: (t: number) => string, fallback: RenderChildren = null) => {
       if (!RasterEl || columns < 1) return fallback
-      rasters.set(key, { paint: fn })
-      return RasterEl({ key, columns, rows: height, cells: fn(frame) })
+      // At rest only the hero (it carries the wall clock) is repainted by the scheduler; the rest are redrawn by the 1 Hz render.
+      if (animated && (l.motion || key === 'hero')) specs.set(key, { animated: true, paint: fn })
+      return RasterEl({ key, columns, rows: height, cells: fn(anim) })
     }
+    // Every return path reports the mounted raster keys; text-only surfaces have none and leave the scheduler alone.
+    const out = <R,>(el: R): R => (RasterEl && l.open && l.sched.sync(specs), el)
+    // Tweens: retarget at render, sampled at paint time so the ease runs between renders.
+    const run0 = online ? (u.selectedRun && s.runs.find(r => r.id === u.selectedRun)) || activeRun(s) : null
+    const viewing = !!run0 && !TERMINAL.includes(run0.status)
+    l.setMotion(!!online && !l.reduced && viewing)
+    if ((run0?.id ?? '') !== l.run) l.tweens.reset(), (l.run = run0?.id ?? '') // run switch (user pick or auto): nothing eases across it
+    const snap = !l.motion // reduced motion and idle: values jump
+    const ease = (el: string, target: number, ms = 600) => {
+      const id = run0?.id
+      if (!id) return () => target
+      return (t: number) => (l.run === id ? l.tweens.sample(id, el, target, t, { durMs: ms, snap }) : target)
+    }
+    const easing = (el: string) => !!run0 && l.motion && !l.tweens.settled(run0.id, el, anim)
 
     // ── small pieces ──
 
     const Pill = ({ label, bg, fg }: { label: string; bg: string; fg?: string }) => (
-      <Text backgroundColor={bg} color={fg ?? '#0b0b0f'} bold> {label} </Text>
+      <Text backgroundColor={bg} color={fg ?? C.bgDeep} bold> {label} </Text>
     )
     const Key = ({ k, label }: { k: string; label: string }) => (
       <Text>
-        <Text backgroundColor="#2a2a33" color={C.text} bold> {k} </Text>
+        <Text backgroundColor={C.chip} color={C.text} bold> {k} </Text>
         <Text color={C.dim}> {label}   </Text>
       </Text>
     )
@@ -460,23 +549,24 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       </Box>
     )
     const Card = ({ title, right, children, color, width, grow }: { title: string; right?: RenderChildren; children: RenderChildren; color?: string; width?: number; grow?: boolean }) => (
-      <Box flexDirection="column" borderStyle="round" borderColor={color ?? '#2e2e36'} paddingX={1} width={width} flexGrow={grow ? 1 : 0}>
+      <Box flexDirection="column" borderStyle="round" borderColor={color ?? C.border} paddingX={1} width={width} flexGrow={grow ? 1 : 0}>
         <Title label={title} right={right} />
         {children}
       </Box>
     )
 
-    const clock = new Date(now).toISOString().slice(11, 19)
+    const hms = (ms: number) => new Date(ms).toISOString().slice(11, 19)
+    const clock = hms(now)
     const seated = (s && activeRun(s)?.roles) ?? s?.hierarchy
     const chain = seated ? `${seated.supervisor} ▸ ${seated.lead} ▸ workers` : 'opus ▸ codex ▸ workers'
     const attention = !!s?.pendingApprovals.length
-    const heroInfo = (): paint.HeroInfo => ({
+    const heroInfo = (): paint.HeroData => ({
       online,
       alert: attention,
       left: chain,
-      right: `${online ? `online :${s!.daemon.port}` : 'offline'}  ${new Date(nowMs || now).toISOString().slice(11, 19)}`,
+      right: `${online ? `online :${s!.daemon.port}` : 'offline'}  ${hms(l.wall)}`,
     })
-    const hero = raster('hero', cols, 4, f => paint.hero(cols, 4, f, heroInfo()), (
+    const hero = raster('hero', cols, 4, true, t => paint.hero(cols, 4, t, heroInfo()), (
       <Box justifyContent="space-between" paddingX={1}>
         <Text bold>{[...'◆ AGENT COCKPIT'].map((ch, i) => <Text color={gradient(LOGO_GRADIENT, i / 22 - n / 40)}>{ch}</Text>)}</Text>
         <Text color={C.mute}>{online ? '● online' : '○ offline'}  {clock}</Text>
@@ -497,11 +587,11 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     )
 
     const failureCard = u.failure ? (
-      <Box flexDirection="column" borderStyle="round" borderColor={pulse(n, C.red, '#5b1d1d', 0.35)} paddingX={1}>
+      <Box flexDirection="column" borderStyle="round" borderColor={pulse(n, C.red, C.redDeep, 0.35)} paddingX={1}>
         <Box justifyContent="space-between">
           <Text><Pill label="✗ LAUNCH FAILED" bg={C.red} /> <Text color={C.dim}>{clip(firstLine(u.failure.request), 40)}</Text></Text>
         </Box>
-        <Text color={C.text} wrap="wrap">{u.failure.text}</Text>
+        <Text color={C.red} bold wrap="wrap">{u.failure.text}</Text>
         <Box gap={1}>
           {u.failure.uninitializedRepo ? (
             <Button variant="primary" hotkey="i" key="init-commit" autoFocus label="i · Initial commit & retry" onPress={() => void initialCommitAndRetry($)} />
@@ -537,7 +627,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       const meter = levels.map((_, i) => (i <= at ? '▮' : '▯')).join('')
       const heat = at < 0 ? C.dim : gradient([C.cyan, C.violet, C.pink, C.accent], at / Math.max(1, levels.length - 1))
       return (
-        <Box marginLeft={1} key={`effort-box-${keyId}`} hover={{ backgroundColor: '#27272a' }}>
+        <Box marginLeft={1} key={`effort-box-${keyId}`} hover={{ backgroundColor: C.baseline }}>
           <Text color={heat}>⚡{meter} </Text>
           <Button plain hotkey={hotkey} dimColor={!level} key={`effort-${keyId}`} label={level ?? 'default'} onPress={() => onCycle(next)} />
         </Box>
@@ -560,7 +650,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
               const on = a.id === current
               if (a.id === other && !on) return <Text color={C.faint} strikethrough> {a.id} </Text>
               return (
-                <Box key={`chip-${role}-${a.id}`} backgroundColor={on ? (role === 'supervisor' ? '#3b1d6e' : '#0e3a4a') : undefined} paddingX={1} hover={{ backgroundColor: '#27272a' }}>
+                <Box key={`chip-${role}-${a.id}`} backgroundColor={on ? (role === 'supervisor' ? C.seatSupervisor : C.seatLead) : undefined} paddingX={1} hover={{ backgroundColor: C.baseline }}>
                   <Button plain dimColor={!on} key={`seat-${role}-${a.id}`} label={`${on ? '● ' : ''}${a.id}`} onPress={() => { if (!on) onPick(role, a.id) }} />
                 </Box>
               )
@@ -649,7 +739,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     // ── offline ──
 
     if (!s || !online) {
-      return (
+      return out(
         <Box flexDirection="column">
           {hero}
           <Box flexDirection="column" alignItems="center" paddingY={1}>
@@ -667,7 +757,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
 
     const run = (u.selectedRun && s.runs.find(r => r.id === u.selectedRun)) || activeRun(s)
     if (!run) {
-      return (
+      return out(
         <Box flexDirection="column">
           {hero}
           <Box flexDirection="column" paddingY={1} paddingX={1}>
@@ -697,6 +787,9 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const phase = run.status === 'completed' ? STEPS.length : STEPS.findIndex(([, st]) => st.includes(run.status))
     const frac = run.status === 'completed' ? 1 : run.tasks.length ? done / run.tasks.length : phase >= 0 ? phase / STEPS.length : 0
     const runColor = STATUS_COLOR[run.status] ?? C.text
+    const fracE = ease('frac', frac)
+    const fillE = ease('fill', run.tasks.length ? done / run.tasks.length : 0)
+    const pct = Math.round(fracE(anim) * 100)
     const runAttention = approvals.length > 0
 
     const wide = cols >= 120
@@ -712,6 +805,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const t0 = Math.min(...times, now), t1 = live ? now : Math.max(...times, t0 + 1)
     const buckets = new Array(48).fill(0) as number[]
     for (const t of times) buckets[Math.min(47, Math.floor(((t - t0) / Math.max(1, t1 - t0)) * 48))]!++
+    const bucketE = buckets.map((b, i) => ease(`spark${i}`, b))
 
     // ── run list (wide: left column) ──
 
@@ -721,9 +815,9 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       const rd = r.tasks.filter(isDone).length
       const waits = s.pendingApprovals.some(a => a.runId === r.id)
       return (
-        <Box key={`row-${r.id}`} flexDirection="column" hover={{ backgroundColor: '#1f1f27' }}>
+        <Box key={`row-${r.id}`} flexDirection="column" hover={{ backgroundColor: C.hover }}>
           <Box>
-            <Text color={picked ? C.accent : '#1f1f27'}>▌</Text>
+            <Text color={picked ? C.accent : C.hover}>▌</Text>
             <Text color={rc}>{glyph(r.status, n)} </Text>
             <Button plain dimColor={!picked} key={`pick-${r.id}`} label={clip(firstLine(r.request), runsW - 9)} onPress={() => select(r.id)} />
           </Box>
@@ -759,7 +853,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
             </Box>
           ) : null}
         </Box>
-        <Text color="#fafafa" bold wrap="wrap">{clip(firstLine(run.request), inner * 2)}</Text>
+        <Text color={C.ink} bold wrap="wrap">{clip(firstLine(run.request), inner * 2)}</Text>
         {run.error ? <Text color={C.red} wrap="truncate-end">✗ {run.error}</Text> : null}
         {/* while the composer is open it carries the seat chips itself */}
         {u.composing?.kind === 'run' ? null : <Box>
@@ -781,6 +875,13 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       </Box>
     )
 
+    const dividerW = Math.max(1, centerW - 2)
+    const divider = (
+      <Box paddingX={1}>
+        {raster('divider', dividerW, 1, live, t => paint.divider(dividerW, 1, t, { color: paint.hex(runAttention ? C.yellow : runColor), active: live || runAttention }), <Text color={C.borderDim}>{'─'.repeat(dividerW)}</Text>)}
+      </Box>
+    )
+
     const tel = run.telemetry
     const Stat = ({ value, sub, color }: { value: string; sub: string; color: string }) => (
       <Text><Text color={color} bold>{value}</Text><Text color={C.dim}> {sub}    </Text></Text>
@@ -788,7 +889,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const tiles = (
       <Box paddingX={1}>
         <Text wrap="truncate-end">
-          <Stat value={`${Math.round(frac * 100)}%`} sub={run.status === 'completed' ? 'shipped' : STEPS[Math.max(0, phase)]?.[0] ?? run.status} color={C.cyan} />
+          <Stat value={`${pct}%`} sub={run.status === 'completed' ? 'shipped' : STEPS[Math.max(0, phase)]?.[0] ?? run.status} color={C.cyan} />
           <Stat value={`${done}/${run.tasks.length}`} sub={run.tasks.length ? `tasks · ${run.tasks.filter(t => MOVING.has(t.status)).length} moving` : 'tasks · planning'} color={C.green} />
           <Stat value={`${run.workers.length + [run.leadership.supervisor, run.leadership.lead].filter(x => x !== 'idle').length}`} sub="agents live" color={C.violet} />
           <Stat value={tel.costUsd ? `$${tel.costUsd.toFixed(2)}` : '—'} sub={`${compact(tel.inputTokens + tel.outputTokens)} tok`} color={C.yellow} />
@@ -810,17 +911,17 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       <Card
         title="LIFECYCLE"
         right={<Text color={C.dim}>{run.tasks.length ? `${done} of ${run.tasks.length} tasks` : ''}</Text>}
-        color={runAttention ? pulse(n, C.yellow, '#3a2a0a', 0.35) : live ? pulse(n, '#3b2a55', '#2e2e36', 0.2) : '#2e2e36'}
+        color={runAttention ? pulse(n, C.yellow, C.yellowDeep, 0.35) : live ? pulse(n, C.violetDeep, C.border, 0.2) : C.border}
       >
-        {raster('pipeline', inner, 2, f => paint.pipeline(inner, f, { steps: stepNames, phase, failed, color: paint.hex(runColor) }), textStepper)}
+        {raster('pipeline', inner, 2, live, t => paint.pipeline(inner, 2, t, { steps: stepNames, phase, fill: fillE(t), failed, color: paint.hex(runColor) }), textStepper)}
         <Box>
-          {raster('progress', barW, 1, f => paint.progress(barW, f, frac, live), <Text color={C.cyan}>{'█'.repeat(Math.round(frac * barW))}</Text>)}
-          <Text color="#fafafa" bold> {String(Math.round(frac * 100)).padStart(3)}%</Text>
+          {raster('progress', barW, 1, live, t => paint.progress(barW, 1, t, { frac: fracE(t), live }), <Text color={C.cyan}>{'█'.repeat(Math.round(fracE(anim) * barW))}</Text>)}
+          <Text color={C.ink} bold> {String(pct).padStart(3)}%</Text>
         </Box>
         {times.length > 1 && RasterEl ? (
           <Box>
             <Text color={C.dim}>activity </Text>
-            {raster('spark', sparkW, 1, f => paint.spark(sparkW, 1, f, buckets, live))}
+            {raster('spark', sparkW, 1, live, t => paint.spark(sparkW, 1, t, { values: bucketE.map(f => f(t)), live }))}
           </Box>
         ) : null}
       </Card>
@@ -879,7 +980,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     // ── tabs ──
 
     const Tab = ({ id, label, hotkey, badge }: { id: CockpitTab; label: string; hotkey: string; badge?: string }) => (
-      <Box backgroundColor={u.tab === id ? '#3a2412' : undefined} paddingX={1}>
+      <Box backgroundColor={u.tab === id ? C.tabActive : undefined} paddingX={1}>
         <Button
           plain
           hotkey={hotkey}
@@ -895,7 +996,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       const total = wrapped(a.text ?? a.summary, inner - 2)
       return acc + 4 + (u.open.includes(`apr-${a.id}`) ? total : Math.min(total, APPROVAL_PREVIEW)) + (total > APPROVAL_PREVIEW ? 1 : 0)
     }, 0)
-    const fixed = 20 + (run.error ? 1 : 0) + (firstLine(run.request).length > inner ? 1 : 0) + approvalRows + (u.failure ? 5 : 0) + (u.composing?.kind === 'run' ? 9 : 0)
+    const fixed = 21 + (run.error ? 1 : 0) + (firstLine(run.request).length > inner ? 1 : 0) + approvalRows + (u.failure ? 5 : 0) + (u.composing?.kind === 'run' ? 9 : 0)
     const room = Math.max(4, rows - fixed)
 
     // Any row may be opened to show what its one line cuts off; a press toggles it.
@@ -953,21 +1054,21 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       const fin = isDone(t)
       const meta = [t.agentId, t.iteration > 1 ? `it${t.iteration}` : '', t.dependsOn.length ? `⇠ ${t.dependsOn.join(',')}` : ''].filter(Boolean).join(' · ')
       return (
-        <Box key={`task-${t.key}`} flexDirection="column" hover={{ backgroundColor: '#1f1f27' }}>
+        <Box key={`task-${t.key}`} flexDirection="column" hover={{ backgroundColor: C.hover }}>
           <Box justifyContent="space-between">
             <Box flexShrink={1}>
               <Fold id={`task-${t.key}`} />
               <Text wrap="truncate-end">
                 <Text color={color}>▎</Text>
-                <Text color={moving ? pulse(n, color, '#ffffff', 0.5) : color}>{glyph(t.status, n)} </Text>
-                <Text color={fin ? C.dim : '#fafafa'} bold>{t.key}</Text>
+                <Text color={moving ? pulse(n, color, C.white, 0.5) : color}>{glyph(t.status, n)} </Text>
+                <Text color={fin ? C.dim : C.ink} bold>{t.key}</Text>
                 <Text color={fin ? C.dim : C.text}>  {t.title}</Text>
               </Text>
             </Box>
             <Box flexShrink={0}>
               <Text>
                 <Text color={C.dim}>{meta ? ` ${meta} ` : ' '}</Text>
-                {fin ? <Text color={C.green}>✓ {t.status}</Text> : <Pill label={t.status.replace(/_/g, ' ')} bg={moving ? pulse(n, color, '#ffffff', 0.3) : color} />}
+                {fin ? <Text color={C.green}>✓ {t.status}</Text> : <Pill label={t.status.replace(/_/g, ' ')} bg={color} />}
               </Text>
             </Box>
           </Box>
@@ -991,8 +1092,8 @@ async function drawPane($: EngineInterface, e: PaneRender) {
             const color = ROLE_COLOR[m.role] ?? C.text
             const active = m.status === 'active'
             return (
-              <Box key={`mind-${m.sessionId}`} backgroundColor={on ? '#23232c' : undefined} paddingX={1} hover={{ backgroundColor: '#1f1f27' }}>
-                <Text color={active ? pulse(n, color, '#ffffff', 0.4) : m.status === 'failed' ? C.red : C.dim}>{active ? SPIN[n % SPIN.length] : m.status === 'failed' ? '✗' : '✓'} </Text>
+              <Box key={`mind-${m.sessionId}`} backgroundColor={on ? C.chipOn : undefined} paddingX={1} hover={{ backgroundColor: C.hover }}>
+                <Text color={active ? pulse(n, color, C.white, 0.4) : m.status === 'failed' ? C.red : C.dim}>{active ? SPIN[n % SPIN.length] : m.status === 'failed' ? '✗' : '✓'} </Text>
                 <Button plain dimColor={!on} key={`mind-pick-${m.sessionId}`} label={`${m.agentId}·${m.role}${m.task ? ` ${m.task}` : ''}`} onPress={() => void patchUi($, { mind: m.sessionId })} />
               </Box>
             )
@@ -1007,7 +1108,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         <Box justifyContent="space-between">
           <Text wrap="truncate-end">
             <Pill label={followed.role.toUpperCase()} bg={color} />
-            <Text color="#fafafa" bold> {followed.agentId}</Text>
+            <Text color={C.ink} bold> {followed.agentId}</Text>
             <Text color={C.text}>  {doing(followed)}{followed.task ? ` ${followed.task}` : ''}</Text>
             {followed.effort ? <Text color={C.dim}>  ⚡{followed.effort}</Text> : null}
           </Text>
@@ -1041,14 +1142,14 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           return open ? (
             <Box>
               {stamp}
-              <Text color={mix(C.cyan, '#ffffff', fresh * 0.6)}>{name} </Text>
+              <Text color={mix(C.cyan, C.white, fresh * 0.6)}>{name} </Text>
               <Box flexShrink={1}><Text color={C.text} wrap="wrap">{arg}</Text></Box>
             </Box>
           ) : (
             <Box>
               {stamp}
               <Text wrap="truncate-end">
-                <Text color={mix(C.cyan, '#ffffff', fresh * 0.6)}>{name}</Text>
+                <Text color={mix(C.cyan, C.white, fresh * 0.6)}>{name}</Text>
                 <Text color={C.mute}>  {toolDetail(arg)}</Text>
               </Text>
             </Box>
@@ -1058,14 +1159,14 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         return e.kind === 'thinking' ? (
           <Box>
             {stamp}
-            <Text color={mix(C.violet, '#ffffff', fresh * 0.5)}>{last && active ? ORBIT[Math.floor(n / 2) % 4] : '∴'} </Text>
-            <Box flexShrink={1}><Text color={mix('#8b80b8', C.violet, fresh)} italic wrap="wrap">{body}</Text></Box>
+            <Text color={mix(C.violet, C.white, fresh * 0.5)}>{last && active ? ORBIT[Math.floor(n / 2) % 4] : '∴'} </Text>
+            <Box flexShrink={1}><Text color={mix(C.thinkDim, C.violet, fresh)} italic wrap="wrap">{body}</Text></Box>
           </Box>
         ) : (
           <Box>
             {stamp}
             <Text color={color}>▍ </Text>
-            <Box flexShrink={1}><Text color={mix(C.text, '#ffffff', fresh)} wrap="wrap">{body}</Text></Box>
+            <Box flexShrink={1}><Text color={mix(C.text, C.white, fresh)} wrap="wrap">{body}</Text></Box>
           </Box>
         )
       }) : <Text color={C.dim}>{active ? `${SPIN[n % SPIN.length]} waiting for the first words…` : 'It produced no visible output.'}</Text>
@@ -1073,7 +1174,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         <Box flexDirection="column">
           {chips}
           {head}
-          <Text color="#26262e">{'┄'.repeat(Math.max(1, inner))}</Text>
+          <Text color={C.borderDim}>{'┄'.repeat(Math.max(1, inner))}</Text>
           {stream}
         </Box>
       )
@@ -1102,10 +1203,10 @@ async function drawPane($: EngineInterface, e: PaneRender) {
               <Box>
                 <Fold id={evId(ev)} />
                 <Text wrap="truncate-end">
-                  <Text color={mix(C.dim, '#ffffff', fresh)}>{ev.ts.slice(11, 19)} </Text>
-                  <Text color={mix(c, '#ffffff', fresh * 0.6)}>{i === 0 && live ? glyph('running', n) : '●'}</Text>
+                  <Text color={mix(C.dim, C.white, fresh)}>{ev.ts.slice(11, 19)} </Text>
+                  <Text color={mix(c, C.white, fresh * 0.6)}>{i === 0 && live ? glyph('running', n) : '●'}</Text>
                   <Text color={C.faint}>─ </Text>
-                  <Text color={mix(c, '#ffffff', fresh * 0.6)} bold>{ev.type}</Text>
+                  <Text color={mix(c, C.white, fresh * 0.6)} bold>{ev.type}</Text>
                   <Text color={mix(C.mute, C.text, fresh)}>  {ev.text === ev.type ? '' : ev.text}</Text>
                 </Text>
               </Box>
@@ -1142,8 +1243,27 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       )
     }
 
+    const tabs: [CockpitTab, string][] = [['tasks', `Tasks ${done}/${run.tasks.length}`], ['events', `Events ${run.recentEvents.length}`], ['report', 'Report'], ['minds', `Minds${thinkingNow ? ` ${SPIN[n % SPIN.length]}${thinkingNow}` : ''}`]]
+    const tabW = tabs.map(([, label]) => label.length + 2)
+    const tabIdx = Math.max(0, tabs.findIndex(([id]) => id === u.tab))
+    const tabE = ease('tab', tabIdx, 220)
+    tabE(anim) // retarget now so `easing` sees it
+    // Text fallback: ▔ under the active tab, a dim rule under the rest.
+    let used = 0
+    const underlineText = (
+      <Text>
+        {tabs.map(([id], i) => {
+          const w = Math.max(0, Math.min(tabW[i]!, inner - used))
+          used += w
+          return <Text color={id === u.tab ? C.accent : C.borderDim}>{'▔'.repeat(w)}</Text>
+        })}
+        <Text color={C.borderDim}>{'▔'.repeat(Math.max(0, inner - used))}</Text>
+      </Text>
+    )
+    const underline = raster('tab-underline', inner, 1, easing('tab'), t => paint.underline(inner, 1, t, { tabs: tabW, active: tabE(t), color: K.accent }), underlineText)
+
     const work = (
-      <Box flexDirection="column" borderStyle="round" borderColor="#2e2e36" paddingX={1} flexGrow={1} minHeight={room + 4} overflow="hidden">
+      <Box flexDirection="column" borderStyle="round" borderColor={C.border} paddingX={1} flexGrow={1} minHeight={room + 4} overflow="hidden">
         <Box justifyContent="space-between">
           <Box>
             <Tab id="tasks" label="Tasks" hotkey="1" badge={`${done}/${run.tasks.length}`} />
@@ -1159,7 +1279,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
             <Button hotkey="x" plain dimColor key="stop" label="x stop" onPress={() => void daemon($, false)} />
           </Box>
         </Box>
-        <Text color="#26262e">{'─'.repeat(Math.max(1, inner))}</Text>
+        {underline}
         {tabBody}
       </Box>
     )
@@ -1167,6 +1287,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const center = (
       <Box flexDirection="column" width={wide ? centerW : undefined} flexGrow={wide ? 0 : 1}>
         {missionHead}
+        {divider}
         {centerW >= 56 ? tiles : null}
         {lifecycle}
         {failureCard}
@@ -1183,9 +1304,9 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       const active = state !== 'idle'
       return (
         <Box gap={1}>
-          {raster(`orb-${id}`, 4, 2, f => paint.orb(f, paint.hex(color), active, seed), <Text color={active ? pulse(n, color, '#ffffff', 0.4) : C.faint}>◉</Text>)}
+          {raster(`orb-${id}`, 4, 2, active, t => paint.orb(4, 2, t, { color: paint.hex(color), active, seed }), <Text color={active ? pulse(n, color, C.white, 0.4) : C.faint}>◉</Text>)}
           <Box flexDirection="column" flexShrink={1}>
-            <Text wrap="truncate-end"><Text color="#fafafa" bold>{name}</Text><Text color={C.dim}>  {role}</Text></Text>
+            <Text wrap="truncate-end"><Text color={C.ink} bold>{name}</Text><Text color={C.dim}>  {role}</Text></Text>
             <Text color={active ? color : C.dim} wrap="truncate-end">{active ? `${SPIN[(n + seed) % SPIN.length]} ` : ''}{state}</Text>
           </Box>
         </Box>
@@ -1233,31 +1354,39 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           </Text>
         ))}
         {run.conflicts.map(c => (
-          <Text color={pulse(n, C.red, '#7f1d1d', 0.4)} wrap="truncate-end">⚠ {c.task} ⟂ {c.heldBy}  <Text color={C.dim}>{c.pattern}</Text></Text>
+          <Text color={pulse(n, C.red, C.redDark, 0.4)} wrap="truncate-end">⚠ {c.task} ⟂ {c.heldBy}  <Text color={C.dim}>{c.pattern}</Text></Text>
         ))}
       </Card>
     )
     const byAgent = tel.byAgent ?? []
     const maxCalls = Math.max(1, ...byAgent.map(a => a.calls))
-    const meterW = Math.max(4, sideCols - 18)
+    const meterW = Math.max(4, sideCols - 20)
+    const meterColors = [K.cyan, K.violet, K.green, K.yellow, K.pink]
+    const meterE = byAgent.map((a, i) => ease(`meter${i}`, a.calls / maxCalls))
+    const meterFall = byAgent.map((a, i) => {
+      const w = Math.max(1, Math.round(meterE[i]!(anim) * meterW))
+      return (
+        <Text wrap="truncate-end">
+          <Text color={C.mute}>{a.agentId.padEnd(7).slice(0, 7)} </Text>
+          <Text color={C.faint}>▕</Text>
+          {Array.from({ length: w }, (_, k) => <Text color={gradient(LOGO_GRADIENT, i / 5 + k / (meterW * 4))}>█</Text>)}
+          <Text color={C.borderDim}>{'█'.repeat(Math.max(0, meterW - w))}</Text>
+          <Text color={C.faint}>▏</Text>
+          <Text color={C.dim}> {a.calls}</Text>
+        </Text>
+      )
+    })
+    const meterBars = byAgent.length && RasterEl ? raster('meters', Math.max(1, sideCols - 4), byAgent.length, byAgent.some((_, i) => easing(`meter${i}`)), t => paint.meters(Math.max(1, sideCols - 4), byAgent.length, t, {
+      values: meterE.map(f => f(t)), colors: byAgent.map((_, i) => meterColors[i % meterColors.length]!), labels: byAgent.map(a => `${a.agentId.slice(0, 7)} ${a.calls}`),
+    })) : meterFall
     const meter = (
       <Card title="TELEMETRY" right={<Text color={C.yellow} bold>{tel.costUsd ? `$${tel.costUsd.toFixed(2)}` : ''}</Text>} width={sideCols}>
         <Text>
-          <Text color="#fafafa" bold>{tel.calls}</Text><Text color={C.dim}> calls   </Text>
+          <Text color={C.ink} bold>{tel.calls}</Text><Text color={C.dim}> calls   </Text>
           <Text color={C.cyan}>↓ {compact(tel.inputTokens)}</Text><Text color={C.dim}>   </Text>
           <Text color={C.violet}>↑ {compact(tel.outputTokens)}</Text>
         </Text>
-        {byAgent.map((a, i) => {
-          const w = Math.max(1, Math.round((a.calls / maxCalls) * meterW))
-          return (
-            <Text wrap="truncate-end">
-              <Text color={C.mute}>{a.agentId.padEnd(7).slice(0, 7)} </Text>
-              {Array.from({ length: w }, (_, k) => <Text color={gradient(LOGO_GRADIENT, i / 5 + k / (meterW * 4))}>█</Text>)}
-              <Text color="#26262e">{'█'.repeat(Math.max(0, meterW - w))}</Text>
-              <Text color={C.dim}> {a.calls}</Text>
-            </Text>
-          )
-        })}
+        {meterBars}
       </Card>
     )
     const side = wide ? (
@@ -1275,7 +1404,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       ['n', 'new'], ['v l', 'seats'], ['f g w', 'effort'], ['1-4', 'tabs'], ...(u.tab === 'minds' && minds.length > 1 ? ([['o', 'next mind']] as [string, string][]) : []), ...(s.runs.length > 1 ? ([['j k', 'missions']] as [string, string][]) : []),
       ['p', 'report'], ['d', 'dashboard'], ['x', 'stop'],
     ]
-    return (
+    return out(
       <Box flexDirection="column">
         {hero}
         {wide ? (

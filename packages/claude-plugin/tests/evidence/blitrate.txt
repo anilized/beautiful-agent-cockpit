@@ -1,0 +1,5 @@
+blit-rate: mock clock, 10 s window after 1 s settle, 140 columns, baseline before this work = 112 blits/s (16/s x 7 keys)
+live {"COCKPIT_CADENCE":"conservative"}: total 375/s (335% of 112) per key {"hero":62.5,"divider":62.5,"pipeline":62.5,"progress":62.5,"spark":62.5,"orb-w0":62.5}
+live {"COCKPIT_CADENCE":"full"}: total 375/s (335% of 112) per key {"hero":62.5,"divider":62.5,"pipeline":62.5,"progress":62.5,"spark":62.5,"orb-w0":62.5}
+offline {"COCKPIT_CADENCE":"conservative"}: total 1/s (1% of 112) per key {"hero":1}
+live {"COCKPIT_CADENCE":"conservative","COCKPIT_REDUCED_MOTION":"1"}: total 0/s (0% of 112) per key {}

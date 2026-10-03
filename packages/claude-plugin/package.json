@@ -3,5 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" }
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "node tests/tools.mjs typecheck",
+    "palette": "node tests/tools.mjs palette",
+    "test": "node tests/tools.mjs palette && claude plugin test .",
+    "check": "npm run palette && npm run typecheck && npm test",
+    "bench": "node --experimental-transform-types --no-warnings --import ./tests/resolve-ts.mjs tests/bench.ts",
+    "capture": "node --experimental-transform-types --no-warnings scripts/capture.ts",
+    "blitrate": "node --experimental-transform-types --no-warnings scripts/blitrate.ts",
+    "probe": "node --experimental-transform-types --no-warnings scripts/probe.ts"
+  }
 }
