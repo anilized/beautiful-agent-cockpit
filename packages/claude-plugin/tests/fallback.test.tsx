@@ -54,9 +54,8 @@ test('hotkeys s n a c r e i 1 2 3 j k p t x each stay bound to their action', as
   const { clock, st, set } = await boot($, on, JSON.parse(OFFLINE))
   let ui = await mountTerminal($)
   // s: offline start
-  const start = await ui.find({ type: 'Button', text: /s · Start/ })
-  expect(start?.props.hotkey).toBe('s')
-  await ui.press({ key: String(start?.props.key ?? (start as any)?.key) })
+  expect((await ui.find({ key: '  s · Start orchestrator  ' }))?.props.hotkey).toBe('s') // a Button's key is its label
+  await ui.press({ key: '  s · Start orchestrator  ' })
   expect(lastArgs(st)).toEqual(expect.arrayContaining(['daemon']))
   await ui.unmount()
 
@@ -193,6 +192,56 @@ test('a late deny after session.end has no effect (no blits, no throw)', async (
   release({ value: { deny: 'full' } })
   await clock.advance(3000)
   expect(st.blits).toEqual([])
+})
+
+const closePane = ($: any, id = 'agent-cockpit') => $.ui.close({ id, origin: { kind: 'plugin' } } as never)
+
+test('ui.close of the pane stops all blits and exports the trace once; another id changes nothing', async ($, on) => {
+  const { clock, st } = await boot($, on, live(), { env: { COCKPIT_TRACE: '1' } })
+  await mountTerminal($)
+  await clock.advance(3000)
+  expect(st.blits.length).toBeGreaterThan(0)
+  await closePane($, 'other-pane')
+  expect(st.writes).toEqual([])
+  st.blits.length = 0
+  await clock.advance(1000)
+  expect(st.blits.length).toBeGreaterThan(0) // still live
+  await closePane($)
+  expect(st.writes).toHaveLength(1)
+  expect(JSON.parse(st.writes[0]!.text)).toMatchObject({ version: 1 })
+  st.blits.length = 0
+  await clock.advance(5000)
+  expect(st.blits).toEqual([])
+  expect(st.writes).toHaveLength(1)
+})
+
+test('ui.close with trace off writes nothing', async ($, on) => {
+  const { clock, st } = await boot($, on, live())
+  await mountTerminal($)
+  await clock.advance(1000)
+  await closePane($)
+  expect(st.writes).toEqual([])
+})
+
+test('session.end silences a live scheduler, a later render is inert, session.start re-enables', async ($, on) => {
+  const { clock, st } = await boot($, on, live())
+  let ui = await mountTerminal($)
+  await clock.advance(2000)
+  expect(st.blits.length).toBeGreaterThan(0)
+  await endSession($)
+  st.blits.length = 0
+  await clock.advance(5000)
+  expect(st.blits).toEqual([])
+  await ui.unmount()
+  ui = await mountTerminal($) // render after end: inert
+  await clock.advance(5000)
+  expect(st.blits).toEqual([])
+  await ui.unmount()
+  await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
+  ui = await mountTerminal($)
+  await clock.advance(2000)
+  expect(st.blits.length).toBeGreaterThan(0)
+  await ui.unmount()
 })
 
 test('trace off: no file and no output from session.end or the command', async ($, on) => {
