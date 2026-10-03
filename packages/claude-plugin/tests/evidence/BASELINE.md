@@ -232,3 +232,24 @@ exit 0
 ## Before-dump provenance and windows
 before/ dumps were committed in 77e081d (TASK-205), captured by tests/capture.ts against the pre-redesign hooks (see tests/evidence/baseline/README.txt and raster.baseline.txt/register.baseline.txt snapshots). Not re-verified against 3fd39cb via git archive.
 Blit-rate window: scripts/blitrate.ts uses a 10 s window after 1 s settle, not the spec's 5 s; rates are per second so comparable.
+
+## 2026-10-03 TASK-401 note
+
+**Capture not re-run.** The 'before' capture was intentionally not re-run at HEAD e8d3255: HEAD contains TASK-201..307, so any capture there would be an "after" state. The TASK-301 BASELINE.md above and tests/evidence/before/live-{60,140}.{txt,json} remain authoritative. Nothing under tests/evidence/before*/ was written. Per Supervisor ruling, the Gate 0 / trace-export artifacts and the `node tests/tools.mjs palette &&` step in the test script stay as integrated.
+
+**Discovery.** Host d.ts = the plugin-authoring skill's `types/claude-code.d.ts` (written by Claude Code 2.1.286): `C:/Users/pc/AppData/Local/Temp/claude/bundled-skills/2.1.286/9b4b50ee7de5effa1b108d90b8a90a86/plugin-authoring/types/claude-code.d.ts` (the folder is renamed after a restart; `/plugin-types` writes a copy to `.claude/types`). Line numbers below are in that file:
+- `$.ui.blit: (args: UiBlitArgs) => Promise<UiBlitResult>`: line 2194 (event `'ui.blit'` input 6475, result 6682; `UiBlitArgs` doc 12624).
+- `$.ui.invalidate: (event: InvalidatableEventName) => void`: line 2173.
+- `$.clock.every: TimerCall`: line 3236 (doc 3227-3235: one `clock.every` dispatch per period, a refused period ends the interval; period at least 1 ms). Separate from it, the drawing instance has its own `every: (ms, fn) => () => void` on the surface frame clock at line 1410 (doc 1404-1408).
+- `$.clock.now: () => Promise<number>` (ms since the epoch): line 3205. The test kit's synchronous `now: () => number` is at 14251.
+- `$.env.get: (name: string) => Promise<string | undefined>`: line 3370 (`env: {` at 3360); `name` must be a string literal.
+- How `claude plugin test` runs pane tests: it runs the plugin's `*.test.ts(x)` files against the engine, importing `test`, `expect`, `mock` from `claude-code/testing` (d.ts 13639; plugin-authoring reference.md, "claude plugin test"). `mock.clock(on)` (d.ts 14200-14210) answers `$.clock` from an in-memory clock that moves only when the test advances it. A UI test mounts a component on a named surface and drives it with `ui.advance(ms)` (d.ts 13732-13741; 13877 says work asleep on `mock.clock` waits for the test to advance it). tests/pane.test.tsx uses `mock.clock(on)` (line 15) and `await ui.advance(500)` (line 32). The test environment has no fs or network (d.ts header, lines 28-31), which is why the palette scan runs from node (tests/tools.mjs).
+- Date.now / performance.now in the mod host: **unknown** for the production hook environment. The d.ts header (lines 18-21) says the environment has "no DOM, no Node" plus web APIs (URL, TextEncoder, AbortController, crypto.subtle, ...) and does not list `Date` or `performance`; neither was probed in a live host. In the plugin test environment, `performance.now()` works (tests/host-probe.test.tsx:59-87, passing at tests/evidence/host-probe.txt:22), and hooks/register.tsx:512 uses `new Date(now).toISOString()`. `Date.now()` is not used anywhere in hooks/ and was not probed. Hooks keep taking time from `$.clock.now()`.
+
+**Tooling sanity (2026-10-03).** tests/tools.mjs, tests/resolve-ts.mjs and tests/capture.ts all exist. Seeded `hooks/zz-seed.ts` containing `const x = "#ff00aa"`: `node tests/tools.mjs palette` printed `FAIL zz-seed.ts has palette literals (theme.ts only)` and exited 1. After deleting the file, `node tests/tools.mjs palette` exited 0.
+
+**Gates at HEAD (packages/claude-plugin).**
+- `npm run typecheck` with no `CLAUDE_CODE_DTS` and no `.claude/types`: printed `BLOCKED: ...\.claude\types\claude-code.d.ts missing: run /plugin-types in Claude Code, or set CLAUDE_CODE_DTS to the skill's types/claude-code.d.ts`, exit 2. This is the designed clear-message path, an environment limit and not a code failure. With `CLAUDE_CODE_DTS` set to the skill d.ts above: no diagnostics, exit 0.
+- `npm test` (palette step, then `claude plugin test .`): 69 pass, 0 fail, 10 files, exit 0.
+
+**Hashes (sha256).** tests/pane.test.tsx `eec875fabcb37ce6009cc222c1cd9b60b2c3c774e9f233f10150f6ced775f4fb`, equal to tests/evidence/baseline/pane.test.sha256 (unchanged). tests/fixture.ts `4d47f1643c2dda355058491fa6ecbf97e546d310a40c08410146160b9ef620e1` (no baseline hash is recorded for it).
