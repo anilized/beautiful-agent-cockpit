@@ -16,12 +16,57 @@ Each fact is tagged **[doc]** (declared), **[measured]** (probe in this repo, mo
 |---|---|
 | `$.clock.every` minimum | **[doc]** "at least 1" ms (d.ts:3198 block). **[measured]** every(1) fired 100x in 100 mock ms; every(0) was accepted and fired 10x in 10 ms (clamp assumed, undocumented: do not use 0). Each period is one host dispatch; a refused period ends the interval. |
 | Monotonic time | **[measured]** `performance` global exists in plugin env (d.ts:13635 `{ now(): number }`); monotonic across ticks. It is real time: it advanced 20 ms while mock clock advanced 100 ms, so it does NOT follow `mock.clock`. `$.clock.now()` (async, epoch ms) does follow it. |
-| Blit limit scope | **[doc]** d.ts:2178: "blits between frames fold into one: up to 120 a second taken, some sixty shown". Not stated whether shared across keys/rasters/plugins. **[open]** cannot be measured here (see 4). Plan on a shared budget. |
-| Blit payload | **[doc]** `cells` = base64 of cols*rows u32 triplets, must be the mounted size; deny on wrong size, undecodable cells, unmounted, another plugin's. No byte cap declared. Raster 1..512 cols, 1..256 rows (d.ts:8440). Current largest: hero 140x4 = 8960 b64 chars. |
-| Colour pairs | **[doc]** d.ts:8429: palette paints 1024 distinct pairs at once, the rest as nearest. Scope (per Raster, per frame, per terminal) not stated. **[open]**. Baseline live @140: hero 458 + pipeline 19 + progress 49 + spark 2 + orbs 10 = 538 (per-raster counts are unions only if no pair repeats; the true distinct total is <= this). Offline @140 hero alone 488. Already over the 512 target; quantization is required. |
+| Blit limit scope | **[doc]** number only, scope undocumented: see 2b. |
+| Blit payload | **[doc]** dimension limits only, no byte cap: see 2b. **[measured]** worst serialized blit @140: 9013 B. |
+| Colour pairs | **[doc]** number only (1024), scope undocumented: see 2b. |
 | Blit result | `{}` or `{ deny }`; deny reasons: not mounted, size mismatch, bad cells. Resize is a redraw (`$.ui.invalidate("ui.render")`), not a blit. |
 | Invalidate | **[doc]** redraw at most 10/s, 30/s for the shown pane (folds). |
 | Test APIs | `mock.clock(on)` -> `{now, advance, set, settle, sleep}`; `mock.env`, `mock.store`; mount handle `drawn/find/findAll/press/input/advance/resize/redraw/unmount`; `on('ui.blit')` beneath the plugin intercepts blits (count, delay, deny); `find({type:'Raster'}).props.cells` exposes cells. `ui.advance` moves only a `Client`'s frame clock, not plugin `$.clock` timers. |
+
+## 2b. Host limit verification and binding constraints
+Searched: `claude-code.d.ts` (whole file; grep for rate/second/fold/palette/distinct/payload/bytes/KiB/MiB/limit near blit, Raster, Image, frame), `plugin-authoring/reference.md` (grep blit/palette/colour pair/120/sixty/fold), `plugin-authoring/examples/` (no Raster or blit example exists), and the repo's own docs (only this report mentions blit). No host source is mounted in the tree. Findings, quoted (d.ts = `types/claude-code.d.ts` of this build):
+
+| Topic | Host evidence (quoted) | What it does NOT say |
+|---|---|---|
+| Blit rate | d.ts:2178-2180 "The surface paints the cells or source at its next frame, so blits between frames fold into one: up to 120 a second taken, some sixty shown." d.ts:4886 (Image) "The surface writes them with its frames, some sixty a second". | Whether 120/s is per key, per plugin, per pane or per terminal. Whether a folded blit still resolves `{}`. |
+| Redraw rate | d.ts:2166-2168 `$.ui.invalidate`: "at most ten a second, thirty for the shown pane and the band (calls sooner fold)". | n/a (text redraw, not blit). |
+| Payload | d.ts:8438 "How many terminal columns wide, 1 to 512"; rows "1 to 256" (d.ts:8444); d.ts:8447 cells = "standard padded base64 of `columns * rows` little-endian u32 triplets"; deny reasons d.ts:2185 "not mounted, not this plugin's, another size, cells that do not decode, a bad source". d.ts:4957 caps an **Image** source at 2 MiB (not a Raster). | Any byte cap on a Raster blit. The implied ceiling 512*256*12 B = 1.5 MiB raw is not a documented limit. |
+| Colour pairs | d.ts:8428-8429 "its palette paints 1024 distinct color pairs at once and the rest as their nearest." | What "at once" spans: one Raster, one frame, the pane, or the terminal. |
+
+Decision rule (Supervisor): a documented number overrides the default for that number; undocumented scope falls back to the labelled constraint. Result:
+
+| Limit | Value in `HOST_LIMITS` | Basis |
+|---|---|---|
+| Blit rate | **100/s shared by all keys**, token bucket (burst 10), plus strict 1 in flight per key | **SUPERVISOR CONSTRAINT (unverified host behaviour)**. The documented 120/s "taken" (d.ts:2179) is an upper bound of unknown scope; 100 is below it, so the documented number does not override it. |
+| Payload | **64 KiB (65536 B) serialized per blit**, warn at 48 KiB (49152 B) | **SUPERVISOR CONSTRAINT (unverified host behaviour)**; no host cap documented. |
+| Colour pairs | **512 distinct fg/bg pairs per pane**, shared by all keys of the pane. Host ceiling recorded: 1024 | Number: **[doc]** 1024 (d.ts:8429) overrides the Supervisor's undocumented-default 64; 512 is 50% of it as headroom because the scope is unverified. Scope = pane and the 50% margin are **SUPERVISOR CONSTRAINT (unverified host behaviour)**. To use the Supervisor's literal 64 change `pairs.perPane` (one line); the baseline already uses 538 pairs at 140 columns, so 64 means roughly 8x fewer shades per ramp. |
+
+Single config object (the scheduler and the pair-count test import it; a verified host value is a one-line edit):
+```ts
+export const HOST_LIMITS = {
+  blit:    { sharedPerSec: 100, burst: 10, maxStarveMs: 1000, inFlightPerKey: 1, hostTakenPerSec: 120, hostShownPerSec: 60 },
+  payload: { maxBytes: 65536, warnBytes: 49152 },
+  pairs:   { perPane: 512, hostCeiling: 1024 },
+  raster:  { maxCols: 512, maxRows: 256 },
+} as const
+```
+**Rate behaviour**: one token bucket across all keys, refilled at `sharedPerSec`. Each tick, eligible keys (registered, not pending, not stalled, due by tier) are served in order of staleness (oldest last-accepted first, i.e. round-robin by staleness). A key waiting longer than `maxStarveMs` (1 s) moves to the front; with 7 keys at 100/s this holds with wide margin, and if demand ever exceeds the bucket the Tier B keys are slowed first, never starved past 1 s.
+
+**Payload measurement (harness, 140 columns, `host-probe.txt`)**: serialized blit args (`JSON.stringify` chars, including requestId/key/columns/cells) per key: hero 9013 B (8.8 KiB; 13.7% of 64 KiB, 18% of the 48 KiB line), pipeline 2297, progress 1081, spark 1030, orbs 184-185 each; one frame of all 7 keys sums to 13973 B. At 60 columns: hero 3893 B, frame sum 7957 B. Headroom is large today. A single blit reaches 48 KiB at about 3068 cells (about 140x21), so any new raster (telemetry, divider, tabs) must stay under that.
+**Degradation path (never silent truncation)**, measured by the scheduler as `cells.length + overhead` before sending: (1) over 48 KiB: that key drops to half rate and its painter is asked for the low-detail variant (`detail: 'low'`: fewer styling runs, e.g. flat background instead of a gradient); report once. (2) still over 64 KiB: the frame is not sent, the last good frame stays on screen, the key is marked oversized and reported once; cells are never cut or padded. Layout rule: no Raster larger than 140 columns x 20 rows.
+**Colour-pair behaviour**: painters quantize gradients through `theme.ts` ramps (default 32 levels). If the per-pane distinct pairs of the last frame exceed `pairs.perPane`, the next frame is painted with every ramp at half the levels (32 -> 16 -> 8), choosing nearest entries by index: deterministic, no randomness, and the blit is never failed. A test counts pairs from the live fixture at 140 columns against `HOST_LIMITS.pairs.perPane`.
+
+### Host limit verification backlog
+| Limit | Default used | Evidence searched | Live test that would confirm it |
+|---|---|---|---|
+| Blit rate scope (shared vs per key/plugin/terminal) | 100/s shared token bucket | d.ts:2178-2180; reference.md:87-88; no example, no host source mounted | Run N=1, 4, 8 keys blitting unthrottled for 30 s in a real terminal (`claude --debug`); compare accepted/s per key and in total. Total flat while per-key falls = shared; per-key flat = per key. |
+| Taken vs shown (folding) | 120 taken, ~60 shown | d.ts:2179 | Count blits that resolve `{}` per second against frames observed in the debug log; check folded blits still resolve `{}`. |
+| Raster blit byte cap | 64 KiB (warn 48 KiB) | d.ts:8438-8447 (dimensions only), d.ts:4957 (Image 2 MiB, other element) | Blit one 512x256 Raster (1.5 MiB raw) and a ladder of 16, 32, 48, 64, 128 KiB; record the first `deny` or latency jump. |
+| Raster dimensions | 1..512 x 1..256 | d.ts:8438-8444 **[doc]** | none needed; deny on mismatch is documented at d.ts:2185 |
+| Colour pairs: number | 1024 documented, 512 used | d.ts:8428-8429 | Paint 1100 distinct pairs in one Raster, then split across 2 Rasters of one pane; compare to a capture to see where "nearest" substitution begins. |
+| Colour pairs: scope | per pane | d.ts:8428-8429 does not say | As above, across two panes / two Rasters, via `tmux capture-pane -e`. |
+| Raster unmount/hide signal | blit deny only; poll `$.ui.panes()` | d.ts:3198 block, d.ts:6757-6790, reference.md | Close/hide the pane while blitting; log whether any hook fires and when the first deny arrives. |
+| `$.clock.every(ms)` real minimum | 16 ms driver | d.ts:3198 "at least 1" **[doc]**; harness: every(1) fires | Measure the achieved period of every(16) over 60 s in a real session (jitter p95). |
 
 ## 3. Baseline (current code, mock clock)
 Raster keys: hero, pipeline, progress, spark, orb-sup, orb-lead, orb-w0 (7). Sizes @60: 60x4, 56x2, 50x1, 47x1, 4x2 x3. @140: 140x4, 70x2, 64x1, 61x1, 4x2 x3.
@@ -33,8 +78,24 @@ Raster keys: hero, pipeline, progress, spark, orb-sup, orb-lead, orb-w0 (7). Siz
 - Paint cost (`before-bench.txt`): combined mean 0.27 ms, p95 0.34 ms at 140 cols (hero 0.23 ms). Budget is 4 ms, so there is large headroom; the real constraints are blit rate and pair count.
 - Harness snapshots (`before-60.txt`, `before-140.txt`; live and offline fixtures, mock t=0, terminal surface): every element's props as JSON, and for every Raster its dimensions, full base64 `cells` payload, glyph rows and every decoded `cp:fg:bg` triplet. They show what the mod hands the surface, not what a terminal paints or how it lays out.
 
-## 4. Not measurable here (escalated, not invented)
-Unavailable in this environment, each needs a real interactive terminal session (no tmux/PTY driver, non-interactive, no hot reload): live rendered capture at 60/140 columns and terminal layout/overflow verification; delivered blit cadence and folding; whether the 120/s limit is shared; terminal key-to-photon input latency; CPU consumption (only harness elapsed time exists). Live validation is INCOMPLETE until someone runs it. Supervisor decision needed or a manual run: mount the pane, run `claude --debug`, and count frames with N keys blitting at 16 ms. Until then the scheduler must assume: shared budget <= 100 blits/s, ~60 shown, pair limit per frame across all Rasters of the pane.
+## 4. Live validation: unavailable here, with reasons and attempts
+Disposition (Supervisor): "unavailable in this environment" for delivered cadence, terminal input latency, true CPU consumption and live 60/140-column captures. Nothing below is estimated or invented; all numbers elsewhere in this report are harness-only.
+| Metric | Why unavailable here | Attempted |
+|---|---|---|
+| Live captures 60/140 cols | The Raster is terminal-only and can only be seen through a real terminal frontend; this session has no PTY host and cannot be driven interactively (the engine reported "Mod hot-reloading is off in this session (nobody could be asked)"). | `Skill run` (loaded); scan of `.claude/skills/*/SKILL.md` up the tree (none); `which tmux screen` (both absent; only Windows Terminal `wt` exists, which this tool cannot drive or read back). `claude --plugin-dir` was not attempted: it needs an interactive TTY. |
+| Delivered cadence | Needs the host's acknowledgements/frames in a real session. The test kit never paints and `on('ui.blit')` stands for the engine. | Harness probe only (`host-probe.test.tsx`: counts blits entering `ui.blit`, deterministic on `mock.clock`). |
+| Input-to-paint latency | Needs a keypress and a visible frame change in a real terminal. | Harness `ui.press` elapsed time only (`performance.now()`; not latency). |
+| CPU consumption | The test sandbox has no `process.cpuUsage`/fs/process; `performance.now()` deltas are wall time. | None possible; no host tooling is exposed to tests. `claude` is present on this machine (2.1.286) and runs `plugin test/validate`, but not an interactive session. The reviewing environment has no `claude` binary at all, so even the harness tests cannot be re-run there. |
+
+## Live validation gate: REQUIRED BEFORE any task that changes rendering cadence or ships to users
+**Status: OPEN.** It closes only when a host-capable environment (real terminal + PTY driver, e.g. tmux on Linux/macOS or a scripted ConPTY driver on Windows, with `claude` installed) runs the procedures below and records results in `tests/evidence/live-*.md`. Harness numbers stay labelled harness-only and never substitute. Preconditions for every run: `claude --plugin-dir packages/claude-plugin --debug`, `COCKPIT_DATA_DIR` pointing at the live and offline fixtures, 140- and 60-column terminals, machine otherwise idle, machine and terminal noted.
+| Metric | Procedure (command, duration, sampling) | Pass threshold |
+|---|---|---|
+| Delivered cadence | Active run (live fixture), pane focused. Scheduler trace enabled (`COCKPIT_TRACE=1`, to be added by the scheduler worker: one debug line per second with blits sent, accepted `{}`, denied and skipped per key). 60 s steady state after a 10 s warm-up at 140 columns, then the same 60 s idle (offline fixture), 3 repetitions. Sample = per-second counters from the debug log. | Accepted blits/s per key within +-10% of the tier target (Tier A 16 ms target, capped by the shared 100/s budget; Tier B 15 fps); total <= 100/s; idle <= 2 fps per key. |
+| Input-to-paint latency | tmux driver: `send-keys` of a hotkey (e.g. `2`/`j`) while animation is active, then poll `capture-pane -p` every <=5 ms with a monotonic clock until the screen differs; 200 presses at random 0.3-1 s spacing, 140 columns; report the poll resolution as measurement error. On Windows use an equivalent ConPTY driver and record its resolution. | p95 < 50 ms (also record p50 and max). |
+| Plugin CPU | Per-process OS CPU time, not wall time: Linux `/proc/<pid>/stat` utime+stime, Windows `(Get-Process -Id <pid>).TotalProcessorTime`, or `process.cpuUsage()` from a sampler attached to the process; every claude process in the tree. Read at the start and end of a 60 s steady-state active-run window, 3 runs, minus a control run of the same session with the plugin disabled. | (plugin run - control) CPU time / 60 s < 5% of one core. |
+| Live captures | `tmux capture-pane -e -p` (keeps ANSI fg/bg) at 60 and 140 columns for the live and offline fixtures, with `COCKPIT_REDUCED_MOTION=1` for a deterministic frame; stored as `tests/evidence/live-before-{60,140}.ansi`. | Every cell carries its fg and bg; no line wider than the terminal; text layout matches the harness snapshot (`before-*.txt`) tree; before/after diff reviewed by a human. |
+Also run the "Host limit verification backlog" live tests in the same session; their results replace the matching constraints in `HOST_LIMITS`.
 
 ## 5. Interface agreements (for scheduler/painter/tween workers)
 
@@ -47,7 +108,7 @@ Unavailable in this environment, each needs a real interactive terminal session 
 - `fn(…size, t: number /*ms*/, data): string` (base64, exactly cols*rows*3 u32). Speeds in rad/s or cells/s, never per frame.
 - Examples: `hero(cols, rows, t, info)`, `pipeline(cols, t, info)`, `progress(cols, t, fill, live)`, `spark(cols, rows, t, values, live)`, `orb(t, color, active, seed)`. New: `divider(cols, t)`, `tabs(cols, t, data)`, `telemetry(cols, rows, t, data)`.
 - Callers pass already-interpolated values (`fill`, `values`, colours); painters never read tween state.
-- Write `Uint32Array` words directly; no per-cell arrays. Colours come only from `theme.ts`; gradients quantized to ~32 levels; <=512 distinct fg/bg pairs across all rasters per frame.
+- Write `Uint32Array` words directly; no per-cell arrays. Colours come only from `theme.ts`; gradients quantized to ~32 levels; <= `HOST_LIMITS.pairs.perPane` (512) distinct fg/bg pairs across all rasters of the pane per frame.
 - Bench (`tests/bench.ts`) will switch from `f` to `t = f*60` when painters change; keep export names so it needs one edit.
 
 ### Pipeline
@@ -72,10 +133,12 @@ Scheduler contract:
 - **Escalated**: the host offers no unmount/hide/resize notification for Rasters, so hidden-pane detection relies on denies and optionally polling `$.ui.panes()` (isShown) at idle rate; Supervisor to confirm that is acceptable.
 
 ### Scheduler (scheduler.ts, module-level, survives re-render)
-- `register(key, { cols, rows, tier: 'A'|'B'|'static', paint: (t) => string })` reconciles by key; `gen` increments on a new key, size change, run switch or remount.
-- `pending: Set<key>` outside the render-rebuilt map; a key with a pending blit skips its frame, never queues; cleared in `finally`.
-- Deny unregisters only if `gen` captured at send still equals current.
-- Budget: <=100 blits/s total (shared until proven otherwise); Tier A (hero, pipeline, progress) up to 16 ms period, Tier B (divider, tab underline, spark, orbs, telemetry) <=15 fps, static only on data/size change. Repeated frame-budget misses degrade to half rate. Idle (no motion for the displayed run, offline, unfocused, no Raster surface or reduced motion): <=2 fps or on change only; text tick <=1 fps (active <=10 fps).
+Consistent with the Lifecycle contract above; all limits come from `HOST_LIMITS` (section 2b).
+- `register(key, { cols, rows, tier: 'A'|'B'|'static', paint: (t, detail) => string })` reconciles by key; `gen` increments on a new key, size change, run switch or remount.
+- `pending: Map<key, token>` outside the render-rebuilt registry. A key with an entry skips its frame and never queues. Send: `const token = {}; pending.set(key, token)`; cleanup in `finally`: `if (pending.get(key) === token) pending.delete(key)` (identity-guarded: an old request can never clear a newer one).
+- Deny unregisters only if the `gen` captured at send still equals the current one.
+- Watchdog marks a key `stalled` (no new frames, reported once) and never releases `pending`; the key resumes only when its own promise settles.
+- Budget: `HOST_LIMITS.blit` token bucket (100/s shared, burst 10), staleness-ordered service, no key starved > 1 s, strict 1 in flight per key. Tier A (hero, pipeline, progress) up to 16 ms period, Tier B (divider, tab underline, spark, orbs, telemetry) <=15 fps, static only on data/size change. Repeated frame-budget misses degrade to half rate. Payload and colour-pair degradation as in 2b. Idle (no motion for the displayed run, offline, unfocused, no Raster surface or reduced motion): <=2 fps or on change only; text tick <=1 fps (active <=10 fps).
 - Single `$.clock.every(16)` driver; stop with `.cancel()` (Timer has `cancel()`, not callable); see Lifecycle for start/stop.
 - Motion eligibility derives from the displayed run (not `activeRun(snapshot)`) and is recomputed during render.
 

@@ -68,7 +68,7 @@ if (cmd === 'typecheck') {
       ...scratch([['host-probe.test.tsx', 'host-probe.test.tsx']]).filter(keep),
       ...scratch([['clock-probe.body.ts', 'clock-probe.test.ts']], 'clock-probe.ts').filter(keep),
     ]
-    writeFileSync(join(ev, 'host-probe.log'), lines.join('\n') + '\n')
+    writeFileSync(join(ev, 'host-probe.txt'), lines.join('\n') + '\n')
     console.log(lines.join('\n'))
   }
 } else die(`unknown command ${cmd}`)

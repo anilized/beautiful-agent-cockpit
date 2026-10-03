@@ -21,7 +21,7 @@ async function boot($: any, on: any, hold = 0, deny?: (b: Blit) => boolean) {
   const clock = mock.clock(on)
   const closes: string[] = []
   on('ui.close', async (_: unknown, e: { id: string; origin: { kind: string } }) => (closes.push(`${e.id}:${e.origin.kind}`), { value: undefined }) as never)
-  const stats = { total: 0, inflight: 0, maxInflight: 0, byKey: {} as Record<string, number>, denied: 0 }
+  const stats = { total: 0, inflight: 0, maxInflight: 0, byKey: {} as Record<string, number>, bytesByKey: {} as Record<string, number>, denied: 0 }
   on('fs.read', async () => ({ value: LIVE }))
   mock.env(on, { COCKPIT_DATA_DIR: '/data' })
   on('command.register', async () => ({ value: undefined }) as never)
@@ -32,6 +32,7 @@ async function boot($: any, on: any, hold = 0, deny?: (b: Blit) => boolean) {
   on('session.end', async (_: unknown, e: { sessionId: string }) => ({ sessionId: e.sessionId }))
   on('ui.blit', async (_: unknown, e: Blit) => {
     stats.total++
+    stats.bytesByKey[e.key] = Math.max(stats.bytesByKey[e.key] ?? 0, JSON.stringify(e).length) // serialized blit args, chars
     stats.byKey[e.key] = (stats.byKey[e.key] ?? 0) + 1
     stats.maxInflight = Math.max(stats.maxInflight, ++stats.inflight)
     try {
@@ -58,6 +59,7 @@ for (const cols of [60, 140]) {
     const t0 = performance.now()
     await clock.advance(1000)
     const elapsed = performance.now() - t0
+    log(`max serialized blit bytes per key @${cols}`, { perKey: stats.bytesByKey, worstKey: Math.max(...Object.values(stats.bytesByKey)), perFrameSum: Object.values(stats.bytesByKey).reduce((a, b) => a + b, 0) })
     log(`1s mock, instant blits @${cols}`, { blitsPerSec: stats.total, perKey: stats.byKey, maxInflight: stats.maxInflight, harnessElapsedMsFor1s: +elapsed.toFixed(1) })
     expect(stats.total).toBeGreaterThan(0)
 

@@ -1,0 +1,24 @@
+(pass) blit cadence, backpressure and latency @60 cols (current code) [362.28ms]
+(pass) unresolved blits pile up @60 cols (current code has no backpressure) [420.16ms]
+(pass) blit cadence, backpressure and latency @140 cols (current code) [243.88ms]
+(pass) unresolved blits pile up @140 cols (current code has no backpressure) [424.07ms]
+(pass) deny semantics: current code unregisters on any deny, stale or not [123.74ms]
+(pass) lifecycle: what the plugin hears when the drawing or session goes away (current code) [115.25ms]
+PROBE rasters@60 = {"count":7,"keys":["hero:60x4","pipeline:56x2","progress:50x1","spark:47x1","orb-sup:4x2","orb-lead:4x2","orb-w0:4x2"]}
+PROBE max serialized blit bytes per key @60 = {"perKey":{"hero":3893,"pipeline":1849,"progress":857,"spark":806,"orb-sup":184,"orb-lead":185,"orb-w0":183},"worstKey":3893,"perFrameSum":7957}
+PROBE 1s mock, instant blits @60 = {"blitsPerSec":112,"perKey":{"hero":16,"pipeline":16,"progress":16,"spark":16,"orb-sup":16,"orb-lead":16,"orb-w0":16},"maxInflight":1,"harnessElapsedMsFor1s":110.1}
+PROBE press latency ms @60 (instant blits) = {"p50":4.5,"p95":5.75,"max":8.7}
+PROBE slow host (500ms/blit) 1s @60 = {"started":112,"maxInflight":63,"inflightAtEnd":56}
+PROBE press with 56 blits pending @60 (harness ms) = 7.35
+PROBE rasters@140 = {"count":7,"keys":["hero:140x4","pipeline:70x2","progress:64x1","spark:61x1","orb-sup:4x2","orb-lead:4x2","orb-w0:4x2"]}
+PROBE max serialized blit bytes per key @140 = {"perKey":{"hero":9013,"pipeline":2297,"progress":1081,"spark":1030,"orb-sup":184,"orb-lead":185,"orb-w0":183},"worstKey":9013,"perFrameSum":13973}
+PROBE 1s mock, instant blits @140 = {"blitsPerSec":112,"perKey":{"hero":16,"pipeline":16,"progress":16,"spark":16,"orb-sup":16,"orb-lead":16,"orb-w0":16},"maxInflight":1,"harnessElapsedMsFor1s":100.8}
+PROBE press latency ms @140 (instant blits) = {"p50":4.46,"p95":7,"max":7.07}
+PROBE slow host (500ms/blit) 1s @140 = {"started":112,"maxInflight":63,"inflightAtEnd":56}
+PROBE press with 56 blits pending @140 (harness ms) = 8.7
+PROBE hero blits during 500ms with deny, then 500ms accepting = {"duringDeny":4,"total":12,"note":"a deny drops the key, but the next 125 ms text render re-registers it: stale-deny guard needed"}
+PROBE blits in 500ms after ui.unmount (all denied only by a real host) = {"blits":56,"uiCloseEvents":[]}
+PROBE blits in 500ms after session.end = 63
+(pass) clock.every minimum period, performance.now [51.24ms]
+PROBE every0={"fires":10}
+PROBE every1={"fires":100,"perfMonotonic":true,"perfDeltaMs":20.94,"maxStepMs":2.05,"wallDeltaMs":100}
