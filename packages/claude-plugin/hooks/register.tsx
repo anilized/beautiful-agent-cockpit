@@ -14,7 +14,7 @@ import { createTweens, type Tweens } from './tween'
 
 const PANE = 'agent-cockpit'
 const EMPTY: CockpitView = { snapshot: null, error: null, message: null }
-const UI0: CockpitUi = { selectedRun: null, tab: 'live', composing: null, nonce: 0, busy: null, report: null, failure: null, seats: { supervisor: null, lead: null }, efforts: {}, mind: null, open: [], focus: 'tasks', task: null }
+const UI0: CockpitUi = { selectedRun: null, tab: 'live', composing: null, nonce: 0, busy: null, report: null, failure: null, seats: { supervisor: null, lead: null }, efforts: {}, mind: null, open: [], focus: 'tasks', task: null, scroll: {} }
 const view = atom({ plugin: 'agent-cockpit', key: 'view' } as const, EMPTY)
 const ui = atom({ plugin: 'agent-cockpit', key: 'ui' } as const, UI0)
 const tickAtom = atom({ plugin: 'agent-cockpit', key: 'tick' } as const, 0)
@@ -84,6 +84,30 @@ function activeRun(s: CockpitSnapshot | null): CockpitRun | null {
   if (!s?.runs.length) return null
   return s.runs.find(r => !TERMINAL.includes(r.status)) ?? s.runs[0]!
 }
+
+/** Word-wrap one paragraph to `w` columns; a word longer than a line is cut. */
+function wrapWords(text: string, w: number): string[] {
+  if (w < 4) return [text]
+  const out: string[] = []
+  let line = ''
+  for (const word of text.replace(/\t/g, '  ').split(/(\s+)/)) {
+    if (!word) continue
+    if ((line + word).length > w) {
+      if (line.trim()) out.push(line.trimEnd())
+      line = word.trimStart()
+      while (line.length > w) out.push(line.slice(0, w)), (line = line.slice(w))
+    } else line += word
+  }
+  if (line.trim() || !out.length) out.push(line.trimEnd())
+  return out
+}
+
+// Boxes that scroll on their own under the wheel: where the last render drew them, in the body's rows.
+type Region = { id: 'centre' | 'tasks' | 'output'; x0: number; x1: number; y0: number; y1: number; max: number }
+let regions: Region[] = []
+let paneOffset = 0
+let taskKeys: string[] = []
+let selectedTask: string | null = null
 
 /** Lines of an approval shown before "show all". */
 const APPROVAL_PREVIEW = 6
@@ -487,6 +511,23 @@ export const register: Register = on => {
     }
   })
 
+  on('ui.scroll', async ($, e, next) => {
+    const p = e.pointer
+    if (e.requestId !== PANE || !p) return next(e)
+    const y = p.row + paneOffset
+    const r = regions.find(g => p.column >= g.x0 && p.column < g.x1 && y >= g.y0 && y < g.y1)
+    if (!r) return next(e)
+    if (r.id === 'tasks') {
+      // over the task list the wheel walks the selection
+      const at = Math.max(0, taskKeys.indexOf(selectedTask ?? ''))
+      const key = taskKeys[Math.max(0, Math.min(taskKeys.length - 1, at + Math.sign(e.by)))]
+      if (key) await patchUi($, { task: key, focus: 'tasks' })
+      return {}
+    }
+    await patchUi($, x => ({ scroll: { ...x.scroll, [r.id]: Math.max(0, Math.min(r.max, (x.scroll[r.id] ?? 0) + e.by * 3)) } }))
+    return {}
+  })
+
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
     try {
       return await drawPane($, e)
@@ -528,6 +569,8 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const rows = Math.max(e.props.scroll?.bodyRows ?? 0, (e.viewport?.rows ?? 40) - 8)
     const online = !!s && s.daemon.port !== null
     const specs = new Map<string, RasterSpec>()
+    regions = []
+    paneOffset = e.props.scroll?.offset ?? 0
 
     // A Raster drawn now at the current elapsed time; `animated` ones are repainted by the scheduler afterwards.
     const raster = (key: string, columns: number, height: number, animated: boolean, fn: (t: number) => string, fallback: RenderChildren = null) => {
@@ -824,7 +867,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const tasksIn = tasksW - 4
     const rightIn = rightW - 4
     const runIdx = s.runs.findIndex(r => r.id === run.id)
-    const select = (id: string | null) => void patchUi($, x => ({ selectedRun: id, report: x.report?.runId === id ? x.report : null, task: null, mind: null }))
+    const select = (id: string | null) => void patchUi($, x => ({ selectedRun: id, report: x.report?.runId === id ? x.report : null, task: null, mind: null, scroll: {} }))
     const tel = run.telemetry
 
     // activity: events bucketed across the run's own time span
@@ -1240,7 +1283,9 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       const width = Math.max(20, rightIn - 14)
       const cap = { thinking: 4, text: 6, tool: 1, result: 10 } as const
       const entryId = (e: CockpitMind['activity'][number]) => `mind-${followed.sessionId}-${e.ts}-${e.kind}-${e.text.length}`
-      const entries = [...followed.activity].reverse()
+      const allEntries = [...followed.activity].reverse()
+      const skip = Math.min(u.scroll.output ?? 0, Math.max(0, allEntries.length - 1))
+      const entries = allEntries.slice(skip)
       return (
         <Box flexDirection="column">
           <Box justifyContent="space-between">
@@ -1252,6 +1297,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
             </Text>
             <Text color={active ? color : C.dim}>{active ? `${SPIN[n % SPIN.length]} live ` : `${followed.status} `}{ago(end - Date.parse(followed.startedAt))}</Text>
           </Box>
+          {skip ? <Text color={C.dim}>↑ {skip} newer (scroll up)</Text> : null}
           {entries.length ? entries.map((e, k) => {
             const fresh = Math.max(0, 1 - (now - Date.parse(e.ts)) / 8000)
             const opened = isOpen(entryId(e))
@@ -1318,7 +1364,9 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       ['events', 'Events', ` ${run.recentEvents.length}`],
       ['report', 'Report', ''],
     ]
-    const showView = (id: CockpitTab) => (id === 'report' && u.report?.runId !== run.id ? void loadReport($, run.id) : void patchUi($, { tab: id }))
+    const showView = (id: CockpitTab) => (id === 'report' && u.report?.runId !== run.id
+      ? void loadReport($, run.id).then(() => patchUi($, x => ({ focus: 'centre', scroll: { ...x.scroll, centre: 0 } })))
+      : void patchUi($, x => ({ tab: id, focus: 'centre', scroll: { ...x.scroll, centre: 0 } })))
     const tabW = views.map(([, label, badge]) => label.length + badge.length + 5)
     const tabIdx = Math.max(0, views.findIndex(([id]) => id === u.tab))
     const tabE = ease('tab', tabIdx, 220)
@@ -1375,9 +1423,9 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       logLines.push({ ts: ev.ts, tag: 'ORCH', color: C.accent, tone, text: ev.text })
     }
     logLines.sort((a, b) => b.ts.localeCompare(a.ts))
-    const LogView = ({ max }: { max: number }) => (
+    const LogView = ({ max, skip = 0 }: { max: number; skip?: number }) => (
       <Box flexDirection="column">
-        {logLines.length ? logLines.slice(0, max).map((ln, i) => {
+        {logLines.length ? logLines.slice(skip, skip + max).map((ln, i) => {
           const fresh = Math.max(0, 1 - (now - Date.parse(ln.ts)) / 8000)
           const mark = ln.tone === 'ok' || ln.tone === 'result' ? '✔ ' : ln.tone === 'bad' ? '✗ ' : ln.tone === 'thinking' ? '∴ ' : ''
           const color = ln.tone === 'ok' || ln.tone === 'result' ? C.green : ln.tone === 'bad' ? C.red : ln.tone === 'thinking' ? C.thinkDim : ln.tone === 'tool' ? C.mute : ln.tone === 'sys' ? C.text : mix(C.text, C.white, fresh)
@@ -1528,13 +1576,89 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const termW = tasksW - codeW
     const sized = wide // only the grid pins heights; narrower panes grow with their content and scroll
 
-    const centreBody: RenderChildren =
-      u.tab === 'task' ? (selTask ? <TaskDetail t={selTask} /> : <Text color={C.dim}>No task selected.</Text>)
-      : u.tab === 'events' ? eventsView()
-      : u.tab === 'report' ? (u.report?.runId === run.id
-        ? <Box flexDirection="column">{markdownChunks(u.report.text).map(part => <Markdown text={part} />)}</Box>
-        : <Text color={C.cyan}>{SPIN[n % SPIN.length]} fetching report…</Text>)
-      : <LogView max={Math.max(6, topH - 11)} />
+    // Every centre view is a list of one-row elements, so the box shows exactly what fits and scrolls the rest.
+    type Row = { text: string; color?: string; bold?: boolean; italic?: boolean; indent?: number }
+    const lineW = Math.max(20, tasksIn - 1)
+    const para = (text: string, style: Omit<Row, 'text'> = {}): Row[] => wrapWords(text, lineW - (style.indent ?? 0)).map(t => ({ ...style, text: t }))
+    const RowLine = ({ r }: { r: Row }) => <Text wrap="truncate-end" color={r.color ?? C.text} bold={r.bold} italic={r.italic}>{' '.repeat(r.indent ?? 0)}{r.text || ' '}</Text>
+    // Markdown, read for a terminal: headings, lists, tables and code keep their shape; emphasis markers go.
+    const mdRows = (md: string): Row[] => {
+      const out: Row[] = []
+      let code = false
+      for (const raw of md.split('\n')) {
+        if (/^\s*(```|~~~)/.test(raw)) { code = !code; continue }
+        if (code) { out.push({ text: raw.replace(/\t/g, '  '), color: C.mute }); continue }
+        const line = raw.replace(/\*\*|__|`/g, '')
+        const h = /^(#{1,6})\s+(.*)$/.exec(line)
+        if (h) { if (out.length) out.push({ text: '' }); out.push(...para(h[2]!.toUpperCase(), { color: C.accent, bold: true })); continue }
+        if (/^\s*\|/.test(line)) { if (!/^\s*\|[\s:|-]+\|\s*$/.test(line)) out.push({ text: line.trim(), color: C.text }); continue }
+        const li = /^(\s*)([-*+]|\d+\.)\s+(.*)$/.exec(line)
+        if (li) { const ind = Math.min(6, li[1]!.length); const [first, ...rest] = wrapWords(li[3]!, lineW - ind - 2); out.push({ text: `• ${first}`, indent: ind }, ...rest.map(t => ({ text: t, indent: ind + 2 }))); continue }
+        out.push(...(line.trim() ? para(line.trim()) : [{ text: '' }]))
+      }
+      return out
+    }
+    const taskRows = (t: CockpitTask): Row[] => {
+      const d = t.detail
+      const rows: Row[] = [
+        { text: `${t.key} · ${t.status.replace(/_/g, ' ')}${t.agentId ? ` · ${t.agentId}` : ''}${t.iteration > 1 ? ` · ${t.iteration} tries` : ''}`, color: STATUS_COLOR[t.status] ?? C.text, bold: true },
+        ...para(t.title, { color: C.ink, bold: true }),
+        ...(t.dependsOn.length ? [{ text: `after ${t.dependsOn.join(', ')}`, color: C.dim }] : []),
+        ...(t.blockedReason ? para(`↳ ${t.blockedReason}`, { color: C.yellow }) : []),
+      ]
+      if (!d) return [...rows, { text: 'No details for this task yet.', color: C.dim }]
+      rows.push({ text: '' }, ...para(d.description), { text: `${d.kind} · risk ${d.risk} · complexity ${d.complexity} · tests ${d.testsRequired ? d.testCommand ?? 'repo default' : 'not required'}`, color: C.dim })
+      if (d.acceptanceCriteria.length) rows.push({ text: '' }, { text: 'ACCEPTANCE', color: C.mute, bold: true }, ...d.acceptanceCriteria.flatMap(c => para(`✓ ${c}`, { color: C.text })))
+      const scope = [...d.scope.files.map(f => `◦ ${f}`), ...d.scope.modules.map(m => `▣ ${m}`), ...d.scope.resources.map(r => `⛁ ${r}`)]
+      if (scope.length) rows.push({ text: '' }, { text: 'SCOPE', color: C.mute, bold: true }, ...scope.map(x => ({ text: x, color: C.mute })))
+      if (d.summary) rows.push({ text: '' }, { text: 'WORKER', color: C.mute, bold: true }, ...para(d.summary))
+      if (d.review) {
+        rows.push({ text: '' }, { text: `REVIEW it${d.review.iteration} · ${d.review.verdict.replace(/_/g, ' ')}`, color: d.review.verdict === 'approve' ? C.green : C.yellow, bold: true }, ...para(d.review.summary))
+        for (const i of d.review.issues) rows.push(...para(`✗ ${i.severity} ${i.file ? `${i.file}: ` : ''}${i.description}`, { color: i.severity === 'blocker' ? C.red : i.severity === 'major' ? C.yellow : C.dim }))
+      }
+      return rows
+    }
+    const eventRows = (): RenderChildren[] => {
+      const evId = (ev: CockpitRun['recentEvents'][number]) => `ev-${ev.ts}-${ev.type}`
+      return [...run.recentEvents].reverse().flatMap((ev, i) => {
+        const fresh = Math.max(0, 1 - (now - Date.parse(ev.ts)) / 6000)
+        const c = eventColor(ev.type)
+        const head = (
+          <Box key={evId(ev)}>
+            <Fold id={evId(ev)} />
+            <Text wrap="truncate-end">
+              <Text color={mix(C.dim, C.white, fresh)}>{ev.ts.slice(11, 19)} </Text>
+              <Text color={mix(c, C.white, fresh * 0.6)}>{i === 0 && live ? glyph('running', n) : '●'} </Text>
+              <Text color={mix(c, C.white, fresh * 0.6)} bold>{ev.type}</Text>
+              <Text color={mix(C.mute, C.text, fresh)}>  {ev.text === ev.type ? '' : ev.text}</Text>
+            </Text>
+          </Box>
+        )
+        return isOpen(evId(ev)) ? [head, ...(ev.detail ?? ev.text).split('\n').flatMap(l => para(l, { indent: 4 })).map(r => <RowLine r={r} />)] : [head]
+      })
+    }
+    const centreItems: RenderChildren[] =
+      u.tab === 'task' ? (selTask ? taskRows(selTask) : [{ text: 'No task selected.', color: C.dim }]).map(r => <RowLine r={r} />)
+      : u.tab === 'events' ? (run.recentEvents.length ? eventRows() : [<Text color={C.dim}>No events yet.</Text>])
+      : u.tab === 'report' ? (u.report?.runId === run.id ? mdRows(u.report.text).map(r => <RowLine r={r} />) : [<Text color={C.cyan}>{SPIN[n % SPIN.length]} fetching report…</Text>])
+      : [<LogView max={1000} />]
+    // The log is one element of one-row lines: window it by entries; the other views by rows.
+    const centreRows = Math.max(4, topH - 9)
+    const logMode = u.tab === 'live'
+    const centreTotal = logMode ? logLines.length : centreItems.length
+    const centreMax = Math.max(0, centreTotal - centreRows + 1)
+    const centreOff = sized ? Math.min(u.scroll.centre ?? 0, centreMax) : 0
+    const upMore = centreOff
+    const room = centreRows - (upMore ? 1 : 0)
+    const downMore = sized ? Math.max(0, centreTotal - centreOff - room) : 0
+    const take = downMore ? room - 1 : room
+    const centreBody: RenderChildren = (
+      <Box flexDirection="column">
+        {upMore ? <Text color={C.dim}>↑ {upMore} more{u.focus === 'centre' ? ' (k)' : ''}</Text> : null}
+        {logMode ? <LogView max={sized ? take : 1000} skip={centreOff} /> : (sized ? centreItems.slice(centreOff, centreOff + take) : centreItems)}
+        {downMore ? <Text color={C.dim}>↓ {downMore} more{u.focus === 'centre' ? ' (j)' : ' (scroll)'}</Text> : null}
+      </Box>
+    )
     const branch = run.repositories[0]?.integration?.branch.split('/').slice(-1)[0] ?? run.repositories[0]?.baseBranch ?? ''
     const centrePanel = (
       <Box flexDirection="column" borderStyle="round" borderColor={C.border} paddingX={1} width={wide || medium ? tasksW : undefined} height={sized ? topH : undefined} overflow="hidden">
@@ -1602,6 +1726,18 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       </Panel>
     )
 
+    if (sized) {
+      const bodyTop = 1 + (run.error ? 1 : 0) + (u.failure ? 5 : 0) + approvalRows + (u.composing?.kind === 'run' ? 9 : 0)
+      const right0 = agentsW + tasksW
+      regions = [
+        { id: 'centre', x0: agentsW, x1: right0, y0: bodyTop, y1: bodyTop + topH, max: centreMax },
+        { id: 'tasks', x0: right0, x1: cols, y0: bodyTop, y1: bodyTop + tasksH, max: 0 },
+        { id: 'output', x0: right0, x1: cols, y0: bodyTop + topH, y1: bodyTop + topH + botH, max: Math.max(0, (followed?.activity.length ?? 1) - 1) },
+      ]
+    }
+    taskKeys = [...taskOrder, ...finished].map(t => t.key)
+    selectedTask = selTask?.key ?? null
+
     // Agents, one line each: the role's ring, who holds it, and whether it is running, thinking or idle.
     const AgentLine = ({ r }: { r: AgentRow }) => {
       const color = r.role === 'worker' ? SPEC_COLOR[specOf(r.task) ?? ''] ?? C.orange : ROLE_COLOR[r.role] ?? C.text
@@ -1634,6 +1770,10 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     // ── keys: j/k move in the focused list, h/l switch it; the footer shows what the focus offers ──
 
     const move = (d: 1 | -1) => {
+      if (u.focus === 'centre') {
+        void patchUi($, x => ({ scroll: { ...x.scroll, centre: Math.max(0, Math.min(centreMax, (x.scroll.centre ?? 0) + d * 3)) } }))
+        return
+      }
       if (u.focus === 'agents') {
         const next = pickable[(selAgent + d + pickable.length) % Math.max(1, pickable.length)]
         if (next) followMind(next.mind)
@@ -1669,7 +1809,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           <Box flexWrap="wrap" gap={2}>
             {nav.map(([k, label, fn]) => <Button plain hotkey={k} key={`nav-${k}`} label={label} onPress={fn} />)}
             <Text color={C.faint}>│</Text>
-            {u.focus === 'agents' ? <Text color={C.dim}>v b seats · f g w effort</Text> : <Text color={C.dim}>1-4 view</Text>}
+            {u.focus === 'agents' ? <Text color={C.dim}>v b seats · f g w effort</Text> : u.focus === 'centre' ? <Text color={C.dim}>j k scroll · 1-4 view</Text> : <Text color={C.dim}>1-4 view</Text>}
             <Text color={C.faint}>│</Text>
             {actions.map(([k, label, fn]) => <Button plain hotkey={k} key={keyName[k] ?? `act-${k}`} label={label} onPress={fn} />)}
           </Box>

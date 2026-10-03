@@ -225,7 +225,7 @@ test('a long approval shows its first lines and opens to the whole text', async 
   await ui.unmount()
 })
 
-test('a report longer than one Markdown element is drawn whole, in parts', async ($, on) => {
+test('a long report scrolls inside the centre box instead of spilling over it', async ($, on) => {
   const report = `# Report\n\n${Array.from({ length: 400 }, (_, i) => `- finding ${i}: ${'detail '.repeat(8)}`).join('\n')}\n\nEND-OF-REPORT`
   on('fs.read', async () => ({ value: LIVE }))
   mock.clock(on)
@@ -236,13 +236,24 @@ test('a report longer than one Markdown element is drawn whole, in parts', async
   on('ui.toast', async () => ({ value: undefined }) as never)
   on('process.run', async () => ({ value: { exitCode: 0, stdout: report, stderr: '' } }) as never)
   await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
-  const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(100) })
+  // narrow: no fixed boxes, the whole report is drawn and the pane scrolls
+  let ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(100) })
   await ui.press({ key: 'tab-report' })
   await ui.advance(500)
-  const parts = await ui.findAll({ type: 'Markdown' })
   expect(report.length).toBeGreaterThan(20000)
-  expect(parts.length).toBeGreaterThan(2)
-  expect(await ui.find({ key: 'tab-live' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /END-OF-REPORT/ })).toBeDefined()
+  expect(await ui.findAll({ type: 'Markdown' })).toEqual([])
+  await ui.unmount()
+  // the grid: the box shows what fits, says how much is below, and j walks down to the end
+  ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(140) })
+  await ui.press({ key: 'tab-report' })
+  await ui.advance(500)
+  expect(await ui.find({ type: 'Text', text: /END-OF-REPORT/ })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /↓ \d+ more/ })).toBeDefined()
+  for (let i = 0; i < 300 && !(await ui.find({ type: 'Text', text: /END-OF-REPORT/ })); i++) await ui.press({ key: 'nav-j' })
+  expect(await ui.find({ type: 'Text', text: /END-OF-REPORT/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /↑ \d+ more/ })).toBeDefined()
+  expect(await ui.find({ key: 'tab-live' })).toBeDefined() // the box never pushes its own header away
   await ui.unmount()
 })
 

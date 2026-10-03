@@ -111,8 +111,10 @@ export type CockpitUi = {
   mind: string | null
   /** Rows opened to show what their one line cuts off (tasks, events, Minds entries). */
   open: string[]
-  /** The list j/k move in: the agents or the tasks panel. */
-  focus: 'agents' | 'tasks'
+  /** What j/k act on: the agents list, the tasks list, or the centre view (scrolls). */
+  focus: 'agents' | 'tasks' | 'centre'
+  /** Rows (or entries) scrolled off the top of a box that scrolls on its own: centre, output. */
+  scroll: Record<string, number>
   /** The selected task (its key); null picks the first that needs attention or is running. */
   task: string | null
 }
