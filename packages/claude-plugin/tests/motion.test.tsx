@@ -122,15 +122,15 @@ test('a key that leaves the render is not blitted from the next tick', async ($,
 })
 
 for (const [name, snap] of [['offline', offline], ['no active run', () => ({ ...live(), runs: live().runs.map((r: Snap) => ({ ...r, status: 'completed' })), pendingApprovals: [] })]] as const) {
-  test(`idle (${name}): <=2 blits/s per key, text tick <=1 fps`, async ($, on) => {
+  test(`idle (${name}): <=2 blits/s in total, text tick <=1 fps`, async ($, on) => {
     const { clock, st } = await boot($, on, snap())
     const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(140) })
     await clock.advance(2000)
     st.blits.length = 0
     await clock.advance(10_000)
-    const by = perKey(st.blits)
-    expect(Object.keys(by).length).toBeGreaterThan(0)
-    for (const [k, n] of Object.entries(by)) expect([k, n / 10 <= 2]).toEqual([k, true])
+    // At rest only the hero (it carries the wall clock) is repainted by the scheduler: <=2 blits/s in total.
+    expect(Object.keys(perKey(st.blits))).toEqual(['hero'])
+    expect(st.blits.length / 10).toBeLessThanOrEqual(2.1)
     // No fast text tick: only the 1 s poll and the 1 s idle beat remain (>=1000 ms periods), plus the scheduler's slow 500 ms idle timer.
     st.every.length = 0
     await clock.advance(10_000)
@@ -143,19 +143,23 @@ for (const [name, snap] of [['offline', offline], ['no active run', () => ({ ...
 test('COCKPIT_REDUCED_MOTION=1: animation time frozen, status changes still render', async ($, on) => {
   const { clock, st, set } = await boot($, on, live(), { env: { COCKPIT_REDUCED_MOTION: '1' } })
   const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(140) })
-  await clock.advance(1100) // same wall second for both captures: only animation time could differ
-  const last = () => {
+  await clock.advance(1100)
+  const cellsOf = async () => {
     const m = new Map<string, string>()
-    for (const b of st.blits) m.set(b.key, b.cells)
+    const walk = (n: any) => {
+      if (n?.type === 'Raster') m.set(n.props.key, n.props.cells)
+      for (const c of n?.children ?? []) if (typeof c !== 'string') walk(c)
+    }
+    walk(await ui.drawn())
     return m
   }
-  st.blits.length = 0
-  await clock.advance(2000)
-  const a = new Map(last())
+  const a = await cellsOf()
   expect(a.size).toBeGreaterThan(5)
   st.blits.length = 0
   await clock.advance(5000)
-  const b = last()
+  expect(Object.keys(perKey(st.blits)).filter(k => k !== 'hero')).toEqual([]) // nothing but the clock-bearing hero is repainted
+  expect(st.blits.length / 5).toBeLessThanOrEqual(2.1)
+  const b = await cellsOf()
   for (const [k, cells] of a) if (k !== 'hero') expect([k, b.get(k)]).toEqual([k, cells]) // hero carries the wall clock string
   expect(await ui.find({ type: 'Text', text: /AWAITING APPROVAL/ })).toBeDefined()
   const next = live()
@@ -185,6 +189,21 @@ test('progress eases between snapshots of one run, snaps on a run switch', async
   expect(mid).toBeGreaterThan(25)
   expect(mid).toBeLessThan(100)
   await clock.advance(1500)
+  expect((await pcts(ui))[0]).toBe(100)
+  await ui.unmount()
+})
+
+test('tweens snap on remount (no host unmount event: a render gap past the idle beat resets them)', async ($, on) => {
+  const { clock, set } = await boot($, on, twoLive())
+  let ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(140) })
+  await clock.advance(1000)
+  expect((await pcts(ui))[0]).toBe(75)
+  await ui.unmount()
+  const s = twoLive()
+  s.runs[0].tasks.forEach((t: Snap) => (t.status = 'integrated'))
+  set(s)
+  await clock.advance(2000) // snapshot lands while unmounted; the gap exceeds the stale window
+  ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(140) })
   expect((await pcts(ui))[0]).toBe(100)
   await ui.unmount()
 })

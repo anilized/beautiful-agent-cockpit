@@ -45,7 +45,7 @@ if (cmd === 'typecheck') {
   for (const f of files) {
     const has = HEX.test(readFileSync(join(dir, f), 'utf8'))
     if (f === 'theme.ts') { if (!has) (console.error('FAIL theme.ts has no palette literals'), bad++) }
-    else if (has) (console.error(`FAIL ${f}: 'register.tsx has no palette literals' / raster.ts neither`), bad++)
+    else if (has) (console.error(`FAIL ${f} has palette literals (theme.ts only)`), bad++)
   }
   if (!files.includes('theme.ts')) (console.error('FAIL hooks/theme.ts missing'), bad++)
   if (!files.includes('raster.ts')) (console.error('FAIL hooks/raster.ts missing'), bad++)

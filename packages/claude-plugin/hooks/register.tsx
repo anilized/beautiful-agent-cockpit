@@ -134,7 +134,7 @@ let life: Promise<Life> | null = null
 let stopPoll: (() => void) | null = null
 const TICK_MS = 125 // text spinners and pulses: <=10 fps with motion
 const IDLE_TICK_MS = 1000
-const STALE_MS = 3000 // no render for this long: the pane was gone, tweens start over
+const STALE_MS = 1500 // the host has no unmount event: no render for longer than the 1 s idle beat means the pane was gone, tweens snap
 
 async function createLife($: EngineInterface): Promise<Life> {
   const T0 = await $.clock.now()
@@ -149,7 +149,7 @@ async function createLife($: EngineInterface): Promise<Life> {
       l.tweens.setMotion(!on && l.motion)
     },
     setMotion(on) {
-      if (on === l.motion) return
+      if (on === l.motion || !l.open) return
       l.motion = on
       l.sched.setMotion(on)
       l.tweens.setMotion(on)
@@ -189,7 +189,8 @@ async function createLife($: EngineInterface): Promise<Life> {
   l.arm()
   return l
 }
-const getLife = ($: EngineInterface) => (life ??= createLife($))
+let ended = false // a render after session.end gets an inert Life: no timers, no blits
+const getLife = ($: EngineInterface) => (life ??= createLife($).then(l => (ended && l.close(), l)))
 function closeLife() {
   const p = life
   life = null
@@ -349,6 +350,7 @@ export const register: Register = on => {
       name: 'cockpit',
       description: 'Agent cockpit: /cockpit [start|stop|run <request>|status|approve|changes <text>|reject|report]',
     })
+    ended = false
     closeLife()
     await getLife($)
     await refresh($)
@@ -359,10 +361,12 @@ export const register: Register = on => {
   })
 
   on('ui.close', async ($, e, next) => {
+    const r = await next(e) // a hook may keep the pane open: tear down only after it is really closing
     if (e.id === PANE) closeLife()
-    return next(e)
+    return r
   })
   on('session.end', async ($, e, next) => {
+    ended = true
     closeLife()
     stopPoll?.()
     stopPoll = null
@@ -430,11 +434,12 @@ export const register: Register = on => {
     // A Raster that keeps animating: drawn now at the current animation time, repainted by the scheduler afterwards.
     const raster = (key: string, columns: number, height: number, tier: 'A' | 'B', fn: (t: number) => string, fallback: RenderChildren = null) => {
       if (!RasterEl || columns < 1) return fallback
-      specs.set(key, { tier, id: `${columns}x${height}`, paint: () => fn(l.anim()) })
+      // At rest only the hero (wall clock) is repainted by the scheduler (<=2 fps); the rest are redrawn by the 1 Hz render.
+      if (l.motion || key === 'hero') specs.set(key, { tier, id: `${columns}x${height}`, paint: () => fn(l.anim()) })
       return RasterEl({ key, columns, rows: height, cells: fn(anim) })
     }
     // Every return path reports the mounted raster keys; text-only surfaces have none and leave the scheduler alone.
-    const out = <R,>(el: R): R => (RasterEl && l.sched.sync(specs), el)
+    const out = <R,>(el: R): R => (RasterEl && l.open && l.sched.sync(specs), el)
     // Tweens: retarget at render, sampled at paint time so the ease runs between renders.
     const run0 = online ? (u.selectedRun && s.runs.find(r => r.id === u.selectedRun)) || activeRun(s) : null
     const viewing = !!run0 && !TERMINAL.includes(run0.status)

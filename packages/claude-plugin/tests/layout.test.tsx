@@ -37,7 +37,8 @@ function audit(root: Node, cols: number) {
       texts++
       const wrap = p.wrap as string | undefined
       for (const line of textOf(n).split('\n')) {
-        const w = wrap === 'wrap' ? Math.max(0, ...line.split(/\s+/).map(width)) : wrap?.startsWith('truncate') ? 0 : width(line)
+        const fallback = /[▔▕]/.test(line) // underline and meter fallbacks are ours to fit, truncating or not
+        const w = fallback ? width(line) : wrap === 'wrap' ? Math.max(0, ...line.split(/\s+/).map(width)) : wrap?.startsWith('truncate') ? 0 : width(line)
         if (w > cols) bad.push(`${w} > ${cols}: ${line.slice(0, 60)}`)
       }
       return
@@ -71,7 +72,7 @@ for (const [name, snap] of [['live', LIVE], ['offline', OFFLINE]] as const) {
     for (const surface of ['terminal', 'desktop'] as const)
       for (const cols of [60, 100, 140]) {
         const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface, ...pane(cols) })
-        const tabs = name === 'live' ? ['tab-tasks', 'tab-events'] : ['']
+        const tabs = name === 'live' ? ['tab-tasks', 'tab-events', 'tab-report'] : ['']
         for (const tab of tabs) {
           if (tab) await ui.press({ key: tab })
           const { bad, texts } = audit((await ui.drawn()) as Node, cols)
