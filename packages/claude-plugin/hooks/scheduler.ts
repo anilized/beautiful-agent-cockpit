@@ -1,7 +1,30 @@
-// Raster blit scheduler: one pending {token, gen} slot per key, token buckets, watchdog, degrade. Pure logic; clock and blit are injected.
-// Nothing is queued: a key with a pending slot or without a token is skipped this tick and judged again on the next.
-import { CADENCE, HOST_LIMITS, trace as globalTrace, type Cadence, type Trace } from './limits'
+// Raster blit scheduler: one pending {token, gen} slot per key, token buckets, watchdog, degrade, idle timer. Pure logic: no host
+// imports; clock, blit and panes() probe are injected. Nothing is queued: a key with a pending slot or without a token is skipped
+// this tick (trace 'skip') and judged again on the next.
+//
+// Host facts (plugin-authoring d.ts): blit is limited to ~120/s taken, ~60 shown, and can be denied (d.ts:2178-2187); $.clock.every
+// takes >= 1 ms and a refused period ends the interval (d.ts:3228-3231), hence the watchdog; $.ui.panes() has an unstated cost
+// (d.ts:2308-2319), hence a <=1 Hz probe that is never on the main path.
+//
+// API (TASK-306 integrates against this):
+//   createScheduler({ clock, blit, probeLive?, cadence?, trace? }) -> Scheduler
+//     clock.every(ms, fn) / clock.after(ms, fn) -> cancel;  clock.now() MUST be synchronous (see makeSyncClock).
+//     blit(key, cells) -> Promise<{ deny? } | void>; a rejection counts as a failure, a truthy `deny` unregisters the key.
+//     probeLive?() -> Promise<Set<key>>: optional $.ui.panes() adapter, polled <=1 Hz only while idle or degraded.
+//     cadence defaults to CADENCE.conservative; trace defaults to the limits.ts recorder (no-op while the gate is off).
+//   sync(keys: Map<key, {tier:'A'|'B', paint(timeMs)->cells, id?}>) call from every render: keys missing are dropped before the next
+//     tick; a changed `id` under the same key is a replacement (gen bump, fresh entry). Tier A (hero, pipeline) <=30 fps, B <=15 fps.
+//   setMotion(on)  false when idle/offline/reduced motion: timer <=500 ms, only HERO_KEY paints, <=2 blits/s.
+//   urgent(key)    approval/failure pulse from the ~10% reserve; false when pending, tokenless or unknown.
+//   close() / end() for ui.close / session.end: synchronously clear timers, keys, slots, bump gen; zero blits afterwards.
+//   stats()        { gen, live, pending, degraded, timerMs, motion } for tests and diagnostics.
+// The timer runs at framePeriodMs (16) only while live keys exist and motion is on; it is cancelled when no keys are live.
+// Invariant "one in-flight blit per key" is counted host side: a pending slot is freed only by its own resolve/deny (token match);
+// a generation bump merely discards that late resolve's effects. A stalled blit keeps its slot, so nothing new is sent for the key.
+import { CADENCE, HOST_LIMITS, PANES_POLL_MAX_HZ, trace as globalTrace, type Cadence, type Trace } from './limits'
 
+/** The one key that keeps painting while motion is off. */
+export const HERO_KEY = 'hero'
 export type Tier = 'A' | 'B'
 /** `id` marks the raster instance: a changed id under the same key is a replacement (gen bump, fresh entry). */
 export type KeySpec = { tier: Tier; paint: (timeMs: number) => string; id?: string | number }
@@ -33,13 +56,12 @@ const HEALTHY_MS = 2000 // degrade restores after this long without a stall or d
 const DENY_WINDOW_MS = 2000
 const DENY_LIMIT = 2
 const BUCKET_MIN = 2
-const STALL_MS = 6000 // a blit pending this long is aborted by the watchdog so the key can paint again
 
 export const createScheduler = (deps: SchedulerDeps): Scheduler => {
   const { clock } = deps
   const cad = deps.cadence ?? CADENCE.conservative
   const tr = () => deps.trace ?? globalTrace
-  const minMs = HOST_LIMITS.clockMinMs.value
+  const minMs = HOST_LIMITS.clockMinPeriodMs.value
   const frameMs = Math.max(minMs, cad.framePeriodMs)
   const idleMs = Math.max(minMs, cad.idlePeriodMs)
   const mainRate = (cad.totalPerSec * (1 - cad.urgentReserve)) / 1000
@@ -104,7 +126,7 @@ export const createScheduler = (deps: SchedulerDeps): Scheduler => {
 
   const probe = (t: number) => {
     // $.ui.panes() (d.ts:2308-2319) cost is undocumented: poll <=1 Hz, only idle or degraded, advisory visibility only.
-    if (!deps.probeLive || probing || t - lastProbe < 1000 / HOST_LIMITS.panesPollMaxHz.value) return
+    if (!deps.probeLive || probing || t - lastProbe < 1000 / PANES_POLL_MAX_HZ) return
     probing = true, lastProbe = t
     const g = gen
     deps.probeLive().then(live => {
@@ -128,7 +150,7 @@ export const createScheduler = (deps: SchedulerDeps): Scheduler => {
     else for (const e of entries.values()) e.visible = true
     const due: [string, Entry, number][] = []
     for (const [key, e] of entries) {
-      if (!e.visible) continue
+      if (!e.visible || (!motion && key !== HERO_KEY)) continue
       if (slots.has(key)) { tr().record(key, 'skip', t); continue }
       const per = 1000 / tierCap(e.tier)
       if (t - e.last >= per) due.push([key, e, ((t - e.last) / per) * (e.tier === 'A' ? 2 : 1)])
@@ -145,17 +167,15 @@ export const createScheduler = (deps: SchedulerDeps): Scheduler => {
       cancelWatch = null
       if (!entries.size) return
       const t = clock.now()
-      for (const [k, s] of slots) if (t - s.t > STALL_MS) slots.delete(k)
       if (motion && t - lastTick > WATCH_PERIODS * frameMs) rearm(t)
       if (entries.size) watch()
     })
   }
 
-  // A refused period ends the interval (d.ts:3228-3231): new generation, abort slots stuck since before the death, new interval.
+  // A refused period ends the interval (d.ts:3228-3231): new generation, new interval. Slots stay: their blits are still in flight host side.
   const rearm = (t: number) => {
     cancelEvery?.()
     gen++
-    for (const [k, s] of slots) if (t - s.t > WATCH_PERIODS * frameMs) slots.delete(k)
     arm(t)
   }
 
@@ -214,5 +234,22 @@ export const createScheduler = (deps: SchedulerDeps): Scheduler => {
     close: clear,
     end: clear,
     stats: () => ({ gen, live: entries.size, pending: slots.size, degraded, timerMs, motion }),
+  }
+}
+
+/**
+ * Sync clock adapter: the host $.clock.now() is async, so the integration calls `refresh()` off the paint path (e.g. from a slow
+ * after/every) and the scheduler reads `now()` synchronously. With `local` (any sync monotonic source) now() advances between
+ * refreshes; without it, it returns the last fetched value. At most one prefetch is in flight.
+ */
+export const makeSyncClock = (prefetch: () => Promise<number>, local?: () => number) => {
+  let wall = 0, at = local?.() ?? 0, busy = false
+  return {
+    now: () => wall + (local ? local() - at : 0),
+    refresh: async () => {
+      if (busy) return
+      busy = true
+      try { const w = await prefetch(); wall = w, at = local?.() ?? 0 } catch {} finally { busy = false }
+    },
   }
 }
