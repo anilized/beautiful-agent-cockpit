@@ -46,8 +46,42 @@ export const createTweens = () => {
       motion = on
       if (!on) for (const e of m.values()) e.from = e.to, e.dur = 0
     },
+    /** True once the element's ease has finished (or it is unknown). */
+    settled: (r: string, el: string, now: number) => {
+      const e = m.get(k(r, el))
+      return !e || now - e.t0 >= e.dur
+    },
+    /** 'idle' while every tween has finished: the integration can stop requesting motion. */
+    state(now: number): 'idle' | 'moving' {
+      for (const e of m.values()) if (now - e.t0 < e.dur) return 'moving'
+      return 'idle'
+    },
     active: () => run,
     reset() { m.clear(), run = '' },
   }
 }
 export type Tweens = ReturnType<typeof createTweens>
+
+/** Pipeline position: the discrete phase is stored untouched (painters compare it with ===); only the fill eases. */
+export const createPhaseFill = (durMs: number) => {
+  let phase = 0
+  let from = 0
+  let to = 0
+  let t0 = 0
+  let seen = false
+  const fill = (now: number) => from + (to - from) * easeOutCubic(durMs > 0 ? (now - t0) / durMs : 1)
+  return {
+    set(p: number, f: number, now: number, snap = false) {
+      const cur = seen ? fill(now) : f
+      phase = p
+      if (!seen || snap || durMs <= 0) from = to = f
+      else if (f !== to) from = cur, to = f
+      else return
+      t0 = now, seen = true
+    },
+    phase: () => phase,
+    fill,
+    settled: (now: number) => !seen || now - t0 >= durMs,
+    reset() { seen = false, phase = from = to = t0 = 0 },
+  }
+}
