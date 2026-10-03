@@ -29,10 +29,11 @@ const PLAN: LeadPlan = {
   tasks: [
     {
       key: 'TASK-101', title: 'alpha', description: 'create src/alpha.js', kind: 'implementation', repository: 'svc', specialty: 'backend',
-      risk: 'low', complexity: 'low', worker: 'haiku', files: ['src/alpha.js'], modules: [], resources: [], dependsOn: [],
+      risk: 'low', complexity: 'low', worker: 'haiku', role: null, lead: null, files: ['src/alpha.js'], modules: [], resources: [], dependsOn: [],
       acceptanceCriteria: ['exports alpha'], testsRequired: true, testCommand: null,
     },
   ],
+  team: [],
 };
 
 function handler(plan: LeadPlan) {

@@ -232,7 +232,28 @@ export interface Decision {
   createdAt: string;
 }
 
-export type ApprovalKind = 'final' | 'operation' | 'decision';
+export type ApprovalKind = 'final' | 'operation' | 'decision' | 'team';
+
+/**
+ * One seat of a run's leadership: a Supervisor on the council (the first is the chair) or a Lead
+ * (the first is the head lead; `area` says which part of the work a Lead owns). Each seat has its
+ * own effort, so the same model can sit twice at different levels.
+ */
+export interface Seat {
+  id: string;
+  agent: string;
+  effort: string | null;
+  area?: string | null;
+}
+
+/** A worker persona the head Lead staffs (backend-dev, tester, ...): one model at one effort, one task at a time. */
+export interface Persona {
+  id: string;
+  title: string;
+  specialty: string;
+  agent: string;
+  effort: string | null;
+}
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected' | 'changes_requested';
 
 export type HighRiskOperation =

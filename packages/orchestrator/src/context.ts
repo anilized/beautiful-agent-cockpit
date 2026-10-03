@@ -3,7 +3,9 @@ import {
   type ArchitectureOutput,
   type CockpitConfig,
   type Repository,
+  type Persona,
   type Run,
+  type Seat,
   type Task,
   type TaskStatus,
   type ValidationResult,
@@ -37,6 +39,14 @@ export interface RunMeta {
   lead?: string;
   /** The human's reasoning-effort choice per agent for this run (absent: the agent's default). */
   efforts?: Record<string, string>;
+  /** The Supervisor council (the first is the chair); absent on runs from before councils: `supervisor`. */
+  council?: Seat[];
+  /** The Leads (the first is the head lead); absent on older runs: `lead`. */
+  leads?: Seat[];
+  /** The worker personas the human approved (or the head Lead proposed, while awaiting approval). */
+  team?: Persona[];
+  /** The human's notes when they sent the proposed team back: the next plan answers them. */
+  teamRevision?: string | null;
   decisionRound?: number;
   assessment?: string;
   routingStrategy?: 'balanced' | 'prefer_quality' | 'prefer_cost' | 'prefer_speed';
@@ -51,6 +61,9 @@ export interface RunMeta {
 
 /** Durable per-task working context (stored in tasks.context). */
 export interface TaskContext {
+  /** The persona (team id) doing the task, and the Lead seat owning it. */
+  persona?: string | null;
+  lead?: string | null;
   baseCommit?: string;
   started?: boolean;
   questions?: string[];
@@ -79,12 +92,41 @@ export function arch(run: Run): ArchitectureOutput | null {
 }
 
 /** Who supervises and who leads this run: the run's own choice, else the configured hierarchy. */
+/** The chair and the head lead's agents (one-seat views of the council and the leads). */
 export function rolesOf(ctx: EngineContext, runId: string): { supervisor: string; lead: string } {
+  return { supervisor: councilOf(ctx, runId)[0]!.agent, lead: leadsOf(ctx, runId)[0]!.agent };
+}
+
+/** The council, chair first; an older run's single supervisor as a council of one. */
+export function councilOf(ctx: EngineContext, runId: string): Seat[] {
   const meta = ctx.store.runMeta<RunMeta>(runId);
-  return {
-    supervisor: meta.supervisor ?? ctx.config.agents.hierarchy.supervisor,
-    lead: meta.lead ?? ctx.config.agents.hierarchy.lead,
-  };
+  if (meta.council?.length) return meta.council;
+  const agent = meta.supervisor ?? ctx.config.agents.hierarchy.supervisor;
+  return [{ id: 'sup-1', agent, effort: meta.efforts?.[`supervisor:${agent}`] ?? meta.efforts?.[agent] ?? null }];
+}
+
+/** The leads, head first; an older run's single lead as one. */
+export function leadsOf(ctx: EngineContext, runId: string): Seat[] {
+  const meta = ctx.store.runMeta<RunMeta>(runId);
+  if (meta.leads?.length) return meta.leads;
+  const agent = meta.lead ?? ctx.config.agents.hierarchy.lead;
+  return [{ id: 'lead-1', agent, effort: meta.efforts?.[`lead:${agent}`] ?? meta.efforts?.[agent] ?? null, area: null }];
+}
+
+/** What a call needs from a seat: the agent, its effort and the seat's id. */
+export const seatCall = (s: Seat) => ({ agentId: s.agent, effort: s.effort, seat: s.id });
+
+/** The Lead that owns a task (its plan's `lead`), else the head lead. */
+export function leadForTask(ctx: EngineContext, task: Task): Seat {
+  const leads = leadsOf(ctx, task.runId);
+  const id = ctx.store.taskContext<TaskContext>(task.id).lead;
+  return leads.find((l) => l.id === id) ?? leads[0]!;
+}
+
+/** The persona that does a task, if the plan named one. */
+export function personaOf(ctx: EngineContext, task: Task): Persona | null {
+  const id = ctx.store.taskContext<TaskContext>(task.id).persona;
+  return (id && ctx.store.runMeta<RunMeta>(task.runId).team?.find((p) => p.id === id)) || null;
 }
 
 export function runRepos(ctx: EngineContext, run: Run): Repository[] {

@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import type { CockpitConfig } from '@cockpit/core';
+import type { CockpitConfig, Persona } from '@cockpit/core';
 import { AdapterRegistry, AgentRouter } from '@cockpit/agents';
 import { Store } from '@cockpit/persistence';
 import { Telemetry } from '@cockpit/telemetry';
@@ -118,6 +118,8 @@ export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {
     .route('GET', '/runs/:id/report', ({ params }) => ({ report: store.runById(params.id!)?.report ?? null }))
     .route('POST', '/runs/:id/efforts', ({ params, body }) => engine.setEfforts(params.id!, (body ?? {}) as Record<string, string>))
     .route('POST', '/runs/:id/roles', ({ params, body }) => engine.setRoles(params.id!, (body ?? {}) as { supervisor?: string; lead?: string }))
+    .route('POST', '/runs/:id/seats', ({ params, body }) => engine.setSeats(params.id!, (body ?? {}) as Parameters<Orchestrator['setSeats']>[1]))
+    .route('POST', '/runs/:id/team', ({ params, body }) => engine.setTeam(params.id!, ((body ?? {}) as { team?: Persona[] }).team ?? []))
     .route('POST', '/runs/:id/retry', ({ params }) => (engine.retry(params.id!), { ok: true }))
     .route('POST', '/runs/:id/decision', ({ params, body }) => {
       const d = decision(body);

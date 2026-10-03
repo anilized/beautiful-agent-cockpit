@@ -10,7 +10,7 @@ import {
   type WorkerContext,
 } from '@cockpit/agents';
 import { gitOps, runShell } from '@cockpit/workspace';
-import { arch, rolesOf, setTaskStatus, type EngineContext, type RunMeta, type TaskContext } from './context';
+import { arch, councilOf, leadForTask, personaOf, seatCall, setTaskStatus, type EngineContext, type RunMeta, type TaskContext } from './context';
 import { decideProposals } from './proposals';
 
 /**
@@ -41,12 +41,14 @@ export class TaskPipeline {
     return this.ctx.store.runById(t.runId)!;
   }
 
-  private lead(t: Task): string {
-    return rolesOf(this.ctx, t.runId).lead;
+  /** The Lead seat that owns the task: its agent, effort and seat id for the call. */
+  private lead(t: Task) {
+    return seatCall(leadForTask(this.ctx, t));
   }
 
-  private supervisor(t: Task): string {
-    return rolesOf(this.ctx, t.runId).supervisor;
+  /** The council's chair. */
+  private supervisor(t: Task) {
+    return seatCall(councilOf(this.ctx, t.runId)[0]!);
   }
 
   async drive(taskId: string): Promise<void> {
@@ -119,11 +121,17 @@ export class TaskPipeline {
           load.set(other.agentId, (load.get(other.agentId) ?? 0) + 1);
         }
       }
-      const preferred = this.tctx(t.id).preferredWorker;
+      const persona = personaOf(this.ctx, t);
+      const preferred = persona?.agent ?? this.tctx(t.id).preferredWorker;
       const chosen = preferred ? router.workers().find((w) => w.id === preferred) : undefined;
+      if (persona && chosen && (load.get(chosen.id) ?? 0) >= chosen.maxConcurrent) {
+        // The human approved this persona's model: wait for a free slot rather than swap it.
+        leases.release(t.id);
+        return false;
+      }
       if (chosen && (load.get(chosen.id) ?? 0) < chosen.maxConcurrent) {
         agentId = chosen.id;
-        bus.emit('task.assigned', t.runId, { taskId: t.id, agentId, reason: `chosen by the lead (${rolesOf(this.ctx, t.runId).lead})` });
+        bus.emit('task.assigned', t.runId, { taskId: t.id, agentId, reason: persona ? `${persona.id} (${persona.title})` : `chosen by the lead (${leadForTask(this.ctx, t).agent})` });
       } else {
         const decision = router.route(t, { strategy: meta.routingStrategy, load });
         agentId = decision.agentId;
@@ -183,7 +191,9 @@ export class TaskPipeline {
       .filter((d) => d.taskId === t.id)
       .map((d) => store.task(d.dependsOn)!)
       .map((d) => ({ key: d.key, title: d.title, summary: d.summary ?? '' }));
+    const persona = personaOf(this.ctx, t);
     const wctx: WorkerContext = {
+      persona: persona?.id ?? null,
       answers: fresh.pendingAnswers ?? [],
       reviewFeedback: review,
       validationFailure: fresh.feedValidationFailure ? (fresh.validation ?? null) : null,
@@ -206,6 +216,7 @@ export class TaskPipeline {
       readOnly: false,
       timeoutMs: config.engine.agentTimeoutMs,
       spanName: 'worker.execute',
+      ...(persona ? { seat: persona.id, effort: persona.agent === t.agentId ? persona.effort : undefined } : {}),
     });
     const out = res.output;
     this.setCtx(t.id, {
@@ -240,7 +251,7 @@ export class TaskPipeline {
     const questions = c.questions ?? [];
     const run = this.run(t);
     const res = await runner.call({
-      runId: t.runId, taskId: t.id, agentId: this.lead(t), role: 'lead', contract: 'LeadAnswer',
+      runId: t.runId, taskId: t.id, ...this.lead(t), role: 'lead', contract: 'LeadAnswer',
       prompt: leadAnswerPrompt(t, arch(run), questions, c.lastWorkerSummary ?? ''),
       cwd: t.worktreePath!, readOnly: true, timeoutMs: config.engine.agentTimeoutMs, spanName: 'codex.answer',
     });
@@ -249,7 +260,7 @@ export class TaskPipeline {
     if (res.output.escalateToSupervisor) {
       bus.emit('escalation.requested', t.runId, { from: 'lead', to: 'supervisor', taskId: t.id, reason: res.output.escalationQuestion ?? questions.join('; ') });
       const sup = await runner.call({
-        runId: t.runId, taskId: t.id, agentId: this.supervisor(t), role: 'supervisor', contract: 'SupervisorEscalation',
+        runId: t.runId, taskId: t.id, ...this.supervisor(t), role: 'supervisor', contract: 'SupervisorEscalation',
         prompt: supervisorEscalationPrompt(t, res.output.escalationQuestion ?? questions.join('; '), `Worker questions: ${questions.join(' | ')}\nLead interim answer: ${answer}`),
         cwd: t.worktreePath!, readOnly: true, timeoutMs: config.engine.agentTimeoutMs, spanName: 'opus.escalation',
       });
@@ -341,7 +352,7 @@ export class TaskPipeline {
     if (c.leaseDecision) return false; // still waiting
 
     const res = await runner.call({
-      runId: t.runId, taskId: t.id, agentId: this.lead(t), role: 'lead', contract: 'LeadLeaseDecision',
+      runId: t.runId, taskId: t.id, ...this.lead(t), role: 'lead', contract: 'LeadLeaseDecision',
       prompt: leadLeaseDecisionPrompt(t, conflicts.map((x) => ({ pattern: x.pattern, holder: store.task(x.heldBy)! }))),
       cwd: t.worktreePath!, readOnly: true, timeoutMs: config.engine.agentTimeoutMs, spanName: 'codex.lease_decision',
     });
@@ -377,7 +388,7 @@ export class TaskPipeline {
     bus.emit('review.started', t.runId, { taskId: t.id, iteration: t.iteration });
     const run = this.run(t);
     const res = await runner.call({
-      runId: t.runId, taskId: t.id, agentId: this.lead(t), role: 'lead', contract: 'LeadReview',
+      runId: t.runId, taskId: t.id, ...this.lead(t), role: 'lead', contract: 'LeadReview',
       prompt: leadReviewPrompt({
         task: t,
         arch: arch(run),
@@ -454,7 +465,7 @@ export class TaskPipeline {
       .map((r) => `review ${r.iteration}: ${r.verdict} - ${r.summary}${r.issues.map((i) => `\n  - [${i.severity}] ${i.description}`).join('')}`)
       .join('\n');
     const res = await runner.call({
-      runId: t.runId, taskId: t.id, agentId: this.supervisor(t), role: 'supervisor', contract: 'SupervisorEscalation',
+      runId: t.runId, taskId: t.id, ...this.supervisor(t), role: 'supervisor', contract: 'SupervisorEscalation',
       prompt: supervisorEscalationPrompt(t, c.escalationReason ?? t.blockedReason ?? 'unspecified', history || '(no reviews)'),
       cwd: t.worktreePath ?? store.repository(t.repoId)!.path, readOnly: true, timeoutMs: config.engine.agentTimeoutMs, spanName: 'opus.escalation',
     });

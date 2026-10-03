@@ -4,7 +4,12 @@
 export interface EventPayloads {
   'run.started': { request: string; repositories: string[] };
   'run.status_changed': { from: string; to: string };
-  'run.roles_changed': { supervisor: string; lead: string };
+  'run.roles_changed': { supervisor: string; lead: string; council?: { id: string; agent: string; effort: string | null }[]; leads?: { id: string; agent: string; effort: string | null; area?: string | null }[] };
+  /** A council member's view on the chair's architecture, the Lead's proposals or the result. */
+  'council.reviewed': { seat: string; agentId: string; subject: string; verdict: string; summary: string };
+  /** The head Lead staffed (or the human revised) the worker team. */
+  'team.proposed': { personas: { id: string; agent: string; effort: string | null }[]; approvalId: string | null };
+  'team.changed': { personas: { id: string; agent: string; effort: string | null }[] };
   'run.efforts_changed': { efforts: Record<string, string> };
   'run.completed': { outcome: 'approved' | 'rejected' | 'failed'; reason?: string };
   'architecture.defined': { summary: string };
@@ -20,7 +25,7 @@ export interface EventPayloads {
   'task.blocked': { taskId: string; reason: string };
   'task.completed': { taskId: string; summary: string };
   'task.failed': { taskId: string; reason: string };
-  'agent.started': { agentId: string; role: string; sessionId: string; taskId?: string | null; contract?: string; effort?: string | null };
+  'agent.started': { agentId: string; role: string; sessionId: string; taskId?: string | null; contract?: string; effort?: string | null; seat?: string | null };
   'agent.waiting': { agentId: string; taskId?: string | null; question: string };
   /** What a model is doing: its visible text, its reasoning, or a tool it ran. */
   'agent.output': { agentId: string; taskId?: string | null; text: string; kind?: 'text' | 'thinking' | 'tool' | 'result'; role?: string; sessionId?: string };

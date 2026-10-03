@@ -18,10 +18,11 @@ const ARCH = {
 const PLAN: LeadPlan = {
   notes: 'three tasks',
   tasks: [
-    { key: 'TASK-101', title: 'alpha module', description: 'create src/alpha.js', kind: 'implementation', repository: 'svc-a', specialty: 'backend', risk: 'low', complexity: 'low', worker: null, files: ['src/alpha.js'], modules: [], resources: [], dependsOn: [], acceptanceCriteria: ['exports alpha'], testsRequired: true, testCommand: null },
-    { key: 'TASK-102', title: 'beta module', description: 'create src/beta.js', kind: 'implementation', repository: 'svc-a', specialty: 'backend', risk: 'low', complexity: 'low', worker: null, files: ['src/beta.js'], modules: [], resources: [], dependsOn: [], acceptanceCriteria: ['exports beta'], testsRequired: true, testCommand: null },
-    { key: 'TASK-103', title: 'gamma client', description: 'create src/gamma.js in svc-b', kind: 'implementation', repository: 'svc-b', specialty: 'backend', risk: 'medium', complexity: 'low', worker: null, files: ['src/gamma.js'], modules: [], resources: [], dependsOn: ['TASK-101'], acceptanceCriteria: ['exports gamma'], testsRequired: true, testCommand: null },
+    { key: 'TASK-101', title: 'alpha module', description: 'create src/alpha.js', kind: 'implementation', repository: 'svc-a', specialty: 'backend', risk: 'low', complexity: 'low', worker: null, role: null, lead: null, files: ['src/alpha.js'], modules: [], resources: [], dependsOn: [], acceptanceCriteria: ['exports alpha'], testsRequired: true, testCommand: null },
+    { key: 'TASK-102', title: 'beta module', description: 'create src/beta.js', kind: 'implementation', repository: 'svc-a', specialty: 'backend', risk: 'low', complexity: 'low', worker: null, role: null, lead: null, files: ['src/beta.js'], modules: [], resources: [], dependsOn: [], acceptanceCriteria: ['exports beta'], testsRequired: true, testCommand: null },
+    { key: 'TASK-103', title: 'gamma client', description: 'create src/gamma.js in svc-b', kind: 'implementation', repository: 'svc-b', specialty: 'backend', risk: 'medium', complexity: 'low', worker: null, role: null, lead: null, files: ['src/gamma.js'], modules: [], resources: [], dependsOn: ['TASK-101'], acceptanceCriteria: ['exports gamma'], testsRequired: true, testCommand: null },
   ],
+  team: [],
 };
 
 interface Script {
@@ -171,7 +172,7 @@ describe('first vertical milestone', () => {
   it('REQUEST CHANGES continues the same run with a new planning round', async () => {
     const root = tempDir('changes');
     const svcA = makeRepo(root, 'svc-a');
-    const script: Script = { running: 0, maxRunning: 0, workerCalls: new Map(), plan: { notes: '', tasks: [PLAN.tasks[0]!] } };
+    const script: Script = { running: 0, maxRunning: 0, workerCalls: new Map(), plan: { notes: '', tasks: [PLAN.tasks[0]!], team: [] } };
     const { engine } = await fakeEngine(testConfig(join(root, 'data')), handler(script));
     const run = await engine.startRun({ request: 'alpha', repos: [{ path: svcA, testCommand: 'node check.js' }] });
     expect((await engine.settled(run.id)).status).toBe('awaiting_approval');
@@ -179,6 +180,7 @@ describe('first vertical milestone', () => {
     script.plan = {
       notes: '',
       tasks: [{ ...PLAN.tasks[1]!, key: 'TASK-201', title: 'delta module', files: ['src/beta.js'] }],
+      team: [],
     };
     engine.decideRun(run.id, 'request_changes', 'also add a second module');
     const r = await engine.settled(run.id);
@@ -197,7 +199,7 @@ describe('first vertical milestone', () => {
     const root = tempDir('restart');
     const svcA = makeRepo(root, 'svc-a');
     const config = testConfig(join(root, 'data'));
-    const script: Script = { running: 0, maxRunning: 0, workerCalls: new Map(), plan: { notes: '', tasks: [PLAN.tasks[0]!, PLAN.tasks[1]!] } };
+    const script: Script = { running: 0, maxRunning: 0, workerCalls: new Map(), plan: { notes: '', tasks: [PLAN.tasks[0]!, PLAN.tasks[1]!], team: [] } };
     const first = await fakeEngine(config, handler(script));
     const run = await first.engine.startRun({ request: 'alpha+beta', repos: [{ path: svcA, testCommand: 'node check.js' }] });
     // Stop in the middle of execution.
@@ -222,7 +224,7 @@ describe('first vertical milestone', () => {
       running: 0,
       maxRunning: 0,
       workerCalls: new Map(),
-      plan: { notes: '', tasks: [PLAN.tasks[0]!, PLAN.tasks[1]!] },
+      plan: { notes: '', tasks: [PLAN.tasks[0]!, PLAN.tasks[1]!], team: [] },
       // TASK-102 also edits alpha.js, which TASK-101 owns.
       extraWorker: (key, call, n) => {
         if (key !== 'TASK-102' || n > 1) return undefined;

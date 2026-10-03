@@ -31,8 +31,8 @@ assign file/module ownership, answer workers, review their output strictly, and 
 ${NARRATE}
 ${STRUCTURED}`;
 
-export function workerPreamble(specialty: string): string {
-  return `You are a ${specialty} engineer in a hierarchical AI engineering organization. You report only to the Engineering Lead.
+export function workerPreamble(specialty: string, persona?: string | null): string {
+  return `You are ${persona ? `${persona}, ` : 'a '}${persona ? `a ${specialty}` : specialty} engineer in a hierarchical AI engineering organization. You report only to the Engineering Lead.
 You work in an isolated git worktree (your current directory) on a dedicated branch.
 Rules:
 - Modify files only inside the current directory, and only within your assigned scope. If you must touch another file, do it and list it in leaseRequests with a reason.
@@ -107,6 +107,35 @@ Inspect the actual code. Assess the architecture against implementation reality.
 architecture or scope concerns, risks, better alternatives, resource concerns, plan revisions. An empty proposals list means you accept it as-is.`;
 }
 
+/** What a council member reviews: the chair's architecture, the Lead's proposals before the chair rules, or the final result. */
+export function councilReviewPrompt(args: { seat: string; chair: string; request: string; arch: ArchitectureOutput | null; subject: 'architecture' | 'proposals' | 'result'; material: string }): string {
+  const ask = {
+    architecture: 'Review the chair\'s architecture against the request and the code. Approve it, or ask for a revision with concrete concerns.',
+    proposals: 'The Lead challenged the architecture with the proposals below. Before the chair rules on them, give your view: which deserve acceptance and why, and what worries you. "revise" means the architecture should change.',
+    result: 'Judge the finished work against the request, the architecture and its acceptance criteria. Approve it, or ask for a revision with the concrete changes still needed.',
+  }[args.subject];
+  return `${SUPERVISOR_PREAMBLE}
+
+You sit on the Supervisor council as ${args.seat}; ${args.chair} chairs it and has the final say, but must weigh your concerns.
+
+Human request:
+"""
+${args.request}
+"""
+
+${args.arch ? `The architecture:\n${archText(args.arch)}\n\n` : ''}${args.material}
+
+${ask} Be brief and specific; do not repeat the material back.`;
+}
+
+/** Council concerns the chair must address, as a block appended to its prompt. */
+export function councilConcerns(reviews: { seat: string; summary: string; concerns: string[] }[]): string {
+  if (!reviews.length) return '';
+  return `\n\nYour council's views (weigh every concern; say in your answer how you handled each):\n${reviews
+    .map((r) => `- ${r.seat}: ${r.summary}${r.concerns.length ? `\n${r.concerns.map((c) => `    * ${c}`).join('\n')}` : ''}`)
+    .join('\n')}`;
+}
+
 export function supervisorDecisionPrompt(arch: ArchitectureOutput, assessment: string, proposals: Proposal[]): string {
   return `${SUPERVISOR_PREAMBLE}
 
@@ -133,10 +162,16 @@ export function leadPlanPrompt(args: {
   feedback: string[];
   round: number;
   workers: AgentProfile[];
+  /** The run's Leads (id, agent, area); with more than one, each task names the one that owns it. */
+  leads?: { id: string; agent: string; area: string | null }[];
+  /** Personas already approved in earlier rounds; reuse them where they fit. */
+  team?: { id: string; title: string; agent: string; effort: string | null }[];
 }): string {
   const workers = args.workers
     .map((w) => `- ${w.id}: ${w.adapter}${w.model ? `/${w.model}` : ''}; reasoning ${w.capabilities.reasoningDepth}, cost ${w.capabilities.costTier}, speed ${w.capabilities.latencyTier}; specialties ${w.specialties.join(', ')}; up to ${w.maxConcurrent} at once`)
     .join('\n');
+  const leads = args.leads ?? [];
+  const team = args.team ?? [];
   const existing = args.existingTasks.length
     ? args.existingTasks.map((t) => `- ${t.key} [${t.status}] ${t.title} (${t.kind}): ${t.summary ?? ''}`).join('\n')
     : '(none)';
@@ -166,13 +201,21 @@ Decompose the work into tasks for workers. For each task:
 - tasks whose files/modules overlap will be serialized; split ownership cleanly to maximize parallelism.
 - modules: only a directory the task owns outright and whose files you cannot list. Never the package or repo root shared with sibling tasks; when you list files, leave modules empty.
 - testsRequired must be true for any change to executable code. testCommand: the command to validate this task, or null to use the repository default.
-- worker: you staff the team. Pick the worker for each task from the list below by its id, matching depth to risk and complexity and spending the cheaper ones where they suffice; null leaves the choice to the router (specialty, risk and complexity).
-
-Available workers:
+- role: the persona from your team that does the task (its id). worker: that persona's model id (or null).
+${leads.length > 1 ? `- lead: the Lead that owns the task (answers its worker, reviews it), by id, matching its area; null for the head lead.\n` : '- lead: null.\n'}
+Staff a team before the work starts (the human approves it): in "team", name each persona after its job, like backend-dev,
+frontend-dev, db-engineer, tester, security-reviewer, docs-writer (lowercase, dash-separated, unique). Give each a specialty,
+the worker model from the list below that fits (match depth to risk and complexity; spend the cheaper ones where they suffice),
+an effort level that model accepts (or null for its default), and a one-line rationale. Several tasks may share a persona;
+create two personas with distinct names (backend-dev, backend-dev-2) when the same job runs in parallel.
+${team.length ? `\nPersonas already approved (reuse them by id where they fit; add new ones only when needed):\n${team.map((p) => `- ${p.id}: ${p.title} (${p.agent}${p.effort ? `, ${p.effort}` : ''})`).join('\n')}\n` : ''}${leads.length > 1 ? `\nLeads:\n${leads.map((l, i) => `- ${l.id}${i === 0 ? ' (head)' : ''}: ${l.agent}${l.area ? `, owns ${l.area}` : ''}`).join('\n')}\n` : ''}
+Available worker models:
 ${workers}`;
 }
 
 export interface WorkerContext {
+  /** The persona's name (backend-dev, tester) when the plan staffed one. */
+  persona?: string | null;
   answers: { question: string; answer: string }[];
   reviewFeedback: ReviewRecord | null;
   validationFailure: ValidationResult | null;
@@ -183,7 +226,7 @@ export interface WorkerContext {
 export function workerPrompt(task: Task, repo: Repository, arch: ArchitectureOutput | null, ctx: WorkerContext, resumed: boolean): string {
   const parts: string[] = [];
   if (!resumed) {
-    parts.push(workerPreamble(task.specialty));
+    parts.push(workerPreamble(task.specialty, ctx.persona));
     parts.push(`Overall architecture (from the Supervisor):\n${arch ? `${arch.summary}\n${arch.architecture}\nConstraints:\n${arch.constraints.map((c) => `- ${c}`).join('\n')}` : '(none)'}`);
     parts.push(`Your assignment ${task.key} in repository "${repo.name}": ${task.title}
 ${task.description}

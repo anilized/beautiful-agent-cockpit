@@ -17,7 +17,8 @@ const RUN_TRANSITIONS: Record<RunStatus, RunStatus[]> = {
   // Opus may ask Codex for more analysis (back to proposing) or need the human.
   deciding: ['proposing', 'planning', 'awaiting_human_decision'],
   awaiting_human_decision: ['deciding', 'planning', 'executing'],
-  planning: ['executing'],
+  // A plan with a team waits for the human to approve or revise the team.
+  planning: ['executing', 'awaiting_human_decision'],
   executing: ['integrating', 'awaiting_human_decision', 'planning'],
   integrating: ['validating', 'executing'],
   // Opus may send the run back for more work.

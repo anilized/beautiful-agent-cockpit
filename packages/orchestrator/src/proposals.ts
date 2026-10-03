@@ -1,6 +1,7 @@
-import { supervisorDecisionPrompt } from '@cockpit/agents';
+import { councilConcerns, supervisorDecisionPrompt } from '@cockpit/agents';
 import type { ArchitectureOutput, Proposal, ProposalStatus, Run } from '@cockpit/core';
-import { arch, rolesOf, runRepos, type EngineContext, type RunMeta } from './context';
+import { arch, councilOf, runRepos, seatCall, type EngineContext, type RunMeta } from './context';
+import { consultCouncil } from './council';
 
 export interface DecisionOutcome {
   humanApprovalId: string | null;
@@ -24,12 +25,14 @@ export async function decideProposals(ctx: EngineContext, run: Run, assessment: 
   if (!proposals.length) return { humanApprovalId: null, requestAnalysis: false };
   const current = arch(run);
   const repos = runRepos(ctx, run);
+  const views = await consultCouncil(ctx, run, 'proposals',
+    `The Lead's assessment: ${assessment}\n\nProposals:\n${proposals.map((p, i) => `${i}: ${p.kind} - ${p.title}\n   rationale: ${p.rationale}\n   suggestion: ${p.suggestion}`).join('\n')}`);
   const res = await runner.call({
     runId: run.id,
-    agentId: rolesOf(ctx, run.id).supervisor,
+    ...seatCall(councilOf(ctx, run.id)[0]!),
     role: 'supervisor',
     contract: 'SupervisorDecisions',
-    prompt: supervisorDecisionPrompt(current ?? emptyArch(), assessment, proposals),
+    prompt: supervisorDecisionPrompt(current ?? emptyArch(), assessment, proposals) + councilConcerns(views),
     cwd: repos[0]!.path,
     additionalDirs: repos.slice(1).map((r) => r.path),
     readOnly: true,

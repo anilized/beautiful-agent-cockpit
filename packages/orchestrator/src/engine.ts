@@ -7,7 +7,11 @@ import {
   errorMessage,
   isTerminalRun,
   resolveRoles,
+  resolveSeats,
   checkEffort,
+  type Persona,
+  type Seat,
+  type SeatChoice,
   TaskGraph,
   ACTIVE_TASK_STATUSES,
   type Approval,
@@ -21,6 +25,7 @@ import {
 } from '@cockpit/core';
 import {
   architecturePrompt,
+  councilConcerns,
   leadArchitectureReviewPrompt,
   leadIntegrationPrompt,
   leadPlanPrompt,
@@ -29,7 +34,8 @@ import {
 } from '@cockpit/agents';
 import { gitOps, runShell } from '@cockpit/workspace';
 import type { Span } from '@cockpit/telemetry';
-import { arch, rolesOf, runRepos, setTaskStatus, type EngineContext, type RunMeta, type TaskContext } from './context';
+import { arch, councilOf, leadsOf, rolesOf, runRepos, seatCall, setTaskStatus, type EngineContext, type RunMeta, type TaskContext } from './context';
+import { consultCouncil } from './council';
 import { decideProposals } from './proposals';
 import { buildReport } from './report';
 import { readConflictMarkers, TaskPipeline } from './task-pipeline';
@@ -50,7 +56,13 @@ export interface StartRunInput {
   lead?: string | null;
   /** Reasoning effort per agent id for this run; absent agents keep their default. */
   efforts?: Record<string, string>;
+  /** The Supervisor council (the first chairs) and the Leads (the first is the head lead), each seat at its own effort. */
+  council?: SeatChoice[];
+  leads?: SeatChoice[];
 }
+
+/** Team approval: the plan's personas the human may revise before any worker starts. */
+const PERSONA_ID = /^[a-z][a-z0-9-]{0,39}$/;
 
 export type HumanDecision = 'approve' | 'reject' | 'request_changes';
 
@@ -76,9 +88,15 @@ export class Orchestrator {
     const { store, bus } = this.ctx;
     if (!input.request.trim()) throw new Error('request is empty');
     if (!input.repos.length) throw new Error('at least one repository is required');
-    const roles = resolveRoles(this.ctx.config, input, 'run');
+    const { config } = this.ctx;
     const efforts = input.efforts ?? {};
-    for (const [agent, level] of Object.entries(efforts)) checkEffort(this.ctx.config, agent, level, 'run');
+    for (const [agent, level] of Object.entries(efforts)) checkEffort(config, agent, level, 'run');
+    // One supervisor and one lead given the old way must still be distinct agents; seats may repeat a model.
+    if (!input.council?.length && !input.leads?.length) resolveRoles(config, input, 'run');
+    const seat = (role: 'supervisor' | 'lead', agent: string): SeatChoice => ({ agent, effort: efforts[`${role}:${agent}`] ?? efforts[agent] ?? null });
+    const council = resolveSeats(config, 'supervisor', input.council?.length ? input.council : [seat('supervisor', input.supervisor || config.agents.hierarchy.supervisor)], 'run');
+    const leads = resolveSeats(config, 'lead', input.leads?.length ? input.leads : [seat('lead', input.lead || config.agents.hierarchy.lead)], 'run');
+    const roles = { supervisor: council[0]!.agent, lead: leads[0]!.agent };
     const repos: Repository[] = [];
     const resolved: RepoInput[] = [];
     for (const r of input.repos) {
@@ -103,9 +121,9 @@ export class Orchestrator {
       );
     }
     const run = store.createRun(project.id, input.request);
-    store.setRunMeta(run.id, { repoIds: repos.map((r) => r.id), ...roles, efforts } satisfies RunMeta);
+    store.setRunMeta(run.id, { repoIds: repos.map((r) => r.id), ...roles, efforts, council, leads } satisfies RunMeta);
     bus.emit('run.started', run.id, { request: input.request, repositories: repos.map((r) => r.name) });
-    bus.emit('run.roles_changed', run.id, roles);
+    bus.emit('run.roles_changed', run.id, { ...roles, council, leads });
     this.drive(run.id);
     return run;
   }
@@ -135,9 +153,66 @@ export class Orchestrator {
     if (isTerminalRun(run.status)) throw new Error(`run ${runId} is ${run.status}; its roles can no longer change`);
     const current = rolesOf(this.ctx, runId);
     const roles = resolveRoles(this.ctx.config, { supervisor: choice.supervisor || current.supervisor, lead: choice.lead || current.lead }, 'roles');
-    store.setRunMeta(runId, roles satisfies Partial<RunMeta>);
-    bus.emit('run.roles_changed', runId, roles);
+    const council = councilOf(this.ctx, runId).map((s, i) => (i === 0 ? { ...s, agent: roles.supervisor } : s));
+    const leads = leadsOf(this.ctx, runId).map((s, i) => (i === 0 ? { ...s, agent: roles.lead } : s));
+    store.setRunMeta(runId, { ...roles, council, leads } satisfies Partial<RunMeta>);
+    bus.emit('run.roles_changed', runId, { ...roles, council, leads });
     return roles;
+  }
+
+  /** Replaces the council and/or the leads of a live run; later calls use the new seats at their efforts. */
+  setSeats(runId: string, choice: { council?: SeatChoice[]; leads?: SeatChoice[] }): { council: Seat[]; leads: Seat[] } {
+    const { store, bus, config } = this.ctx;
+    const run = store.runById(runId);
+    if (!run) throw new Error(`unknown run ${runId}`);
+    if (isTerminalRun(run.status)) throw new Error(`run ${runId} is ${run.status}; its seats can no longer change`);
+    const council = choice.council ? resolveSeats(config, 'supervisor', choice.council, 'seats') : councilOf(this.ctx, runId);
+    const leads = choice.leads ? resolveSeats(config, 'lead', choice.leads, 'seats') : leadsOf(this.ctx, runId);
+    const roles = { supervisor: council[0]!.agent, lead: leads[0]!.agent };
+    store.setRunMeta(runId, { ...roles, council, leads } satisfies Partial<RunMeta>);
+    bus.emit('run.roles_changed', runId, { ...roles, council, leads });
+    return { council, leads };
+  }
+
+  /**
+   * Revises the run's worker team: a persona's model or effort, or a persona added or removed.
+   * Tasks of a removed persona move to the first remaining persona of the same specialty (else the first).
+   */
+  setTeam(runId: string, personas: Persona[]): Persona[] {
+    const { store, bus } = this.ctx;
+    const run = store.runById(runId);
+    if (!run) throw new Error(`unknown run ${runId}`);
+    if (isTerminalRun(run.status)) throw new Error(`run ${runId} is ${run.status}; its team can no longer change`);
+    const team = this.checkTeam(personas, 'team');
+    if (!team.length) throw new Error('team: at least one persona is needed');
+    const ids = new Set(team.map((p) => p.id));
+    for (const t of store.tasks(runId)) {
+      const ctx = store.taskContext<TaskContext>(t.id);
+      if (!ctx.persona || ids.has(ctx.persona) || t.agentId) continue;
+      const to = team.find((p) => p.specialty === t.specialty) ?? team[0]!;
+      store.setTaskContext(t.id, { persona: to.id, preferredWorker: to.agent } satisfies Partial<TaskContext>);
+    }
+    for (const t of store.tasks(runId)) {
+      const p = team.find((x) => x.id === store.taskContext<TaskContext>(t.id).persona);
+      if (p && !t.agentId) store.setTaskContext(t.id, { preferredWorker: p.agent } satisfies Partial<TaskContext>);
+    }
+    store.setRunMeta(runId, { team } satisfies Partial<RunMeta>);
+    bus.emit('team.changed', runId, { personas: team.map((p) => ({ id: p.id, agent: p.agent, effort: p.effort })) });
+    return team;
+  }
+
+  private checkTeam(personas: Persona[], source: string): Persona[] {
+    const workers = eligibleFor(this.ctx.config, 'worker');
+    const seen = new Set<string>();
+    return personas.map((p) => {
+      const id = p.id.trim().toLowerCase();
+      if (!PERSONA_ID.test(id)) throw new Error(`${source}: "${p.id}" is not a persona name (lowercase letters, digits and dashes, like backend-dev)`);
+      if (seen.has(id)) throw new Error(`${source}: persona "${id}" appears twice`);
+      seen.add(id);
+      if (!workers.includes(p.agent)) throw new Error(`${source}: ${id} uses "${p.agent}", which is not an enabled worker (available: ${workers.join(', ')})`);
+      if (p.effort) checkEffort(this.ctx.config, p.agent, p.effort, source);
+      return { id, title: p.title?.trim() || id, specialty: p.specialty || 'general', agent: p.agent, effort: p.effort ?? null };
+    });
   }
 
   /** Resume every non-terminal run after a restart. */
@@ -199,7 +274,7 @@ export class Orchestrator {
     const approval = store.approval(approvalId);
     if (!approval) throw new Error(`unknown approval ${approvalId}`);
     if (approval.status !== 'pending') throw new Error(`approval ${approvalId} is already ${approval.status}`);
-    if (decision === 'request_changes' && approval.kind !== 'final') throw new Error('request_changes applies only to the final result');
+    if (decision === 'request_changes' && approval.kind !== 'final' && approval.kind !== 'team') throw new Error('request_changes applies only to the final result or a team');
     if (decision === 'request_changes' && !response?.trim()) throw new Error('request_changes needs a description of the changes');
     const status = decision === 'approve' ? 'approved' : decision === 'reject' ? 'rejected' : 'changes_requested';
     const resolved = store.resolveApproval(approvalId, status, response);
@@ -211,8 +286,21 @@ export class Orchestrator {
     else bus.emit('approval.changes_requested', approval.runId, { approvalId, response: response! });
 
     const run = store.runById(approval.runId)!;
-    const details = (approval.details ?? {}) as { taskId?: string; proposalIds?: string[]; question?: string };
-    if (approval.kind === 'final') {
+    const details = (approval.details ?? {}) as { taskId?: string; proposalIds?: string[]; question?: string; taskIds?: string[]; priorTeam?: Persona[] };
+    if (approval.kind === 'team') {
+      if (decision === 'approve') this.transition(run, 'executing');
+      else if (decision === 'reject') {
+        this.transition(run, 'rejected');
+        bus.emit('run.completed', run.id, { outcome: 'rejected', reason: response ?? 'team rejected' });
+        void this.cleanup(run.id, true);
+      } else {
+        // Re-plan: the proposed round's tasks never started; drop them with the personas they brought.
+        store.deleteTasks((details.taskIds ?? []).filter((id) => store.task(id)?.status === 'pending' || store.task(id)?.status === 'ready'));
+        store.updateRun(run.id, { feedback: [...run.feedback, `Human on the proposed team: ${response!}`] });
+        store.setRunMeta(run.id, { team: details.priorTeam ?? [], teamRevision: response } satisfies Partial<RunMeta>);
+        this.transition(run, 'planning');
+      }
+    } else if (approval.kind === 'final') {
       if (decision === 'approve') this.transition(run, 'merging');
       else if (decision === 'reject') {
         this.transition(run, 'rejected');
@@ -314,6 +402,8 @@ export class Orchestrator {
   private common(run: Run) {
     const repos = runRepos(this.ctx, run);
     return {
+      chair: councilOf(this.ctx, run.id)[0]!,
+      head: leadsOf(this.ctx, run.id)[0]!,
       repos,
       cwd: repos[0]!.path,
       additionalDirs: repos.slice(1).map((r) => r.path),
@@ -326,12 +416,18 @@ export class Orchestrator {
 
   private async architecture(run: Run): Promise<void> {
     const c = this.common(run);
-    const res = await this.ctx.runner.call({
-      runId: run.id, agentId: c.supervisor, role: 'supervisor', contract: 'ArchitectureOutput',
-      prompt: architecturePrompt(run.request, c.repos, run.feedback),
-      cwd: c.cwd, additionalDirs: c.additionalDirs, readOnly: true, timeoutMs: c.timeoutMs, spanName: 'opus.architecture',
-    });
+    const draft = () => ({ runId: run.id, ...seatCall(c.chair), role: 'supervisor' as const, contract: 'ArchitectureOutput' as const, cwd: c.cwd, additionalDirs: c.additionalDirs, readOnly: true, timeoutMs: c.timeoutMs, spanName: 'opus.architecture' });
+    let res = await this.ctx.runner.call({ ...draft(), prompt: architecturePrompt(run.request, c.repos, run.feedback) });
     this.ctx.store.updateRun(run.id, { architecture: res.output });
+    // The council reviews the chair's draft; one revision answers every concern.
+    const views = await consultCouncil(this.ctx, run, 'architecture', 'Review the architecture above.');
+    if (views.some((v) => v.verdict === 'revise')) {
+      res = await this.ctx.runner.call({
+        ...draft(),
+        prompt: `${architecturePrompt(run.request, c.repos, run.feedback)}\n\nYour first draft:\n${res.output.summary}\n${res.output.architecture}${councilConcerns(views)}\n\nReturn the revised architecture.`,
+      });
+      this.ctx.store.updateRun(run.id, { architecture: res.output });
+    }
     this.ctx.store.setRunMeta(run.id, { decisionRound: 0 });
     this.ctx.bus.emit('architecture.defined', run.id, { summary: res.output.summary });
     this.transition(this.ctx.store.runById(run.id)!, 'proposing');
@@ -345,7 +441,7 @@ export class Orchestrator {
       .map((d) => `- ${d.outcome}: ${d.rationale}${d.changes ? ` (${d.changes})` : ''}`)
       .join('\n');
     const res = await runner.call({
-      runId: run.id, agentId: c.lead, role: 'lead', contract: 'LeadArchitectureReview',
+      runId: run.id, ...seatCall(c.head), role: 'lead', contract: 'LeadArchitectureReview',
       prompt: leadArchitectureReviewPrompt(run.request, arch(run)!, c.repos, prior || '(none)'),
       cwd: c.cwd, additionalDirs: c.additionalDirs, readOnly: true, timeoutMs: c.timeoutMs, spanName: 'codex.architecture_review',
     });
@@ -391,7 +487,7 @@ export class Orchestrator {
     if (meta.pendingRevision) {
       // REQUEST CHANGES (or a validation revision) continues the managed run.
       const rev = await runner.call({
-        runId: run.id, agentId: c.supervisor, role: 'supervisor', contract: 'SupervisorRevision',
+        runId: run.id, ...seatCall(c.chair), role: 'supervisor', contract: 'SupervisorRevision',
         prompt: supervisorRevisionPrompt(arch(run), meta.pendingRevision),
         cwd: c.cwd, additionalDirs: c.additionalDirs, readOnly: true, timeoutMs: c.timeoutMs, spanName: 'opus.revision',
       });
@@ -401,7 +497,7 @@ export class Orchestrator {
       round = run.round + 1;
       store.updateRun(run.id, { round, feedback: [...fb, `Supervisor guidance: ${rev.output.guidance}`] });
       store.setRunMeta(run.id, { pendingRevision: null });
-    } else if (existing.length) {
+    } else if (existing.length && !meta.teamRevision) {
       round = run.round + 1;
       store.updateRun(run.id, { round });
     }
@@ -411,26 +507,34 @@ export class Orchestrator {
     const decisionText = decisions.length
       ? decisions.map((d) => `- ${proposals.find((p) => p.id === d.proposalId)?.title ?? 'decision'}: ${d.outcome} by ${d.decidedBy} - ${d.rationale}`).join('\n')
       : '(none)';
-    const feedback = round > 0 ? current.feedback : [];
+    const feedback = round > 0 || meta.teamRevision ? current.feedback : [];
+    const leads = leadsOf(this.ctx, run.id);
+    const approved = meta.team ?? [];
 
     let lastError = '';
     let plan: LeadPlan | null = null;
     for (let attempt = 0; attempt < 2 && !plan; attempt++) {
       const res = await runner.call({
-        runId: run.id, agentId: c.lead, role: 'lead', contract: 'LeadPlan',
+        runId: run.id, ...seatCall(c.head), role: 'lead', contract: 'LeadPlan',
         prompt:
-          leadPlanPrompt({ request: run.request, arch: arch(current)!, decisions: decisionText, repos: c.repos, existingTasks: existing, feedback, round, workers: this.ctx.router.workers() }) +
+          leadPlanPrompt({ request: run.request, arch: arch(current)!, decisions: decisionText, repos: c.repos, existingTasks: existing, feedback, round, workers: this.ctx.router.workers(), leads: leads.map((l) => ({ id: l.id, agent: l.agent, area: l.area ?? null })), team: approved }) +
           (lastError ? `\n\nYour previous plan was invalid: ${lastError}. Fix it.` : ''),
         cwd: c.cwd, additionalDirs: c.additionalDirs, readOnly: true, timeoutMs: c.timeoutMs, spanName: 'codex.planning',
       });
       try {
-        this.validatePlan(res.output, c.repos, existing);
+        this.validatePlan(res.output, c.repos, existing, approved, leads);
         plan = res.output;
       } catch (err) {
         lastError = errorMessage(err);
       }
     }
     if (!plan) throw new Error(`Lead produced an invalid plan twice: ${lastError}`);
+    // The team: approved personas stay; the plan's new or changed ones wait for the human.
+    const proposed = this.checkTeam(plan.team.map((p) => ({ id: p.id, title: p.title, specialty: p.specialty, agent: p.worker, effort: p.effort })), 'plan');
+    const same = (a: Persona, b: Persona | undefined) => !!b && a.agent === b.agent && a.effort === b.effort;
+    const fresh = proposed.filter((p) => !same(p, approved.find((x) => x.id === p.id)));
+    const team = [...approved.filter((a) => !proposed.some((p) => p.id === a.id)), ...proposed];
+    const gate = this.ctx.config.engine.team.approval && fresh.length > 0;
 
     store.tx(() => {
       const byKey = new Map(existing.map((t) => [t.key, t]));
@@ -444,7 +548,9 @@ export class Orchestrator {
           testCommand: p.testCommand, status: 'pending', agentId: null, iteration: 0, branch: null, worktreePath: null,
           summary: null, blockedReason: null, round,
         });
-        if (p.worker) store.setTaskContext(task.id, { preferredWorker: p.worker } satisfies Partial<TaskContext>);
+        const persona = p.role ? team.find((x) => x.id === p.role!.toLowerCase()) : undefined;
+        const worker = persona?.agent ?? p.worker;
+        store.setTaskContext(task.id, { preferredWorker: worker ?? undefined, persona: persona?.id ?? null, lead: p.lead ?? null } satisfies Partial<TaskContext>);
         byKey.set(p.key, task);
       }
       for (const p of plan!.tasks) {
@@ -453,13 +559,36 @@ export class Orchestrator {
         bus.emit('task.created', run.id, { taskId: task.id, key: task.key, title: task.title, repoId: task.repoId, dependsOn: p.dependsOn });
       }
       bus.emit('plan.created', run.id, { taskCount: plan!.tasks.length, round });
+      store.setRunMeta(run.id, { team, teamRevision: null } satisfies Partial<RunMeta>);
+      if (gate) {
+        const ids = plan!.tasks.map((p) => byKey.get(p.key)!.id);
+        const text = teamText(team, fresh, plan!.tasks, leads);
+        const approval = store.insertApproval({
+          runId: run.id, kind: 'team', operation: null,
+          summary: `Team for round ${round}: ${fresh.map((p) => `${p.id} (${p.agent}${p.effort ? ` ${p.effort}` : ''})`).join(', ')}`.slice(0, 2000),
+          details: { taskIds: ids, priorTeam: approved, team, text },
+        });
+        this.trackApproval(approval.id, run.id);
+        bus.emit('team.proposed', run.id, { personas: team.map((p) => ({ id: p.id, agent: p.agent, effort: p.effort })), approvalId: approval.id });
+        bus.emit('approval.requested', run.id, { approvalId: approval.id, kind: 'team', summary: approval.summary });
+        this.transition(store.runById(run.id)!, 'awaiting_human_decision');
+        return;
+      }
+      if (proposed.length) bus.emit('team.proposed', run.id, { personas: team.map((p) => ({ id: p.id, agent: p.agent, effort: p.effort })), approvalId: null });
       // Same transaction: a crash can never leave tasks inserted but the run still "planning".
       this.transition(store.runById(run.id)!, 'executing');
     });
   }
 
-  private validatePlan(plan: LeadPlan, repos: Repository[], existing: Task[]): void {
+  private validatePlan(plan: LeadPlan, repos: Repository[], existing: Task[], approved: Persona[] = [], leads: Seat[] = []): void {
     if (!plan.tasks.length) throw new Error('plan has no tasks');
+    const personas = new Set([...approved.map((p) => p.id), ...plan.team.map((p) => p.id.toLowerCase())]);
+    const leadIds = new Set(leads.map((l) => l.id));
+    for (const t of plan.tasks) {
+      if (t.role && !personas.has(t.role.toLowerCase())) throw new Error(`task ${t.key} names persona "${t.role}", which is not in the team (${[...personas].join(', ') || 'none'})`);
+      if (t.lead && leadIds.size && !leadIds.has(t.lead)) throw new Error(`task ${t.key} names lead "${t.lead}" (known: ${[...leadIds].join(', ')})`);
+    }
+    this.checkTeam(plan.team.map((p) => ({ id: p.id, title: p.title, specialty: p.specialty, agent: p.worker, effort: p.effort })), 'plan');
     const keys = new Set(existing.map((t) => t.key));
     for (const t of plan.tasks) {
       if (keys.has(t.key)) throw new Error(`duplicate task key ${t.key}`);
@@ -602,7 +731,7 @@ export class Orchestrator {
           let resolved = false;
           try {
             const out = await runner.call({
-              runId: run.id, taskId: t.id, agentId: c.lead, role: 'lead', contract: 'LeadIntegrationResult',
+              runId: run.id, taskId: t.id, ...seatCall(c.head), role: 'lead', contract: 'LeadIntegrationResult',
               prompt: leadIntegrationPrompt(repo, t, res.conflicts), cwd: path, readOnly: false, timeoutMs: c.timeoutMs, spanName: 'codex.integration_resolve',
             });
             const remaining = [...(await gitOps.unresolvedConflicts(path)), ...readConflictMarkers(path, res.conflicts)];
@@ -677,7 +806,7 @@ export class Orchestrator {
     const paths = c.repos.map((r) => integ[r.id]?.path ?? r.path);
     const deferred = store.proposals(run.id, 'open').filter((p) => p.taskId !== null);
     const res = await runner.call({
-      runId: run.id, agentId: c.supervisor, role: 'supervisor', contract: 'SupervisorValidation',
+      runId: run.id, ...seatCall(c.chair), role: 'supervisor', contract: 'SupervisorValidation',
       prompt: supervisorValidationPrompt({
         request: run.request, arch: arch(run), tasks, reviews,
         integration: c.repos.filter((r) => integ[r.id]).map((r) => ({ repo: r.name, branch: integ[r.id]!.branch, passed: integ[r.id]!.passed, output: integ[r.id]!.output })),
@@ -688,6 +817,17 @@ export class Orchestrator {
     });
     let v: SupervisorValidation = res.output;
     this.recordDeferredRulings(run, deferred, v.proposalDecisions);
+    // The rest of the council judges the result too; a member's "revise" makes it a revision.
+    const views = await consultCouncil(this.ctx, run, 'result', [
+      `The chair's verdict: ${v.verdict}: ${v.summary}`,
+      `Tasks:\n${tasks.map((t) => `- ${t.key} [${t.status}] ${t.title}: ${t.summary ?? ''}`).join('\n')}`,
+      `Integration:\n${c.repos.filter((r) => integ[r.id]).map((r) => `- ${r.name}: tests ${integ[r.id]!.passed ? 'pass' : 'FAIL'} on ${integ[r.id]!.branch}`).join('\n') || '(none)'}`,
+      `Diff stats:\n${Object.values(diffStats).join('\n').slice(0, 8000)}`,
+    ].join('\n\n'));
+    const objections = views.filter((x) => x.verdict === 'revise');
+    if (objections.length) {
+      v = { ...v, verdict: 'revise', requiredChanges: [...v.requiredChanges, ...objections.flatMap((o) => (o.concerns.length ? o.concerns : [o.summary]).map((c) => `${o.seat}: ${c}`))] };
+    }
     // Failing integration tests can never be accepted silently.
     const failing = c.repos.filter((r) => integ[r.id] && !integ[r.id]!.passed);
     if (v.verdict === 'accept' && failing.length) {
@@ -793,4 +933,15 @@ export class Orchestrator {
 
 function isExecutable(kind: string): boolean {
   return ['implementation', 'bugfix', 'refactor', 'test', 'database', 'api', 'security', 'performance'].includes(kind);
+}
+
+/** The team approval's text: each persona with its model, effort and tasks; the new ones marked. */
+function teamText(team: Persona[], fresh: Persona[], tasks: LeadPlan['tasks'], leads: Seat[]): string {
+  const lines = team.map((p) => {
+    const mine = tasks.filter((t) => t.role?.toLowerCase() === p.id).map((t) => `${t.key} ${t.title}`);
+    return `${fresh.some((f) => f.id === p.id) ? '+' : ' '} ${p.id} — ${p.title}: ${p.agent}${p.effort ? ` @ ${p.effort}` : ''}${mine.length ? `\n    ${mine.join('\n    ')}` : ''}`;
+  });
+  const unstaffed = tasks.filter((t) => !t.role).map((t) => `${t.key} ${t.title}`);
+  const owners = leads.length > 1 ? `\n\nLeads: ${leads.map((l) => `${l.id} ${l.agent}${l.area ? ` (${l.area})` : ''}`).join(', ')}` : '';
+  return `Proposed team (+ new or changed):\n${lines.join('\n')}${unstaffed.length ? `\n\nRouted automatically:\n    ${unstaffed.join('\n    ')}` : ''}${owners}`;
 }

@@ -49,6 +49,8 @@ export function describeOutcome(contract: ContractName, output: unknown): string
       return [`${o.verdict}: ${o.summary}`, ...list(o.requiredChanges ?? [], (c: string) => `required: ${c}`)].join('\n');
     case 'SupervisorRevision':
       return `Direction: ${o.guidance}`;
+    case 'CouncilReview':
+      return [`${o.verdict}: ${o.summary}`, ...list(o.concerns ?? [], (c: string) => `concern: ${c}`)].join('\n');
     default:
       return JSON.stringify(output).slice(0, 2000);
   }

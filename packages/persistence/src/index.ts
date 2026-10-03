@@ -257,6 +257,14 @@ export class Store {
     return r && toTask(r);
   }
 
+  /** Deletes tasks that never started (and their dependency edges): a re-planned round. */
+  deleteTasks(ids: string[]): void {
+    if (!ids.length) return;
+    const marks = ids.map(() => '?').join(',');
+    this.run(`DELETE FROM dependencies WHERE task_id IN (${marks}) OR depends_on IN (${marks})`, ...ids, ...ids);
+    this.run(`DELETE FROM tasks WHERE id IN (${marks})`, ...ids);
+  }
+
   tasks(runId: string): Task[] {
     return this.all('SELECT * FROM tasks WHERE run_id = ? ORDER BY created_at, key', runId).map(toTask);
   }

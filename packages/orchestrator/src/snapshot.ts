@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { ACTIVE_TASK_STATUSES, effortLevels, type AgentSessionRecord, type Approval, type CockpitEvent, type Run, type Task } from '@cockpit/core';
 import type { Store } from '@cockpit/persistence';
 import type { CockpitConfig } from '@cockpit/core';
-import type { RunMeta, TaskContext } from './context';
+import { councilOf, leadsOf, type EngineContext, type RunMeta, type TaskContext } from './context';
 import type { TaskLive } from './live';
 import type { Limits } from './limits';
 
@@ -37,6 +37,11 @@ export interface RunView {
   /** The run's effort choice per agent id (agents absent here use their default). */
   efforts: Record<string, string>;
   leadership: { supervisor: string; lead: string };
+  /** The Supervisor council (the first chairs) and the Leads (the first is the head), each seat at its own effort. */
+  council: SeatView[];
+  leads: SeatView[];
+  /** The worker personas (backend-dev, tester, ...), their models and efforts, and the tasks each does. */
+  team: { id: string; title: string; specialty: string; agent: string; effort: string | null; tasks: string[]; state: string }[];
   repositories: { name: string; path: string; baseBranch: string; integration: { branch: string; passed: boolean } | null }[];
   tasks: {
     key: string;
@@ -54,6 +59,9 @@ export interface RunView {
     detail: TaskDetail;
     /** The worktree as it stands (changed files, a preview of the biggest change); null when there is none to read. */
     live: TaskLive | null;
+    /** The persona doing the task and the Lead seat owning it, when the plan named them. */
+    persona: string | null;
+    lead: string | null;
   }[];
   workers: { agentId: string; role: string; task: string | null; since: string }[];
   conflicts: { task: string; pattern: string; heldBy: string; ts: string }[];
@@ -63,6 +71,15 @@ export interface RunView {
   recentEvents: { ts: string; type: string; text: string; detail: string }[];
   /** The latest model sessions of the run and what each said, reasoned and ran: the cockpit's Minds view. */
   minds: MindView[];
+}
+
+export interface SeatView {
+  id: string;
+  agent: string;
+  effort: string | null;
+  area: string | null;
+  /** "idle", or "working" / "working on TASK-101". */
+  state: string;
 }
 
 export interface TaskDetail {
@@ -89,6 +106,8 @@ export interface MindView {
   /** The structured answer the call must produce (LeadPlan, WorkerResult, ...). */
   contract: string | null;
   effort: string | null;
+  /** The seat or persona that made the call (sup-2, lead-1, backend-dev), when it had one. */
+  seat: string | null;
   status: string;
   startedAt: string;
   endedAt: string | null;
@@ -122,7 +141,7 @@ export function minds(
   sessions: AgentSessionRecord[], events: CockpitEvent[], keyOf: (id: unknown) => string,
   limits: { sessions: number; activity: number; text: number } = { sessions: MIND_SESSIONS, activity: MIND_ACTIVITY, text: MIND_TEXT },
 ): MindView[] {
-  const started = new Map<string, { contract?: string; effort?: string | null }>();
+  const started = new Map<string, { contract?: string; effort?: string | null; seat?: string | null }>();
   for (const e of events) if (e.type === 'agent.started') started.set(String((e.data as { sessionId: string }).sessionId), e.data as never);
   const chosen = [...sessions]
     .sort((a, b) => Number(b.status === 'active') - Number(a.status === 'active') || b.startedAt.localeCompare(a.startedAt))
@@ -141,7 +160,7 @@ export function minds(
   }
   return chosen.map((s) => ({
     sessionId: s.id, agentId: s.agentId, role: s.role, task: s.taskId ? keyOf(s.taskId) : null,
-    contract: started.get(s.id)?.contract ?? null, effort: started.get(s.id)?.effort ?? null,
+    contract: started.get(s.id)?.contract ?? null, effort: started.get(s.id)?.effort ?? null, seat: started.get(s.id)?.seat ?? null,
     status: s.status, startedAt: s.startedAt, endedAt: s.endedAt,
     activity: byId.get(s.id)!.slice(-limits.activity),
   }));
@@ -199,7 +218,10 @@ export function runView(store: Store, config: CockpitConfig, run: Run, live?: (t
   const keyOf = (id: unknown) => keyById.get(String(id)) ?? String(id ?? '');
   const deps = store.dependencies(run.id);
   const meta = store.runMeta<RunMeta>(run.id);
-  const roles = { supervisor: meta.supervisor ?? config.agents.hierarchy.supervisor, lead: meta.lead ?? config.agents.hierarchy.lead };
+  const ectx = { store, config } as EngineContext;
+  const council = councilOf(ectx, run.id);
+  const leadSeats = leadsOf(ectx, run.id);
+  const roles = { supervisor: council[0]!.agent, lead: leadSeats[0]!.agent };
   const repos = (meta.repoIds ?? []).map((id) => store.repository(id)!).filter(Boolean);
   const sessions = store.sessions(run.id).filter((s) => s.status === 'active');
   const roleState = (agentId: string, role: string) => {
@@ -207,6 +229,18 @@ export function runView(store: Store, config: CockpitConfig, run: Run, live?: (t
     return s ? `working${s.taskId ? ` on ${keyOf(s.taskId)}` : ''}` : 'idle';
   };
   const events = store.events({ runId: run.id, limit: 100_000 });
+  // Which seat each session sat in (calls name it on agent.started).
+  const seatOf = new Map<string, string>();
+  for (const e of events) {
+    const d = e.data as { sessionId?: string; seat?: string | null };
+    if (e.type === 'agent.started' && d.seat && d.sessionId) seatOf.set(d.sessionId, d.seat);
+  }
+  const seatState = (id: string) => {
+    const s = sessions.find((x) => seatOf.get(x.id) === id);
+    return s ? `working${s.taskId ? ` on ${keyOf(s.taskId)}` : ''}` : 'idle';
+  };
+  const seatView = (s: { id: string; agent: string; effort: string | null; area?: string | null }): SeatView => ({ id: s.id, agent: s.agent, effort: s.effort, area: s.area ?? null, state: seatState(s.id) });
+  const taskCtx = new Map(tasks.map((t) => [t.id, store.taskContext<TaskContext>(t.id)]));
   const conflicts = events
     .filter((e) => e.type === 'file.lease.conflict')
     .map((e) => {
@@ -238,6 +272,13 @@ export function runView(store: Store, config: CockpitConfig, run: Run, live?: (t
       supervisor: roleState(roles.supervisor, 'supervisor'),
       lead: roleState(roles.lead, 'lead'),
     },
+    council: council.map(seatView),
+    leads: leadSeats.map(seatView),
+    team: (meta.team ?? []).map((p) => {
+      const mine = tasks.filter((t) => taskCtx.get(t.id)?.persona === p.id);
+      const busy = sessions.filter((x) => seatOf.get(x.id) === p.id).map((x) => keyOf(x.taskId));
+      return { ...p, tasks: mine.map((t) => t.key), state: busy.length ? `working on ${busy.join(', ')}` : 'idle' };
+    }),
     repositories: repos.map((r) => ({
       name: r.name, path: r.path, baseBranch: r.baseBranch,
       integration: meta.integration?.[r.id] ? { branch: meta.integration[r.id]!.branch, passed: meta.integration[r.id]!.passed } : null,
@@ -248,6 +289,8 @@ export function runView(store: Store, config: CockpitConfig, run: Run, live?: (t
       detail: taskDetail(store, t),
       specialty: t.specialty,
       live: live?.(t.id) ?? null,
+      persona: taskCtx.get(t.id)?.persona ?? null,
+      lead: taskCtx.get(t.id)?.lead ?? null,
     })),
     workers: sessions.filter((s) => s.role === 'worker').map((s) => ({ agentId: s.agentId, role: s.role, task: s.taskId ? keyOf(s.taskId) : null, since: s.startedAt })),
     conflicts,

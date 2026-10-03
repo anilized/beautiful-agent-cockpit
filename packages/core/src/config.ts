@@ -89,6 +89,8 @@ export const EngineConfig = z.object({
     })
     .default({ maxRounds: 2, duringTasks: 'defer' }),
   validation: z.object({ maxRevisions: z.number().int().nonnegative().default(1) }).default({ maxRevisions: 1 }),
+  /** `approval`: a plan with a team waits for the human to approve or revise the team before any worker starts. */
+  team: z.object({ approval: z.boolean().default(true) }).default({ approval: true }),
   agentTimeoutMs: z.number().int().positive().default(45 * 60_000),
   testTimeoutMs: z.number().int().positive().default(15 * 60_000),
   /** "merge": on final approval merge the integration branch into the base branch. "branch": leave it for the human. */
@@ -168,6 +170,29 @@ export function resolveRoles(config: CockpitConfig, choice: RoleChoice, source =
   }
   if (supervisor === lead) throw new Error(`${source}: supervisor and lead must be distinct agents`);
   return { supervisor, lead };
+}
+
+/** A seat as asked for: the agent, its effort, and for a Lead the area it owns. */
+export interface SeatChoice {
+  agent: string;
+  effort?: string | null;
+  area?: string | null;
+}
+
+/**
+ * Validates a council (role 'supervisor') or a set of leads (role 'lead') and gives each seat an id.
+ * The same agent may sit more than once (each seat is its own session at its own effort).
+ */
+export function resolveSeats(config: CockpitConfig, role: 'supervisor' | 'lead', choices: SeatChoice[], source = 'seats'): { id: string; agent: string; effort: string | null; area: string | null }[] {
+  if (!choices.length) throw new Error(`${source}: at least one ${role} is needed`);
+  return choices.map((c, i) => {
+    const agent = config.agents.agents.find((a) => a.id === c.agent);
+    if (!agent) throw new Error(`${source}: ${role} "${c.agent}" is not a configured agent`);
+    if (!agent.enabled) throw new Error(`${source}: ${role} "${c.agent}" is disabled in agents.yaml`);
+    if (!agent.roles.includes(role)) throw new Error(`${source}: "${c.agent}" may not act as ${role} (eligible: ${eligibleFor(config, role).join(', ') || 'none'})`);
+    if (c.effort) checkEffort(config, c.agent, c.effort, source);
+    return { id: `${role === 'supervisor' ? 'sup' : 'lead'}-${i + 1}`, agent: c.agent, effort: c.effort ?? null, area: c.area ?? null };
+  });
 }
 
 /** Enabled agents that may take a role. */

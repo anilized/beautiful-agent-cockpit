@@ -18,6 +18,8 @@ const USAGE = `cockpit - hierarchical multi-agent coding cockpit
   cockpit doctor                            check local Claude Code / Codex / git integration
   cockpit run "<request>" --repo <path> [--test "<cmd>"] [--base <branch>] [--repo ...] [--project <name>]
               [--supervisor <agent>] [--lead <agent>] [--effort [<role>:]<agent>=<level> ...] [--follow]
+              [--council <agent>[:<effort>],...] [--leads <agent>[:<effort>][@<area>],...]
+                                            several supervisors (the first chairs) / leads (the first is the head)
   cockpit agents                            configured agents and the roles each may take
   cockpit effort <runId> [<role>:]<agent>=<level> ...  change reasoning effort per agent (or per seat) on a live run
   cockpit roles <runId> [--supervisor <agent>] [--lead <agent>]
@@ -87,7 +89,10 @@ const ICON: Record<string, string> = {
 function printRun(r: RunView & { report?: string | null }): void {
   console.log(`\n${r.id}  [${r.status}]  round ${r.round}${r.error ? `  error: ${r.error}` : ''}`);
   console.log(`  request:    ${r.request.split('\n')[0]!.slice(0, 100)}`);
-  console.log(`  supervisor: ${r.roles.supervisor} (${r.leadership.supervisor})   lead: ${r.roles.lead} (${r.leadership.lead})`);
+  const seat = (s: RunView['council'][number]) => `${s.id} ${s.agent}${s.effort ? `@${s.effort}` : ''}${s.area ? ` [${s.area}]` : ''} (${s.state})`;
+  console.log(`  council:    ${r.council.map(seat).join(' · ')}`);
+  console.log(`  leads:      ${r.leads.map(seat).join(' · ')}`);
+  if (r.team.length) console.log(`  team:       ${r.team.map((p) => `${p.id} ${p.agent}${p.effort ? `@${p.effort}` : ''}`).join(' · ')}`);
   for (const repo of r.repositories) console.log(`  repo ${repo.name}: ${repo.path} (${repo.baseBranch})${repo.integration ? ` -> ${repo.integration.branch} tests ${repo.integration.passed ? 'passed' : 'FAILED'}` : ''}`);
   if (r.tasks.length) {
     console.log('  tasks:');
@@ -185,6 +190,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
         request, repos, project: args.flags.get('project')?.[0],
         supervisor: args.flags.get('supervisor')?.[0], lead: args.flags.get('lead')?.[0],
         efforts: parseEfforts(args.flags.get('effort') ?? []),
+        council: parseSeats(args.flags.get('council') ?? []), leads: parseSeats(args.flags.get('leads') ?? []),
       });
       console.log(`run ${run.id} started`);
       if (args.flags.has('follow')) await follow(c, run.id);
@@ -286,6 +292,16 @@ async function follow(c: CockpitClient, runId?: string): Promise<void> {
 }
 
 /** `agent=level` pairs into a map. */
+/** "opus:high,sonnet" or "codex:high@backend" -> seats; several flags add up. */
+function parseSeats(values: string[]): { agent: string; effort: string | null; area: string | null }[] {
+  return values.flatMap((v) => v.split(',')).map((x) => x.trim()).filter(Boolean).map((x) => {
+    const [head, area] = x.split('@');
+    const [agent, effort] = head!.split(':');
+    if (!agent) throw new Error(`seat "${x}" must look like <agent>[:<effort>][@<area>]`);
+    return { agent, effort: effort || null, area: area?.trim() || null };
+  });
+}
+
 function parseEfforts(pairs: string[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const p of pairs) {

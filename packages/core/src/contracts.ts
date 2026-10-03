@@ -68,8 +68,12 @@ export const LeadPlan = z.strictObject({
       specialty,
       risk: level,
       complexity: level,
-      /** The worker the Lead assigns (an enabled worker's id), or null to let the router choose. */
+      /** The worker the Lead assigns (an enabled worker's id), or null to let the router choose. Superseded by `role`. */
       worker: z.string().nullable(),
+      /** The persona (an id from `team`) that does the task, or null. */
+      role: z.string().nullable(),
+      /** The Lead seat (an id from the run's leads) that owns, answers and reviews the task, or null for the head lead. */
+      lead: z.string().nullable(),
       files: strings,
       modules: strings,
       resources: strings,
@@ -77,6 +81,17 @@ export const LeadPlan = z.strictObject({
       acceptanceCriteria: strings,
       testsRequired: z.boolean(),
       testCommand: z.string().nullable(),
+    }),
+  ),
+  /** The team the head Lead proposes: named personas (backend-dev, tester, ...), each a worker model at an effort. */
+  team: z.array(
+    z.strictObject({
+      id: z.string(),
+      title: z.string(),
+      specialty,
+      worker: z.string(),
+      effort: z.string().nullable(),
+      rationale: z.string(),
     }),
   ),
 });
@@ -167,6 +182,15 @@ export type SupervisorDecisions = z.infer<typeof SupervisorDecisions>;
 export type LeadPlan = z.infer<typeof LeadPlan>;
 export type PlannedTask = LeadPlan['tasks'][number];
 export type WorkerResult = z.infer<typeof WorkerResult>;
+/** A council member's view of the chair's work (architecture, proposals or the final result). */
+export const CouncilReview = z.strictObject({
+  verdict: z.enum(['approve', 'revise']),
+  summary: z.string(),
+  /** Concrete concerns the chair must weigh; empty when approving. */
+  concerns: strings,
+});
+
+export type CouncilReview = z.infer<typeof CouncilReview>;
 export type LeadAnswer = z.infer<typeof LeadAnswer>;
 export type SupervisorEscalation = z.infer<typeof SupervisorEscalation>;
 export type LeadReview = z.infer<typeof LeadReview>;
@@ -189,6 +213,7 @@ export const Contracts = {
   LeadIntegrationResult,
   SupervisorValidation,
   SupervisorRevision,
+  CouncilReview,
 } as const;
 
 export type ContractName = keyof typeof Contracts;

@@ -25,6 +25,10 @@ export interface AgentCall<N extends ContractName> {
   freshPrompt?: string;
   timeoutMs: number;
   spanName: string;
+  /** The seat or persona making the call (sup-2, lead-1, backend-dev): its effort applies and the cockpit names it. */
+  seat?: string;
+  /** That seat's effort; undefined falls back to the run's per-agent choices. */
+  effort?: string | null;
 }
 
 export interface AgentCallResult<N extends ContractName> {
@@ -111,13 +115,13 @@ export class AgentRunner {
     const adapter = this.registry.get(call.agentId);
     // Effort: the run's choice for this seat, then for this agent (read per attempt, so a live change applies), else its default.
     const efforts = this.store.runMeta<{ efforts?: Record<string, string> }>(call.runId).efforts ?? {};
-    const effort = efforts[`${call.role}:${call.agentId}`] ?? efforts[call.agentId] ?? this.registry.profile(call.agentId).effort ?? null;
+    const effort = (call.effort !== undefined ? call.effort : efforts[`${call.role}:${call.agentId}`] ?? efforts[call.agentId]) ?? this.registry.profile(call.agentId).effort ?? null;
     const config = { agentId: call.agentId, role: call.role, cwd: call.cwd, readOnly: call.readOnly, additionalDirs: call.additionalDirs };
     const session: AgentSession = resumeId ? await adapter.resume(resumeId, config) : await adapter.startSession(config);
     const record = this.store.insertSession({
       runId: call.runId, taskId: call.taskId ?? null, agentId: call.agentId, role: call.role, externalId: resumeId, status: 'active', cwd: call.cwd,
     });
-    this.bus.emit('agent.started', call.runId, { agentId: call.agentId, role: call.role, sessionId: record.id, taskId: call.taskId ?? null, contract: call.contract, effort });
+    this.bus.emit('agent.started', call.runId, { agentId: call.agentId, role: call.role, sessionId: record.id, taskId: call.taskId ?? null, contract: call.contract, effort, seat: call.seat ?? null });
     const said = (kind: 'text' | 'thinking' | 'tool', text: string) =>
       this.bus.emit('agent.output', call.runId, { agentId: call.agentId, role: call.role, sessionId: record.id, taskId: call.taskId ?? null, kind, text: text.slice(0, MAX_OUTPUT) });
     const abort = new AbortController();
