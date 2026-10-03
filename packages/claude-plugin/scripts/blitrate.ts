@@ -16,10 +16,9 @@ import { LIVE, OFFLINE } from './fixture'
 declare const console: { log(...a: unknown[]): void }
 const pane = (cols: number) => ({ component: 'Pane' as const, requestId: 'agent-cockpit', props: { title: '◆ Cockpit', isFocused: true, bodyColumns: cols, placement: 'dock' as const, scroll: { offset: 0, bodyRows: 40 }, view: {} }, viewport: { columns: cols, rows: 45 } })
 const cases: [string, string, Record<string, string>][] = [
-  ['live', LIVE, { COCKPIT_CADENCE: 'conservative' }],
-  ['live', LIVE, { COCKPIT_CADENCE: 'full' }],
-  ['offline', OFFLINE, { COCKPIT_CADENCE: 'conservative' }],
-  ['live', LIVE, { COCKPIT_CADENCE: 'conservative', COCKPIT_REDUCED_MOTION: '1' }],
+  ['live', LIVE, {}],
+  ['offline', OFFLINE, {}],
+  ['live', LIVE, { COCKPIT_REDUCED_MOTION: '1' }],
 ]
 for (const [name, snap, env] of cases) {
   test(\`blitrate \${name} \${JSON.stringify(env)}\`, async ($, on) => {

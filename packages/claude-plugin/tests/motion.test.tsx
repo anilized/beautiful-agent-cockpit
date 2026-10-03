@@ -64,7 +64,7 @@ async function boot($: any, on: any, snap: Snap, opts: { hold?: number; deny?: s
 const perKey = (bl: { key: string }[]) => bl.reduce((m, b) => ((m[b.key] = (m[b.key] ?? 0) + 1), m), {} as Record<string, number>)
 const pcts = async (ui: any) => ((await ui.findAll({ type: 'Text' })) as { text: string }[]).flatMap(x => /^\s*(\d+)%$/.exec(x.text)?.[1] ?? []).map(Number)
 
-test('live @140: 16 ms raster loop, every key <=62 blits/s, text tick <=10 fps', async ($, on) => {
+test('live @140: 16 ms raster loop, hero ~60/s, the rest share a <=100/s budget, text tick <=10 fps', async ($, on) => {
   const { clock, st } = await boot($, on, live())
   const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(140) })
   await clock.advance(1000)
@@ -73,7 +73,11 @@ test('live @140: 16 ms raster loop, every key <=62 blits/s, text tick <=10 fps',
   await clock.advance(5000)
   const by = perKey(st.blits)
   expect(Object.keys(by)).toEqual(expect.arrayContaining(['hero', 'pipeline', 'progress', 'divider', 'orb-w0']))
-  for (const [k, n] of Object.entries(by)) expect([k, n / 5 <= 63, n / 5 >= 30]).toEqual([k, true, true]) // ~60 fps, never faster than the 16 ms loop
+  // The hero keeps the frame rate; every other animated key is capped near 15/s and never starved; all of them stay under the host's ~120/s.
+  expect(by.hero! / 5).toBeGreaterThanOrEqual(50)
+  expect(by.hero! / 5).toBeLessThanOrEqual(63)
+  for (const [k, n] of Object.entries(by)) if (k !== 'hero') expect([k, n / 5 <= 15.2, n / 5 >= 5]).toEqual([k, true, true])
+  expect(Object.values(by).reduce((a, n) => a + n, 0) / 5).toBeLessThanOrEqual(100)
   const text = st.every.filter(ms => ms === 125).length / 5 // the text tick fires once per period
   expect(text).toBeLessThanOrEqual(10)
   expect(text).toBeGreaterThanOrEqual(6) // and it does tick

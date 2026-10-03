@@ -1,5 +1,11 @@
 # TASK-406 final validation: root gates, bench, after dumps, blit rate, scope proof
 
+> **Update (after merge):** the blit budget the Supervisor accepted is applied. Under the mock clock the live pane at 140 columns now
+> requests **97 blits/s** in total (hero 62/s, each other animated key 7/s), down from 375/s; offline 1/s, reduced motion 0/s
+> (`tests/evidence/blitrate.txt`). `COCKPIT_CADENCE`, `hooks/limits.ts`, the legacy scheduler and `scripts/probe.ts` were removed
+> as dead code. The 375/s figures below are the state before that fix. Open live-terminal checks: `GATE0.md`.
+
+
 **Status: evidence only. Every gate below is green (all commands exited 0, no failures). Every number is PROVISIONAL** (harness and plain-Node numbers, see section 0). Nothing here is a live-host measurement. This report replaces the stale TASK-307 report, which described the removed Gate 0 / CADENCE design.
 
 One finding needs a decision (section 3): under the mock clock the live pane requests **375 blits/s at 140 cols (6 keys x 62.5/s), 3.35x the old 112/s baseline**, while the d.ts says the host takes at most 120/s. Whether that cap is global or per key could not be verified here.
