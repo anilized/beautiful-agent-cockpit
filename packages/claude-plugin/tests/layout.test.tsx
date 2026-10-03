@@ -74,7 +74,7 @@ for (const [name, snap] of [['live', LIVE], ['offline', OFFLINE]] as const) {
     for (const surface of ['terminal', 'desktop'] as const)
       for (const cols of [60, 100, 140]) {
         const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface, ...pane(cols) })
-        const tabs = name === 'live' ? ['tab-tasks', 'tab-events', 'tab-report'] : ['']
+        const tabs = name === 'live' ? ['tab-live', 'tab-task', 'tab-events', 'tab-report'] : ['']
         for (const tab of tabs) {
           if (tab) await ui.press({ key: tab })
           const { bad, texts, keys, text } = audit((await ui.drawn()) as Node, cols)
@@ -82,7 +82,7 @@ for (const [name, snap] of [['live', LIVE], ['offline', OFFLINE]] as const) {
           if (surface === 'terminal') expect(keys).toEqual(expect.arrayContaining(name === 'live' ? ['hero', 'divider', 'tab-underline', 'meters'] : ['hero']))
           else {
             expect(keys).toEqual([])
-            if (name === 'live') expect(text).toMatch(/▔[\s\S]*▕/) // underline and meter fallbacks
+            if (name === 'live') expect([/▔/.test(text), /▕/.test(text)]).toEqual([true, true]) // underline and meter fallbacks
           }
           expect([surface, cols, tab, bad]).toEqual([surface, cols, tab, []])
         }

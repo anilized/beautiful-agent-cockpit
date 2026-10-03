@@ -31,10 +31,10 @@ for (const [name, snap] of [['offline', OFFLINE], ['live', LIVE]] as const) {
           expect(await ui.find({ key: 'changes-apr_1-0' })).toBeDefined()
           await ui.advance(500)
           await ui.press({ key: 'cancel-changes' })
-          await ui.press({ key: cols >= 120 ? 'n · New mission' : 'new' })
+          await ui.press({ key: 'new' })
           expect(await ui.find({ key: 'compose-0' })).toBeDefined()
           await ui.press({ key: 'cancel-run' })
-          await ui.press({ key: 'tab-tasks' })
+          await ui.press({ key: 'tab-live' })
         }
         await ui.unmount()
       }
@@ -135,14 +135,16 @@ test('the Minds tab follows each model and streams its reasoning, words and tool
   await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
   for (const cols of [60, 100, 140]) {
     const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(cols) })
-    await ui.press({ key: 'tab-minds' })
+    await ui.press({ key: 'tab-live' })
     expect(await ui.find({ type: 'Text', text: /implementing/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /collapse repeated dashes/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /src\/strings\.js/ })).toBeDefined()
-    await ui.press({ key: 'mind-next' })
+    await ui.press({ key: 'nav-h' })
+    await ui.press({ key: 'nav-j' })
     expect(await ui.find({ type: 'Text', text: /reviewing the work/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /no visible output/ })).toBeDefined()
-    await ui.press({ key: 'mind-pick-ses_w' })
+    await ui.press({ key: 'agent-pick-w0' })
+    expect(await ui.find({ type: 'Text', text: /collapse repeated dashes/ })).toBeDefined()
     await ui.unmount()
   }
 })
@@ -173,11 +175,11 @@ test('rows open to show the whole task, event or Minds entry', async ($, on) => 
   await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
   const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(100) })
   expect(await ui.find({ type: 'Text', text: /collapses repeated dashes/ })).toBeUndefined()
-  await ui.press({ key: 'open-task-TASK-102' })
+  await ui.press({ key: 'task-pick-TASK-102' })
   expect(await ui.find({ type: 'Text', text: /collapses repeated dashes/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /empty input throws/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /test\/strings\.test\.js/ })).toBeDefined()
-  await ui.press({ key: 'open-task-TASK-102' })
+  await ui.press({ key: 'tab-live' })
   expect(await ui.find({ type: 'Text', text: /collapses repeated dashes/ })).toBeUndefined()
 
   await ui.press({ key: 'tab-events' })
@@ -185,7 +187,7 @@ test('rows open to show the whole task, event or Minds entry', async ($, on) => 
   await ui.press({ key: `open-ev-${last.ts}-${last.type}` })
   expect(await ui.find({ type: 'Text', text: /every criterion met/ })).toBeDefined()
 
-  await ui.press({ key: 'tab-minds' })
+  await ui.press({ key: 'tab-live' })
   expect(await ui.find({ type: 'Text', text: /hidden second line/ })).toBeUndefined()
   const entry = run.minds[0].activity[0]
   await ui.press({ key: `open-mind-ses_w-${entry.ts}-tool-${entry.text.length}` })
@@ -231,6 +233,6 @@ test('a report longer than one Markdown element is drawn whole, in parts', async
   const parts = await ui.findAll({ type: 'Markdown' })
   expect(report.length).toBeGreaterThan(20000)
   expect(parts.length).toBeGreaterThan(2)
-  expect(await ui.find({ key: 'tab-tasks' })).toBeDefined()
+  expect(await ui.find({ key: 'tab-live' })).toBeDefined()
   await ui.unmount()
 })

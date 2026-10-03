@@ -67,7 +67,7 @@ for (const cols of [60, 140]) {
     const lat: number[] = []
     for (let i = 0; i < 20; i++) {
       const p = performance.now()
-      await ui.press({ key: i % 2 ? 'tab-events' : 'tab-tasks' })
+      await ui.press({ key: i % 2 ? 'tab-events' : 'tab-task' })
       lat.push(performance.now() - p)
     }
     lat.sort((a, b) => a - b)

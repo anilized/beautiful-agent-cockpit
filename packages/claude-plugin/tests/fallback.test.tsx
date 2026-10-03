@@ -41,7 +41,7 @@ const mountTerminal = ($: any, cols = 140) => $.ui.mount({ plugin: 'agent-cockpi
 const endSession = ($: any) => $.session.end({ reason: 'other', sessionId: 's', resume: { id: 's' } } as never)
 const lastArgs = (st: { procs: string[][] }) => st.procs.at(-1)?.slice(2) ?? []
 
-test('hotkeys s n a c r e i 1 2 3 j k p t x each stay bound to their action', async ($, on) => {
+test('hotkeys s n a c r e i m 1-4 j k h l p t x each stay bound to their action', async ($, on) => {
   const withApproval = () => {
     const s = live()
     const b = structuredClone(s.runs[0])
@@ -67,12 +67,16 @@ test('hotkeys s n a c r e i 1 2 3 j k p t x each stay bound to their action', as
   await hot('approve-apr_1', 'a')
   await hot('changes-apr_1', 'c')
   await hot('reject-apr_1', 'r')
-  await hot('n · New mission', 'n')
-  await hot('tab-tasks', '1')
-  await hot('tab-events', '2')
-  await hot('tab-report', '3')
-  await hot('prev', 'k')
-  await hot('next', 'j')
+  await hot('new', 'n')
+  await hot('tab-live', '1')
+  await hot('tab-task', '2')
+  await hot('tab-events', '3')
+  await hot('tab-report', '4')
+  await hot('next', 'm')
+  await hot('nav-j', 'j')
+  await hot('nav-k', 'k')
+  await hot('nav-h', 'h')
+  await hot('nav-l', 'l')
   await hot('report', 'p')
   await hot('stop', 'x')
 
@@ -86,12 +90,12 @@ test('hotkeys s n a c r e i 1 2 3 j k p t x each stay bound to their action', as
   await ui.press({ key: 'tab-events' })
   expect(await ui.find({ type: 'Text', text: /\d\d:\d\d:\d\d / })).toBeDefined()
   await ui.press({ key: 'next' })
-  expect(await ui.find({ type: 'Text', text: /2\/2/ })).toBeDefined()
-  await ui.press({ key: 'prev' })
-  expect(await ui.find({ type: 'Text', text: /1\/2/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /mission 2\/2/ })).toBeDefined()
+  await ui.press({ key: 'next' }) // wraps around
+  expect(await ui.find({ type: 'Text', text: /mission 1\/2/ })).toBeDefined()
   await ui.press({ key: 'report' })
   expect(lastArgs(st)).toEqual(expect.arrayContaining(['report']))
-  await ui.press({ key: 'n · New mission' })
+  await ui.press({ key: 'new' })
   expect(await ui.find({ key: 'compose-0' })).toBeDefined()
   await ui.press({ key: 'cancel-run' })
   await ui.press({ key: 'stop' })

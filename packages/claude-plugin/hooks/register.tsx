@@ -14,7 +14,7 @@ import { createTweens, type Tweens } from './tween'
 
 const PANE = 'agent-cockpit'
 const EMPTY: CockpitView = { snapshot: null, error: null, message: null }
-const UI0: CockpitUi = { selectedRun: null, tab: 'tasks', composing: null, nonce: 0, busy: null, report: null, failure: null, seats: { supervisor: null, lead: null }, efforts: {}, mind: null, open: [] }
+const UI0: CockpitUi = { selectedRun: null, tab: 'live', composing: null, nonce: 0, busy: null, report: null, failure: null, seats: { supervisor: null, lead: null }, efforts: {}, mind: null, open: [], focus: 'tasks', task: null }
 const view = atom({ plugin: 'agent-cockpit', key: 'view' } as const, EMPTY)
 const ui = atom({ plugin: 'agent-cockpit', key: 'ui' } as const, UI0)
 const tickAtom = atom({ plugin: 'agent-cockpit', key: 'tick' } as const, 0)
@@ -268,7 +268,12 @@ async function refresh($: EngineInterface) {
 }
 
 // $.state outlives a reload, so a value saved by an older build may lack newer fields.
-const withDefaults = (u: Partial<CockpitUi> | undefined): CockpitUi => ({ ...UI0, ...u })
+const PANES: CockpitTab[] = ['live', 'task', 'events', 'report']
+const withDefaults = (u: Partial<CockpitUi> | undefined): CockpitUi => {
+  const x = { ...UI0, ...u }
+  // A build before the overhaul stored tab names that no longer exist ('tasks', 'minds').
+  return PANES.includes(x.tab) ? x : { ...x, tab: 'live' }
+}
 const readUi = async ($: EngineInterface) => withDefaults(await read($, ui))
 
 function patchUi($: EngineInterface, patch: Partial<CockpitUi> | ((u: CockpitUi) => Partial<CockpitUi>)) {
@@ -331,7 +336,7 @@ async function startRun($: EngineInterface, text: string) {
   const res = await busy($, 'launching run…', () => cli($, ['run', request, ...repo, ...flags, ...picked]))
   if (res.ok) {
     await say($, res.text)
-    await patchUi($, { selectedRun: null, tab: 'tasks', failure: null })
+    await patchUi($, { selectedRun: null, tab: 'live', failure: null })
   } else {
     const detail = res.text.split('\n').map(l => l.trim()).filter(Boolean)
     const reason = detail.find(l => /error|has no commits|not a git|usage/i.test(l)) ?? detail[0] ?? 'the orchestrator refused the run'
@@ -566,9 +571,9 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       left: chain,
       right: `${online ? `online :${s!.daemon.port}` : 'offline'}  ${hms(l.wall)}`,
     })
-    const hero = raster('hero', cols, 4, true, t => paint.hero(cols, 4, t, heroInfo()), (
+    const hero = raster('hero', cols, 1, true, t => paint.hero(cols, 1, t, { ...heroInfo(), brand: '◆ AGENT COCKPIT' }), (
       <Box justifyContent="space-between" paddingX={1}>
-        <Text bold>{[...'◆ AGENT COCKPIT'].map((ch, i) => <Text color={gradient(LOGO_GRADIENT, i / 22 - n / 40)}>{ch}</Text>)}</Text>
+        <Text bold>{[...'◆ AGENT COCKPIT'].map((ch, i) => <Text color={gradient(LOGO_GRADIENT, i / 22 - n / 40)}>{ch}</Text>)}<Text color={C.lavender}>  {chain}</Text></Text>
         <Text color={C.mute}>{online ? '● online' : '○ offline'}  {clock}</Text>
       </Box>
     ))
@@ -656,7 +661,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
               )
             })}
             {keys && next && next !== current ? (
-              <Box marginLeft={1}><Button plain dimColor hotkey={role === 'supervisor' ? 'v' : 'l'} key={`cycle-${role}`} label={`→ ${next}`} onPress={() => onPick(role, next)} /></Box>
+              <Box marginLeft={1}><Button plain dimColor hotkey={role === 'supervisor' ? 'v' : 'b'} key={`cycle-${role}`} label={`→ ${next}`} onPress={() => onPick(role, next)} /></Box>
             ) : null}
             <EffortChip id={current} keyId={`${role}:${current}`} level={levelOf(role, current)} live={live} hotkey={keys ? (role === 'supervisor' ? 'f' : 'g') : undefined} onCycle={lv => onEffort({ [`${role}:${current}`]: lv })} />
           </Box>
@@ -684,7 +689,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
             <Box marginRight={2}>
               <Text color={tone} bold>{glyphs} </Text>
               {keys && next && next !== current
-                ? <Button plain hotkey={role === 'supervisor' ? 'v' : 'l'} key={`cycle-${role}`} label={current} onPress={() => onPick(role, next)} />
+                ? <Button plain hotkey={role === 'supervisor' ? 'v' : 'b'} key={`cycle-${role}`} label={current} onPress={() => onPick(role, next)} />
                 : <Text color={C.text} bold>{current}</Text>}
               <EffortChip id={current} keyId={`${role}:${current}`} level={levelOf(role, current)} live={live} hotkey={keys ? (role === 'supervisor' ? 'f' : 'g') : undefined} onCycle={lv => onEffort({ [`${role}:${current}`]: lv })} />
             </Box>
@@ -769,11 +774,11 @@ async function drawPane($: EngineInterface, e: PaneRender) {
                 <Text> </Text>
                 <Button variant="primary" hotkey="n" label="  n · New mission  " autoFocus onPress={() => void patchUi($, { composing: { kind: 'run' } })} />
                 <Text> </Text>
-                {nextSeats ? <SeatBar seats={nextSeats} onPick={pickNext} keys efforts={u.efforts} live={false} onEffort={effortNext} note="v / l seats · f / g / w effort · or click" /> : null}
+                {nextSeats ? <SeatBar seats={nextSeats} onPick={pickNext} keys efforts={u.efforts} live={false} onEffort={effortNext} note="v / b seats · f / g / w effort · or click" /> : null}
               </Box>
             )}
           </Box>
-          {keybar([['n', 'new mission'], ['v l', 'seats'], ['f g w', 'effort'], ['x', 'stop']])}
+          {keybar([['n', 'new mission'], ['v b', 'seats'], ['f g w', 'effort'], ['x', 'stop']])}
         </Box>
       )
     }
@@ -792,110 +797,39 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const pct = Math.round(fracE(anim) * 100)
     const runAttention = approvals.length > 0
 
+    // ── layout: wide = agents | tasks | right; medium = agents strip over tasks | right; narrow = stacked ──
+
     const wide = cols >= 120
-    const runsW = 28
-    const sideW = 38
-    const centerW = wide ? cols - runsW - sideW : cols
-    const inner = centerW - 4
+    const medium = !wide && cols >= 90
+    const agentsW = wide ? 32 : cols
+    const rightW = wide ? Math.max(44, Math.floor((cols - agentsW) * 0.5)) : medium ? Math.floor(cols / 2) : cols
+    const tasksW = wide ? cols - agentsW - rightW : medium ? cols - rightW : cols
+    const inner = cols - 4 // full-width cards: approvals, the composer
+    const tasksIn = tasksW - 4
+    const rightIn = rightW - 4
     const runIdx = s.runs.findIndex(r => r.id === run.id)
-    const select = (id: string | null) => void patchUi($, x => ({ selectedRun: id, report: x.report?.runId === id ? x.report : null }))
+    const select = (id: string | null) => void patchUi($, x => ({ selectedRun: id, report: x.report?.runId === id ? x.report : null, task: null, mind: null }))
+    const tel = run.telemetry
 
     // activity: events bucketed across the run's own time span
     const times = run.recentEvents.map(ev => Date.parse(ev.ts)).filter(t => !Number.isNaN(t))
     const t0 = Math.min(...times, now), t1 = live ? now : Math.max(...times, t0 + 1)
-    const buckets = new Array(48).fill(0) as number[]
-    for (const t of times) buckets[Math.min(47, Math.floor(((t - t0) / Math.max(1, t1 - t0)) * 48))]!++
+    const buckets = new Array(32).fill(0) as number[]
+    for (const t of times) buckets[Math.min(31, Math.floor(((t - t0) / Math.max(1, t1 - t0)) * 32))]!++
     const bucketE = buckets.map((b, i) => ease(`spark${i}`, b))
 
-    // ── run list (wide: left column) ──
+    // ── header: one row of aurora, the mission and its vitals ──
 
-    const RunRow = ({ r }: { r: CockpitRun }) => {
-      const picked = r.id === run.id
-      const rc = STATUS_COLOR[r.status] ?? C.text
-      const rd = r.tasks.filter(isDone).length
-      const waits = s.pendingApprovals.some(a => a.runId === r.id)
-      return (
-        <Box key={`row-${r.id}`} flexDirection="column" hover={{ backgroundColor: C.hover }}>
-          <Box>
-            <Text color={picked ? C.accent : C.hover}>▌</Text>
-            <Text color={rc}>{glyph(r.status, n)} </Text>
-            <Button plain dimColor={!picked} key={`pick-${r.id}`} label={clip(firstLine(r.request), runsW - 9)} onPress={() => select(r.id)} />
-          </Box>
-          <Text color={C.dim} wrap="truncate-end">
-            {'   '}{r.status.replace(/_/g, ' ')}{r.tasks.length ? ` · ${rd}/${r.tasks.length}` : ''}
-            {waits ? <Text color={pulse(n, C.yellow, C.accent, 0.5)}> ● needs you</Text> : null}
-          </Text>
-        </Box>
-      )
-    }
-    const runList = (
-      <Card title="MISSIONS" right={<Text color={C.dim}>{s.runs.length}</Text>} width={runsW}>
-        {s.runs.slice(0, Math.max(3, Math.floor((rows - 14) / 2))).map(r => <RunRow r={r} />)}
-        <Text> </Text>
-        <Button hotkey="n" variant="primary" label="n · New mission" onPress={() => void patchUi($, { composing: { kind: 'run' } })} />
-      </Card>
-    )
-
-    // ── mission header + lifecycle ──
-
-    const missionHead = (
-      <Box flexDirection="column" paddingX={1}>
-        <Box justifyContent="space-between">
-          <Text>
-            <Pill label={`${glyph(run.status, n)} ${run.status.replace(/_/g, ' ').toUpperCase()}`} bg={runColor} />
-            <Text color={C.dim}>  round {run.round} · {run.id.slice(-8)}{run.createdAt ? ` · ${ago(now - Date.parse(run.createdAt))} ago` : ''}</Text>
-          </Text>
-          {s.runs.length > 1 ? (
-            <Box>
-              <Button plain dimColor hotkey="k" key="prev" label="◂" onPress={() => select(s.runs[Math.max(0, runIdx - 1)]!.id)} />
-              <Text color={C.dim}> {runIdx + 1}/{s.runs.length} </Text>
-              <Button plain dimColor hotkey="j" key="next" label="▸" onPress={() => select(s.runs[Math.min(s.runs.length - 1, runIdx + 1)]!.id)} />
-            </Box>
-          ) : null}
-        </Box>
-        <Text color={C.ink} bold wrap="wrap">{clip(firstLine(run.request), inner * 2)}</Text>
-        {run.error ? <Text color={C.red} wrap="truncate-end">✗ {run.error}</Text> : null}
-        {/* while the composer is open it carries the seat chips itself */}
-        {u.composing?.kind === 'run' ? null : <Box>
-          {live ? (
-            <SeatBar
-              compact
-              seats={run.roles ?? s.hierarchy}
-              onPick={(role, agent) => void setSeat($, run.id, role, agent)}
-              keys
-              efforts={run.efforts ?? {}}
-              live
-              onEffort={changes => void setEffort($, run.id, Object.fromEntries(Object.entries(changes).filter((kv): kv is [string, string] => kv[1] !== null)))}
-              note="live: changes apply to the next call (v / l seats · f / g / w effort)"
-            />
-          ) : (
-            <SeatBar compact seats={nextSeats!} onPick={pickNext} keys efforts={u.efforts} live={false} onEffort={effortNext} note="" />
-          )}
-        </Box>}
-      </Box>
-    )
-
-    const dividerW = Math.max(1, centerW - 2)
-    const divider = (
-      <Box paddingX={1}>
-        {raster('divider', dividerW, 1, live, t => paint.divider(dividerW, 1, t, { color: paint.hex(runAttention ? C.yellow : runColor), active: live || runAttention }), <Text color={C.borderDim}>{'─'.repeat(dividerW)}</Text>)}
-      </Box>
-    )
-
-    const tel = run.telemetry
-    const Stat = ({ value, sub, color }: { value: string; sub: string; color: string }) => (
-      <Text><Text color={color} bold>{value}</Text><Text color={C.dim}> {sub}    </Text></Text>
-    )
-    const tiles = (
-      <Box paddingX={1}>
+    const vitals = () => `${run.status.replace(/_/g, ' ')} · ${done}/${run.tasks.length} · ${tel.costUsd ? `$${tel.costUsd.toFixed(2)}` : '—'} · ${run.createdAt ? ago(now - Date.parse(run.createdAt)) : ''}   :${s.daemon.port} ${hms(l.wall)}`
+    const header = raster('hero', cols, 1, true, t => paint.hero(cols, 1, t, { online, alert: runAttention, brand: '◆ AGENT COCKPIT', left: firstLine(run.request), right: vitals() }), (
+      <Box justifyContent="space-between" paddingX={1}>
         <Text wrap="truncate-end">
-          <Stat value={`${pct}%`} sub={run.status === 'completed' ? 'shipped' : STEPS[Math.max(0, phase)]?.[0] ?? run.status} color={C.cyan} />
-          <Stat value={`${done}/${run.tasks.length}`} sub={run.tasks.length ? `tasks · ${run.tasks.filter(t => MOVING.has(t.status)).length} moving` : 'tasks · planning'} color={C.green} />
-          <Stat value={`${run.workers.length + [run.leadership.supervisor, run.leadership.lead].filter(x => x !== 'idle').length}`} sub="agents live" color={C.violet} />
-          <Stat value={tel.costUsd ? `$${tel.costUsd.toFixed(2)}` : '—'} sub={`${compact(tel.inputTokens + tel.outputTokens)} tok`} color={C.yellow} />
+          <Text bold>{[...'◆ AGENT COCKPIT'].map((ch, i) => <Text color={gradient(LOGO_GRADIENT, i / 22 - n / 40)}>{ch}</Text>)}</Text>
+          <Text color={C.lavender}>  {firstLine(run.request)}</Text>
         </Text>
+        <Text color={C.mute}>{vitals()}</Text>
       </Box>
-    )
+    ))
 
     const stepNames = STEPS.map(([name]) => name)
     const textStepper = (
@@ -905,52 +839,55 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         ))}
       </Text>
     )
-    const barW = Math.max(8, inner - 6)
-    const sparkW = Math.max(8, inner - 9)
+    const missionNav = s.runs.length > 1 ? 16 : 0
+    const statusLabel = `${glyph(run.status, n)} ${run.status.replace(/_/g, ' ').toUpperCase()}`
+    const statusW = statusLabel.length + 3
+    const pipeW = Math.max(20, cols - 2 - missionNav - statusW)
     const lifecycle = (
-      <Card
-        title="LIFECYCLE"
-        right={<Text color={C.dim}>{run.tasks.length ? `${done} of ${run.tasks.length} tasks` : ''}</Text>}
-        color={runAttention ? pulse(n, C.yellow, C.yellowDeep, 0.35) : live ? pulse(n, C.violetDeep, C.border, 0.2) : C.border}
-      >
-        {raster('pipeline', inner, 2, live, t => paint.pipeline(inner, 2, t, { steps: stepNames, phase, fill: fillE(t), failed, color: paint.hex(runColor) }), textStepper)}
-        <Box>
-          {raster('progress', barW, 1, live, t => paint.progress(barW, 1, t, { frac: fracE(t), live }), <Text color={C.cyan}>{'█'.repeat(Math.round(fracE(anim) * barW))}</Text>)}
-          <Text color={C.ink} bold> {String(pct).padStart(3)}%</Text>
+      <Box paddingX={1}>
+        <Box flexDirection="column" width={statusW}>
+          <Pill label={statusLabel} bg={runAttention ? pulse(n, C.yellow, C.accent, 0.5) : runColor} />
+          <Text color={C.dim}>{run.round ? `round ${run.round}` : ''}</Text>
         </Box>
-        {times.length > 1 && RasterEl ? (
-          <Box>
-            <Text color={C.dim}>activity </Text>
-            {raster('spark', sparkW, 1, live, t => paint.spark(sparkW, 1, t, { values: bucketE.map(f => f(t)), live }))}
+        {raster('pipeline', pipeW, 2, live, t => paint.pipeline(pipeW, 2, t, { steps: stepNames, phase, fill: fillE(t), failed, color: paint.hex(runColor) }), textStepper)}
+        {missionNav ? (
+          <Box flexDirection="column" width={missionNav} alignItems="flex-end">
+            <Text color={C.dim}>mission {runIdx + 1}/{s.runs.length}</Text>
+            <Button plain dimColor hotkey="m" key="next" label="next" onPress={() => select(s.runs[(runIdx + 1) % s.runs.length]!.id)} />
           </Box>
         ) : null}
-      </Card>
+      </Box>
+    )
+    const dividerW = Math.max(1, cols - 2)
+    const divider = (
+      <Box paddingX={1}>
+        {raster('divider', dividerW, 1, live, t => paint.divider(dividerW, 1, t, { color: paint.hex(runAttention ? C.yellow : runColor), active: live || runAttention }), <Text color={C.borderDim}>{'─'.repeat(dividerW)}</Text>)}
+      </Box>
     )
 
-    // ── approval ──
+    // ── approval: the NEEDS YOU strip ──
 
     const ApprovalCard = ({ a }: { a: CockpitApproval }) => {
       const writing = u.composing?.kind === 'changes' && u.composing.approvalId === a.id
+      const text = a.text ?? a.summary
+      const total = wrapped(text, inner - 2)
+      const opened = u.open.includes(`apr-${a.id}`)
       return (
-        <Box flexDirection="column" borderStyle="double" borderColor={pulse(n, C.yellow, C.accent, 0.5)} paddingX={1}>
+        <Box flexDirection="column" borderStyle="round" borderColor={pulse(n, C.yellow, C.accent, 0.5)} paddingX={1}>
           <Box justifyContent="space-between">
-            <Text><Pill label={`${n % 8 < 4 ? '◆' : '◇'} YOUR CALL`} bg={C.yellow} /> <Text color={C.dim}>{a.kind}{a.operation ? `/${a.operation}` : ''}</Text></Text>
-            <Text color={C.dim}>{a.id.slice(-6)}</Text>
-          </Box>
-          {(() => {
-            // The first lines always; the rest behind a toggle, so a long call never pushes the buttons off screen.
-            const text = a.text ?? a.summary
-            const total = wrapped(text, inner - 2)
-            const open = u.open.includes(`apr-${a.id}`)
-            return (
-              <Box flexDirection="column">
-                <Text color={C.text} wrap="wrap">{open || total <= APPROVAL_PREVIEW ? text : clip(text, (inner - 2) * APPROVAL_PREVIEW)}</Text>
-                {total > APPROVAL_PREVIEW ? (
-                  <Button plain dimColor key={`open-apr-${a.id}`} label={open ? '▴ show less' : `▾ show all (${total - APPROVAL_PREVIEW} more lines)`} onPress={() => void patchUi($, x => ({ open: x.open.includes(`apr-${a.id}`) ? x.open.filter(k => k !== `apr-${a.id}`) : [...x.open, `apr-${a.id}`] }))} />
-                ) : null}
+            <Text><Pill label={`${n % 8 < 4 ? '◆' : '◇'} NEEDS YOU`} bg={C.yellow} /> <Text color={C.dim}>{a.kind}{a.operation ? ` · ${a.operation.replace(/_/g, ' ')}` : ''}</Text></Text>
+            {writing ? null : (
+              <Box gap={1}>
+                <Button variant="primary" hotkey="a" key={`approve-${a.id}`} label="a · Approve" autoFocus onPress={() => void decide($, 'approve', a.id, '')} />
+                <Button hotkey="c" key={`changes-${a.id}`} label="c · Changes" onPress={() => void patchUi($, { composing: { kind: 'changes', approvalId: a.id } })} />
+                <Button hotkey="r" key={`reject-${a.id}`} label="r · Reject" onPress={() => void decide($, 'reject', a.id, '')} />
               </Box>
-            )
-          })()}
+            )}
+          </Box>
+          <Text color={C.text} wrap="wrap">{opened || total <= APPROVAL_PREVIEW ? text : clip(text, (inner - 2) * APPROVAL_PREVIEW)}</Text>
+          {total > APPROVAL_PREVIEW ? (
+            <Button plain dimColor key={`open-apr-${a.id}`} label={opened ? '▴ show less' : `▾ show all (${total - APPROVAL_PREVIEW} more lines)`} onPress={() => void patchUi($, x => ({ open: x.open.includes(`apr-${a.id}`) ? x.open.filter(k => k !== `apr-${a.id}`) : [...x.open, `apr-${a.id}`] }))} />
+          ) : null}
           {writing ? (
             <Box flexDirection="column">
               <Input
@@ -959,47 +896,24 @@ async function drawPane($: EngineInterface, e: PaneRender) {
                 placeholder="What should the team change?"
                 submitLabel="send back"
                 autoFocus
-                onSubmit={(text: string) => {
-                  if (!text.trim()) return
-                  void patchUi($, x => ({ composing: null, nonce: x.nonce + 1 })).then(() => decide($, 'changes', a.id, text))
+                onSubmit={(t: string) => {
+                  if (!t.trim()) return
+                  void patchUi($, x => ({ composing: null, nonce: x.nonce + 1 })).then(() => decide($, 'changes', a.id, t))
                 }}
               />
               <Button plain dimColor key="cancel-changes" label="cancel" onPress={() => void patchUi($, { composing: null })} />
             </Box>
-          ) : (
-            <Box gap={1}>
-              <Button variant="primary" hotkey="a" key={`approve-${a.id}`} label="a · Approve" autoFocus onPress={() => void decide($, 'approve', a.id, '')} />
-              <Button hotkey="c" key={`changes-${a.id}`} label="c · Changes" onPress={() => void patchUi($, { composing: { kind: 'changes', approvalId: a.id } })} />
-              <Button hotkey="r" key={`reject-${a.id}`} label="r · Reject" onPress={() => void decide($, 'reject', a.id, '')} />
-            </Box>
-          )}
+          ) : null}
         </Box>
       )
     }
-
-    // ── tabs ──
-
-    const Tab = ({ id, label, hotkey, badge }: { id: CockpitTab; label: string; hotkey: string; badge?: string }) => (
-      <Box backgroundColor={u.tab === id ? C.tabActive : undefined} paddingX={1}>
-        <Button
-          plain
-          hotkey={hotkey}
-          key={`tab-${id}`}
-          dimColor={u.tab !== id}
-          label={`${label}${badge ? ` ${badge}` : ''}`}
-          onPress={() => (id === 'report' && u.report?.runId !== run.id ? void loadReport($, run.id) : void patchUi($, { tab: id }))}
-        />
-      </Box>
-    )
-
     const approvalRows = approvals.reduce((acc, a) => {
       const total = wrapped(a.text ?? a.summary, inner - 2)
-      return acc + 4 + (u.open.includes(`apr-${a.id}`) ? total : Math.min(total, APPROVAL_PREVIEW)) + (total > APPROVAL_PREVIEW ? 1 : 0)
+      return acc + 3 + (u.open.includes(`apr-${a.id}`) ? total : Math.min(total, APPROVAL_PREVIEW)) + (total > APPROVAL_PREVIEW ? 1 : 0)
     }, 0)
-    const fixed = 21 + (run.error ? 1 : 0) + (firstLine(run.request).length > inner ? 1 : 0) + approvalRows + (u.failure ? 5 : 0) + (u.composing?.kind === 'run' ? 9 : 0)
-    const room = Math.max(4, rows - fixed)
 
-    // Any row may be opened to show what its one line cuts off; a press toggles it.
+    // ── open/close rows, shared by every list ──
+
     const isOpen = (id: string) => u.open.includes(id)
     const toggle = (id: string) => void patchUi($, x => ({ open: x.open.includes(id) ? x.open.filter(k => k !== id) : [...x.open.slice(-40), id] }))
     const Fold = ({ id }: { id: string }) => (
@@ -1007,419 +921,436 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         <Button plain dimColor={!isOpen(id)} key={`open-${id}`} label={isOpen(id) ? '▾' : '▸'} onPress={() => toggle(id)} />
       </Box>
     )
-    const bodyW = Math.max(20, inner - 6)
 
-    // The whole task as the Lead wrote it, and its latest review.
-    const taskLines = (t: CockpitTask) => {
-      const d = t.detail
-      if (!d) return 1
-      const sc = d.scope
-      return wrapped(d.description, bodyW) + 1 + (d.acceptanceCriteria.length ? 1 + d.acceptanceCriteria.reduce((a, c) => a + wrapped(c, bodyW - 2), 0) : 0)
-        + (sc.files.length + sc.modules.length + sc.resources.length ? 1 + sc.files.length + sc.modules.length + sc.resources.length : 0)
-        + (d.summary ? 1 + wrapped(d.summary, bodyW) : 0)
-        + (d.review ? 1 + wrapped(d.review.summary, bodyW) + d.review.issues.reduce((a, i) => a + wrapped(i.description, bodyW - 12), 0) : 0)
-    }
-    const Label = ({ text }: { text: string }) => <Text color={C.dim} bold>{text}</Text>
-    const TaskDetailView = ({ t }: { t: CockpitTask }) => {
-      const d = t.detail
-      if (!d) return <Box paddingLeft={4}><Text color={C.dim}>No details for this task yet (the orchestrator is older than the cockpit).</Text></Box>
-      const verdictColor = d.review ? (d.review.verdict === 'approve' ? C.green : d.review.verdict === 'escalate' ? C.yellow : C.red) : C.dim
-      return (
-        <Box flexDirection="column" paddingLeft={4} marginBottom={1}>
-          <Text color={C.text} wrap="wrap">{d.description}</Text>
-          <Text color={C.dim}>{d.kind} · risk {d.risk} · complexity {d.complexity} · tests {d.testsRequired ? (d.testCommand ?? 'repo default') : 'not required'}</Text>
-          {d.acceptanceCriteria.length ? <Label text="ACCEPTANCE" /> : null}
-          {d.acceptanceCriteria.map(c => <Box><Text color={C.green}>✓ </Text><Box flexShrink={1}><Text color={C.text} wrap="wrap">{c}</Text></Box></Box>)}
-          {d.scope.files.length + d.scope.modules.length + d.scope.resources.length ? <Label text="SCOPE" /> : null}
-          {d.scope.files.map(f => <Text color={C.mute} wrap="truncate-end">◦ {f}</Text>)}
-          {d.scope.modules.map(m => <Text color={C.mute} wrap="truncate-end">▣ {m}</Text>)}
-          {d.scope.resources.map(r => <Text color={C.yellow} wrap="truncate-end">⛁ {r}</Text>)}
-          {d.summary ? <Label text="WORKER" /> : null}
-          {d.summary ? <Text color={C.text} wrap="wrap">{d.summary}</Text> : null}
-          {d.review ? <Text><Label text={`REVIEW it${d.review.iteration} `} /><Text color={verdictColor} bold>{d.review.verdict.replace(/_/g, ' ')}</Text></Text> : null}
-          {d.review ? <Text color={C.text} wrap="wrap">{d.review.summary}</Text> : null}
-          {d.review?.issues.map(i => (
-            <Box>
-              <Text color={i.severity === 'blocker' ? C.red : i.severity === 'major' ? C.yellow : C.dim}>✗ {i.severity.padEnd(7)} </Text>
-              <Box flexShrink={1}><Text color={C.text} wrap="wrap">{i.file ? `${i.file}: ` : ''}{i.description}</Text></Box>
-            </Box>
-          ))}
-        </Box>
-      )
-    }
+    // ── agents: the seats and the workers, each with what it is doing now ──
 
-    const TaskRow = ({ t }: { t: CockpitTask }) => {
-      const color = STATUS_COLOR[t.status] ?? C.text
-      const moving = MOVING.has(t.status)
-      const fin = isDone(t)
-      const meta = [t.agentId, t.iteration > 1 ? `it${t.iteration}` : '', t.dependsOn.length ? `⇠ ${t.dependsOn.join(',')}` : ''].filter(Boolean).join(' · ')
-      return (
-        <Box key={`task-${t.key}`} flexDirection="column" hover={{ backgroundColor: C.hover }}>
-          <Box justifyContent="space-between">
-            <Box flexShrink={1}>
-              <Fold id={`task-${t.key}`} />
-              <Text wrap="truncate-end">
-                <Text color={color}>▎</Text>
-                <Text color={moving ? pulse(n, color, C.white, 0.5) : color}>{glyph(t.status, n)} </Text>
-                <Text color={fin ? C.dim : C.ink} bold>{t.key}</Text>
-                <Text color={fin ? C.dim : C.text}>  {t.title}</Text>
-              </Text>
-            </Box>
-            <Box flexShrink={0}>
-              <Text>
-                <Text color={C.dim}>{meta ? ` ${meta} ` : ' '}</Text>
-                {fin ? <Text color={C.green}>✓ {t.status}</Text> : <Pill label={t.status.replace(/_/g, ' ')} bg={color} />}
-              </Text>
-            </Box>
-          </Box>
-          {t.blockedReason ? <Text color={C.yellow} wrap={isOpen(`task-${t.key}`) ? 'wrap' : 'truncate-end'}>     ↳ {t.blockedReason}</Text> : null}
-          {isOpen(`task-${t.key}`) ? <TaskDetailView t={t} /> : null}
-        </Box>
-      )
-    }
-
-    // Minds: one chip per recent model session; the followed one streams its text, reasoning and tools.
-    const minds = run.minds ?? []
-    const followed = minds.find(m => m.sessionId === u.mind) ?? minds.find(m => m.status === 'active') ?? minds[0] ?? null
-    const thinkingNow = minds.filter(m => m.status === 'active').length
-    const mindsBody = (): RenderChildren => {
-      if (!followed) return <Text color={C.dim}>No model has run yet.</Text>
-      const nextMind = minds[(minds.indexOf(followed) + 1) % minds.length]!
-      const chips = (
-        <Box flexWrap="wrap">
-          {minds.map(m => {
-            const on = m === followed
-            const color = ROLE_COLOR[m.role] ?? C.text
-            const active = m.status === 'active'
-            return (
-              <Box key={`mind-${m.sessionId}`} backgroundColor={on ? C.chipOn : undefined} paddingX={1} hover={{ backgroundColor: C.hover }}>
-                <Text color={active ? pulse(n, color, C.white, 0.4) : m.status === 'failed' ? C.red : C.dim}>{active ? SPIN[n % SPIN.length] : m.status === 'failed' ? '✗' : '✓'} </Text>
-                <Button plain dimColor={!on} key={`mind-pick-${m.sessionId}`} label={`${m.agentId}·${m.role}${m.task ? ` ${m.task}` : ''}`} onPress={() => void patchUi($, { mind: m.sessionId })} />
-              </Box>
-            )
-          })}
-          {minds.length > 1 ? <Box paddingX={1}><Button plain dimColor hotkey="o" key="mind-next" label={`o → ${nextMind.agentId}·${nextMind.role}`} onPress={() => void patchUi($, { mind: nextMind.sessionId })} /></Box> : null}
-        </Box>
-      )
-      const color = ROLE_COLOR[followed.role] ?? C.text
-      const active = followed.status === 'active'
-      const end = followed.endedAt ? Date.parse(followed.endedAt) : now
-      const head = (
-        <Box justifyContent="space-between">
-          <Text wrap="truncate-end">
-            <Pill label={followed.role.toUpperCase()} bg={color} />
-            <Text color={C.ink} bold> {followed.agentId}</Text>
-            <Text color={C.text}>  {doing(followed)}{followed.task ? ` ${followed.task}` : ''}</Text>
-            {followed.effort ? <Text color={C.dim}>  ⚡{followed.effort}</Text> : null}
-          </Text>
-          <Text color={active ? color : C.dim}>{active ? `${SPIN[n % SPIN.length]} live ` : `${followed.status} `}{ago(end - Date.parse(followed.startedAt))}</Text>
-        </Box>
-      )
-      // Newest first (top down): fill from the newest entry back until the room runs out; each kind has a line budget.
-      const width = Math.max(20, inner - 14)
-      const chipCols = minds.reduce((a, m) => a + `${m.agentId}·${m.role}${m.task ? ` ${m.task}` : ''}`.length + 4, minds.length > 1 ? 24 : 0)
-      const budget = Math.max(room - Math.ceil(chipCols / Math.max(20, inner)) - 2, 400)
-      const cap = { thinking: 4, text: 6, tool: 1 } as const
-      const entryId = (e: CockpitMind['activity'][number]) => `mind-${followed.sessionId}-${e.ts}-${e.kind}-${e.text.length}`
-      const shown: { e: CockpitMind['activity'][number]; lines: number }[] = []
-      let used = 0
-      for (let k = followed.activity.length - 1; k >= 0 && used < budget; k--) {
-        const e = followed.activity[k]!
-        const want = isOpen(entryId(e)) ? wrapped(e.text.trim(), width) : e.kind === 'tool' ? 1 : Math.min(cap[e.kind], Math.ceil(e.text.trim().length / width))
-        const lines = Math.max(1, Math.min(want, budget - used))
-        shown.push({ e, lines })
-        used += lines
-      }
-      const stream = shown.length ? shown.map(({ e, lines }, k) => {
-        const fresh = Math.max(0, 1 - (now - Date.parse(e.ts)) / 8000)
-        const last = k === 0
-        const open = isOpen(entryId(e))
-        const stamp = <Box flexShrink={0}><Fold id={entryId(e)} /><Text color={C.faint}>{e.ts.slice(11, 19)} </Text></Box>
-        if (e.kind === 'tool') {
-          const at = e.text.indexOf(': ')
-          const name = at > 0 ? e.text.slice(0, at) : e.text
-          const arg = at > 0 ? e.text.slice(at + 2) : ''
-          return open ? (
-            <Box>
-              {stamp}
-              <Text color={mix(C.cyan, C.white, fresh * 0.6)}>{name} </Text>
-              <Box flexShrink={1}><Text color={C.text} wrap="wrap">{arg}</Text></Box>
-            </Box>
-          ) : (
-            <Box>
-              {stamp}
-              <Text wrap="truncate-end">
-                <Text color={mix(C.cyan, C.white, fresh * 0.6)}>{name}</Text>
-                <Text color={C.mute}>  {toolDetail(arg)}</Text>
-              </Text>
-            </Box>
-          )
-        }
-        const body = open ? e.text.trim() : clip(e.text.trim().replace(/\s*\n\s*/g, ' ⏎ '), lines * width)
-        return e.kind === 'thinking' ? (
-          <Box>
-            {stamp}
-            <Text color={mix(C.violet, C.white, fresh * 0.5)}>{last && active ? ORBIT[Math.floor(n / 2) % 4] : '∴'} </Text>
-            <Box flexShrink={1}><Text color={mix(C.thinkDim, C.violet, fresh)} italic wrap="wrap">{body}</Text></Box>
-          </Box>
-        ) : (
-          <Box>
-            {stamp}
-            <Text color={color}>▍ </Text>
-            <Box flexShrink={1}><Text color={mix(C.text, C.white, fresh)} wrap="wrap">{body}</Text></Box>
-          </Box>
-        )
-      }) : <Text color={C.dim}>{active ? `${SPIN[n % SPIN.length]} waiting for the first words…` : 'It produced no visible output.'}</Text>
-      return (
-        <Box flexDirection="column">
-          {chips}
-          {head}
-          <Text color={C.borderDim}>{'┄'.repeat(Math.max(1, inner))}</Text>
-          {stream}
-        </Box>
-      )
-    }
-
-    let tabBody: RenderChildren
-    if (u.tab === 'minds') {
-      tabBody = mindsBody()
-    } else if (u.tab === 'events') {
-      const evId = (ev: CockpitRun['recentEvents'][number]) => `ev-${ev.ts}-${ev.type}`
-      const evs: CockpitRun['recentEvents'] = []
-      let used = 0
-      for (const ev of [...run.recentEvents].reverse()) {
-        const h = 1 + (isOpen(evId(ev)) ? wrapped(ev.detail ?? ev.text, bodyW - 8) : 0)
-        if (used > 0 && used + h > Math.max(room, 400)) break
-        evs.push(ev)
-        used += h
-      }
-      tabBody = evs.length ? (
-        evs.map((ev, i) => {
-          const fresh = Math.max(0, 1 - (now - Date.parse(ev.ts)) / 6000)
-          const c = eventColor(ev.type)
-          const open = isOpen(evId(ev))
-          return (
-            <Box flexDirection="column" key={evId(ev)}>
-              <Box>
-                <Fold id={evId(ev)} />
-                <Text wrap="truncate-end">
-                  <Text color={mix(C.dim, C.white, fresh)}>{ev.ts.slice(11, 19)} </Text>
-                  <Text color={mix(c, C.white, fresh * 0.6)}>{i === 0 && live ? glyph('running', n) : '●'}</Text>
-                  <Text color={C.faint}>─ </Text>
-                  <Text color={mix(c, C.white, fresh * 0.6)} bold>{ev.type}</Text>
-                  <Text color={mix(C.mute, C.text, fresh)}>  {ev.text === ev.type ? '' : ev.text}</Text>
-                </Text>
-              </Box>
-              {open ? <Box paddingLeft={13}><Text color={C.text} wrap="wrap">{ev.detail ?? ev.text}</Text></Box> : null}
-            </Box>
-          )
-        })
-      ) : <Text color={C.dim}>No events yet.</Text>
-    } else if (u.tab === 'report') {
-      tabBody = u.report?.runId === run.id
-        ? <Box flexDirection="column">{markdownChunks(u.report.text).map(part => <Markdown text={part} />)}</Box>
-        : <Text color={C.cyan}>{SPIN[n % SPIN.length]} fetching report…</Text>
-    } else {
-      const order = (t: CockpitTask) => (MOVING.has(t.status) ? 0 : isDone(t) ? 3 : ['failed', 'lease_conflict', 'needs_input', 'escalated'].includes(t.status) ? 1 : 2)
-      const tasks = [...run.tasks].sort((a, b) => order(a) - order(b))
-      tabBody = tasks.length === 0 ? (
-        <Text color={C.violet}>{ORBIT[Math.floor(n / 2) % 4]} {live ? 'the lead is drafting the task graph…' : 'no tasks'}</Text>
-      ) : (
-        <Box flexDirection="column">
-          {(() => {
-            let used = 0
-            const fit = tasks.filter(t => {
-              const h = 1 + (t.blockedReason ? 1 : 0) + (isOpen(`task-${t.key}`) ? taskLines(t) + 1 : 0)
-              if (used > 0 && used + h > Math.max(room - 1, 400)) return false
-              used += h
-              return true
-            })
-            return [
-              ...fit.map(t => <TaskRow t={t} />),
-              fit.length < tasks.length ? <Text color={C.dim}>   … {tasks.length - fit.length} more</Text> : null,
-            ]
-          })()}
-        </Box>
-      )
-    }
-
-    const tabs: [CockpitTab, string][] = [['tasks', `Tasks ${done}/${run.tasks.length}`], ['events', `Events ${run.recentEvents.length}`], ['report', 'Report'], ['minds', `Minds${thinkingNow ? ` ${SPIN[n % SPIN.length]}${thinkingNow}` : ''}`]]
-    const tabW = tabs.map(([, label]) => label.length + 2)
-    const tabIdx = Math.max(0, tabs.findIndex(([id]) => id === u.tab))
-    const tabE = ease('tab', tabIdx, 220)
-    tabE(anim) // retarget now so `easing` sees it
-    // Text fallback: ▔ under the active tab, a dim rule under the rest.
-    let used = 0
-    const underlineText = (
-      <Text>
-        {tabs.map(([id], i) => {
-          const w = Math.max(0, Math.min(tabW[i]!, inner - used))
-          used += w
-          return <Text color={id === u.tab ? C.accent : C.borderDim}>{'▔'.repeat(w)}</Text>
-        })}
-        <Text color={C.borderDim}>{'▔'.repeat(Math.max(0, inner - used))}</Text>
-      </Text>
-    )
-    const underline = raster('tab-underline', inner, 1, easing('tab'), t => paint.underline(inner, 1, t, { tabs: tabW, active: tabE(t), color: K.accent }), underlineText)
-
-    const work = (
-      <Box flexDirection="column" borderStyle="round" borderColor={C.border} paddingX={1} flexGrow={1} minHeight={room + 4} overflow="hidden">
-        <Box justifyContent="space-between">
-          <Box>
-            <Tab id="tasks" label="Tasks" hotkey="1" badge={`${done}/${run.tasks.length}`} />
-            <Tab id="events" label="Events" hotkey="2" badge={`${run.recentEvents.length}`} />
-            <Tab id="report" label="Report" hotkey="3" />
-            <Tab id="minds" label="Minds" hotkey="4" badge={thinkingNow ? `${SPIN[n % SPIN.length]}${thinkingNow}` : undefined} />
-          </Box>
-          <Box gap={1}>
-            {!wide ? <Button hotkey="n" plain dimColor key="new" label="n new" onPress={() => void patchUi($, { composing: { kind: 'run' } })} /> : null}
-            {failed ? <Button hotkey="t" plain key="retry" label="t retry" onPress={() => void busy($, 'retrying…', () => cli($, ['retry', run.id])).then(r => say($, r.text))} /> : null}
-            <Button hotkey="p" plain dimColor key="report" label="p report" onPress={() => void loadReport($, run.id)} />
-            <Button hotkey="d" plain dimColor key="dashboard" label="d dashboard" onPress={() => void busy($, 'opening the dashboard…', () => cli($, ['dashboard', run.id])).then(r => say($, r.text))} />
-            <Button hotkey="x" plain dimColor key="stop" label="x stop" onPress={() => void daemon($, false)} />
-          </Box>
-        </Box>
-        {underline}
-        {tabBody}
-      </Box>
-    )
-
-    const center = (
-      <Box flexDirection="column" width={wide ? centerW : undefined} flexGrow={wide ? 0 : 1}>
-        {missionHead}
-        {divider}
-        {centerW >= 56 ? tiles : null}
-        {lifecycle}
-        {failureCard}
-        {approvals.map(a => <ApprovalCard a={a} />)}
-        {u.composing?.kind === 'run' ? composer : null}
-        {work}
-      </Box>
-    )
-
-    // ── crew & instruments ──
-
-    const sideCols = wide ? sideW : cols >= 84 ? Math.floor(cols / 2) : cols
-    const Agent = ({ id, name, role, state, color, seed }: { id: string; name: string; role: string; state: string; color: string; seed: number }) => {
-      const active = state !== 'idle'
-      return (
-        <Box gap={1}>
-          {raster(`orb-${id}`, 4, 2, active, t => paint.orb(4, 2, t, { color: paint.hex(color), active, seed }), <Text color={active ? pulse(n, color, C.white, 0.4) : C.faint}>◉</Text>)}
-          <Box flexDirection="column" flexShrink={1}>
-            <Text wrap="truncate-end"><Text color={C.ink} bold>{name}</Text><Text color={C.dim}>  {role}</Text></Text>
-            <Text color={active ? color : C.dim} wrap="truncate-end">{active ? `${SPIN[(n + seed) % SPIN.length]} ` : ''}{state}</Text>
-          </Box>
-        </Box>
-      )
-    }
     const roles = run.roles ?? s.hierarchy
-    const crew = (
-      <Card title="CREW" right={<Text color={C.dim}>{run.workers.length} on the floor</Text>} width={sideCols}>
-        <Agent id="sup" name={roles.supervisor} role="supervisor" state={run.leadership.supervisor} color={C.violet} seed={0} />
-        <Agent id="lead" name={roles.lead} role="engineering lead" state={run.leadership.lead} color={C.cyan} seed={2} />
-        {run.workers.map((w, i) => (
-          <Agent id={`w${i}`} name={w.agentId} role={`worker · ${ago(now - Date.parse(w.since))}`} state={`on ${w.task ?? '?'}`} color={C.green} seed={4 + i} />
-        ))}
-      </Card>
-    )
-    // The orchestrator logs a test's start and its outcome as separate entries: keep the latest per test.
-    const latest = new Map<string, CockpitRun['tests'][number]>()
-    for (const t of run.tests) {
-      const id = `${t.task ?? t.scope}|${t.command}`
-      latest.delete(id)
-      latest.set(id, t)
+    const minds = run.minds ?? []
+    type AgentRow = { id: string; orb: string | null; name: string; role: 'supervisor' | 'lead' | 'worker'; active: boolean; mind: CockpitMind | null; task: string | null; since: string | null }
+    const latestOf = (role: string, agent: string) => minds.find(m => m.role === role && m.agentId === agent && m.status === 'active') ?? minds.find(m => m.role === role && m.agentId === agent) ?? null
+    const supMind = latestOf('supervisor', roles.supervisor)
+    const leadMind = latestOf('lead', roles.lead)
+    const agentRows: AgentRow[] = [
+      { id: 'sup', orb: 'orb-sup', name: roles.supervisor, role: 'supervisor', active: run.leadership.supervisor !== 'idle', mind: supMind, task: supMind?.status === 'active' ? supMind.task : null, since: supMind?.status === 'active' ? supMind.startedAt : null },
+      { id: 'lead', orb: 'orb-lead', name: roles.lead, role: 'lead', active: run.leadership.lead !== 'idle', mind: leadMind, task: leadMind?.status === 'active' ? leadMind.task : null, since: leadMind?.status === 'active' ? leadMind.startedAt : null },
+      ...run.workers.map((w, i): AgentRow => {
+        const m = minds.find(x => x.role === 'worker' && x.status === 'active' && x.task === w.task) ?? null
+        return { id: `w${i}`, orb: `orb-w${i}`, name: w.agentId, role: 'worker', active: true, mind: m, task: w.task, since: w.since }
+      }),
+    ]
+    // Earlier sessions, newest first: selectable to read back what they did.
+    const shownMinds = new Set(agentRows.map(r => r.mind?.sessionId).filter(Boolean))
+    const earlier = minds.filter(m => m.status !== 'active' && !shownMinds.has(m.sessionId)).slice(0, 6)
+    const pickable: { mind: CockpitMind | null; id: string }[] = [...agentRows.map(r => ({ mind: r.mind, id: r.id })), ...earlier.map(m => ({ mind: m, id: m.sessionId }))].filter(p => p.mind)
+    const followed = minds.find(m => m.sessionId === u.mind) ?? minds.find(m => m.status === 'active') ?? minds[0] ?? null
+    const selAgent = Math.max(0, pickable.findIndex(p => p.mind && p.mind.sessionId === followed?.sessionId))
+    const followMind = (m: CockpitMind | null) => void patchUi($, { mind: m?.sessionId ?? null, tab: 'live', focus: 'agents' })
+
+    const AgentCard = ({ r, compactCard }: { r: AgentRow; compactCard?: boolean }) => {
+      const color = ROLE_COLOR[r.role] ?? C.text
+      const picked = !!r.mind && r.mind.sessionId === followed?.sessionId
+      const focused = picked && u.focus === 'agents'
+      const doingNow = r.mind && r.mind.status === 'active' ? `${doing(r.mind)}${r.task ? ` ${r.task}` : ''}` : r.active ? `working${r.task ? ` on ${r.task}` : ''}` : 'idle'
+      const lastWords = r.mind ? [...r.mind.activity].reverse().find(a => a.kind !== 'tool')?.text : undefined
+      return (
+        <Box key={`agent-${r.id}`} width={compactCard ? 30 : undefined} hover={{ backgroundColor: C.hover }} backgroundColor={picked ? C.chipOn : undefined}>
+          <Text color={focused ? C.accent : picked ? C.dim : C.bgDeep}>▌</Text>
+          {r.orb ? raster(r.orb, 4, 2, r.active, t => paint.orb(4, 2, t, { color: paint.hex(color), active: r.active, seed: r.id.length + agentRows.indexOf(r) * 2 }), <Text color={r.active ? pulse(n, color, C.white, 0.4) : C.faint}>◉ </Text>) : null}
+          <Box flexDirection="column" flexShrink={1} marginLeft={1}>
+            <Box justifyContent="space-between">
+              <Button plain dimColor={!picked} key={`agent-pick-${r.id}`} label={`${r.name} · ${r.role}`} onPress={() => followMind(r.mind)} />
+              <Text color={r.active ? color : C.faint}>{r.since ? ago(now - Date.parse(r.since)) : ''}</Text>
+            </Box>
+            <Text color={r.active ? color : C.dim} wrap="truncate-end">{r.active ? `${SPIN[(n + agentRows.indexOf(r)) % SPIN.length]} ` : ''}{compactCard || !lastWords ? doingNow : `${doingNow} · ${firstLine(lastWords)}`}</Text>
+          </Box>
+        </Box>
+      )
     }
-    const testList = [...latest.values()]
-    const lastTests = testList.slice(-5).reverse()
-    const passed = testList.filter(t => t.status === 'passed').length
-    const failedTests = testList.filter(t => t.status === 'failed').length
-    const tests = (
-      <Card title="TESTS" right={<Text><Text color={C.green}>{passed} ✓</Text><Text color={failedTests ? C.red : C.dim}>  {failedTests} ✗</Text></Text>} width={sideCols}>
-        {lastTests.length === 0 ? <Text color={C.dim}>— none yet</Text> : lastTests.map(t => (
-          <Text wrap="truncate-end">
-            <Text color={STATUS_COLOR[t.status] ?? C.text}>{glyph(t.status, n)} </Text>
-            <Text color={C.text}>{t.task ?? t.scope}</Text>
-            <Text color={C.dim}>  {t.command}</Text>
-          </Text>
-        ))}
-      </Card>
-    )
-    const repos = (
-      <Card title="REPOSITORIES" width={sideCols}>
-        {run.repositories.map(r => (
-          <Text wrap="truncate-end">
-            <Text color={r.integration ? (r.integration.passed ? C.green : C.red) : C.dim}>{r.integration ? (r.integration.passed ? '✓' : '✗') : '○'} </Text>
-            <Text color={C.text} bold>{r.name}</Text>
-            <Text color={C.dim}>  ⎇ {r.integration ? r.integration.branch.split('/').pop() : r.baseBranch}</Text>
-          </Text>
-        ))}
-        {run.conflicts.map(c => (
-          <Text color={pulse(n, C.red, C.redDark, 0.4)} wrap="truncate-end">⚠ {c.task} ⟂ {c.heldBy}  <Text color={C.dim}>{c.pattern}</Text></Text>
-        ))}
-      </Card>
+    const EarlierRow = ({ m }: { m: CockpitMind }) => {
+      const picked = m.sessionId === followed?.sessionId
+      return (
+        <Box key={`earlier-${m.sessionId}`} hover={{ backgroundColor: C.hover }} backgroundColor={picked ? C.chipOn : undefined}>
+          <Text color={picked && u.focus === 'agents' ? C.accent : C.bgDeep}>▌</Text>
+          <Text color={m.status === 'failed' ? C.red : C.faint}>{m.status === 'failed' ? '✗' : '✓'} </Text>
+          <Button plain dimColor key={`agent-pick-${m.sessionId}`} label={clip(`${m.agentId} ${m.role} ${m.task ?? ''} ${doing(m)}`, agentsW - 8)} onPress={() => followMind(m)} />
+        </Box>
+      )
+    }
+    const seatsLive = (
+      <SeatBar
+        compact
+        seats={roles}
+        onPick={(role, agent) => void setSeat($, run.id, role, agent)}
+        keys
+        efforts={run.efforts ?? {}}
+        live={live}
+        onEffort={changes => void setEffort($, run.id, Object.fromEntries(Object.entries(changes).filter((kv): kv is [string, string] => kv[1] !== null)))}
+        note=""
+      />
     )
     const byAgent = tel.byAgent ?? []
-    const maxCalls = Math.max(1, ...byAgent.map(a => a.calls))
-    const meterW = Math.max(4, sideCols - 20)
+    const maxCost = Math.max(0.01, ...byAgent.map(a => a.costUsd || a.calls / 100))
+    const meterW = Math.max(4, Math.min(agentsW, 44) - 6)
     const meterColors = [K.cyan, K.violet, K.green, K.yellow, K.pink]
-    const meterE = byAgent.map((a, i) => ease(`meter${i}`, a.calls / maxCalls))
-    const meterFall = byAgent.map((a, i) => {
-      const w = Math.max(1, Math.round(meterE[i]!(anim) * meterW))
+    const meterE = byAgent.map((a, i) => ease(`meter${i}`, (a.costUsd || a.calls / 100) / maxCost))
+    const meterText = byAgent.map((a, i) => {
+      const w = Math.max(1, Math.round(meterE[i]!(anim) * (meterW - 16)))
       return (
         <Text wrap="truncate-end">
           <Text color={C.mute}>{a.agentId.padEnd(7).slice(0, 7)} </Text>
           <Text color={C.faint}>▕</Text>
           {Array.from({ length: w }, (_, k) => <Text color={gradient(LOGO_GRADIENT, i / 5 + k / (meterW * 4))}>█</Text>)}
-          <Text color={C.borderDim}>{'█'.repeat(Math.max(0, meterW - w))}</Text>
+          <Text color={C.borderDim}>{'█'.repeat(Math.max(0, meterW - 16 - w))}</Text>
           <Text color={C.faint}>▏</Text>
-          <Text color={C.dim}> {a.calls}</Text>
+          <Text color={C.dim}> {a.costUsd ? `$${a.costUsd.toFixed(2)}` : `${a.calls}`}</Text>
         </Text>
       )
     })
-    const meterBars = byAgent.length && RasterEl ? raster('meters', Math.max(1, sideCols - 4), byAgent.length, byAgent.some((_, i) => easing(`meter${i}`)), t => paint.meters(Math.max(1, sideCols - 4), byAgent.length, t, {
-      values: meterE.map(f => f(t)), colors: byAgent.map((_, i) => meterColors[i % meterColors.length]!), labels: byAgent.map(a => `${a.agentId.slice(0, 7)} ${a.calls}`),
-    })) : meterFall
-    const meter = (
-      <Card title="TELEMETRY" right={<Text color={C.yellow} bold>{tel.costUsd ? `$${tel.costUsd.toFixed(2)}` : ''}</Text>} width={sideCols}>
-        <Text>
-          <Text color={C.ink} bold>{tel.calls}</Text><Text color={C.dim}> calls   </Text>
-          <Text color={C.cyan}>↓ {compact(tel.inputTokens)}</Text><Text color={C.dim}>   </Text>
-          <Text color={C.violet}>↑ {compact(tel.outputTokens)}</Text>
-        </Text>
-        {meterBars}
-      </Card>
-    )
-    const side = wide ? (
-      <Box flexDirection="column" width={sideW}>
-        {crew}{tests}{repos}{meter}
-      </Box>
-    ) : (
-      <Box flexWrap="wrap">
-        {crew}{tests}{repos}{meter}
+    const meterBars = byAgent.length && RasterEl ? raster('meters', meterW, byAgent.length, byAgent.some((_, i) => easing(`meter${i}`)), t => paint.meters(meterW, byAgent.length, t, {
+      values: meterE.map(f => f(t)), colors: byAgent.map((_, i) => meterColors[i % meterColors.length]!), labels: byAgent.map(a => `${a.agentId.slice(0, 7)} ${a.costUsd ? `$${a.costUsd.toFixed(2)}` : `${a.calls}`}`),
+    })) : meterText
+    const Section = ({ title, right }: { title: string; right?: RenderChildren }) => (
+      <Box justifyContent="space-between" marginTop={1}>
+        <Text color={C.mute} bold>{title}</Text>
+        {right ?? null}
       </Box>
     )
 
-    const keys: [string, string][] = [
-      ...(runAttention ? ([['a', 'approve'], ['c', 'changes'], ['r', 'reject']] as [string, string][]) : []),
-      ['n', 'new'], ['v l', 'seats'], ['f g w', 'effort'], ['1-4', 'tabs'], ...(u.tab === 'minds' && minds.length > 1 ? ([['o', 'next mind']] as [string, string][]) : []), ...(s.runs.length > 1 ? ([['j k', 'missions']] as [string, string][]) : []),
-      ['p', 'report'], ['d', 'dashboard'], ['x', 'stop'],
+    // ── body height: what the header, the strips and the footer leave ──
+
+    const chrome = 1 + 2 + 1 + 2 + approvalRows + (u.failure ? 5 : 0) + (u.composing?.kind === 'run' ? 9 : 0) + (run.error ? 1 : 0)
+    const agentsStripH = wide ? 0 : 4 + (agentRows.length > Math.max(1, Math.floor((cols - 4) / 30)) ? 2 : 0) + (tel.byAgent?.length ?? 0)
+    const bodyH = Math.max(12, rows - chrome - agentsStripH)
+
+    const agentsPanel = wide ? (
+      <Box flexDirection="column" borderStyle="round" borderColor={u.focus === 'agents' ? C.violet : C.border} paddingX={1} width={agentsW} height={bodyH} overflow="hidden">
+        <Box justifyContent="space-between">
+          <Text color={u.focus === 'agents' ? C.violet : C.mute} bold>AGENTS</Text>
+          <Text color={C.dim}>{minds.filter(m => m.status === 'active').length || run.workers.length} working</Text>
+        </Box>
+        {agentRows.map(r => <AgentCard r={r} />)}
+        {earlier.length ? <Section title="EARLIER" right={<Text color={C.dim}>{minds.length} sessions</Text>} /> : null}
+        {earlier.map(m => <EarlierRow m={m} />)}
+        {/* while the composer is open it carries the seat chips itself */}
+        {u.composing?.kind === 'run' ? null : <Section title="SEATS" right={<Text color={C.dim}>{live ? 'live' : 'next run'}</Text>} />}
+        {u.composing?.kind === 'run' ? null : live ? seatsLive : <SeatBar compact seats={nextSeats!} onPick={pickNext} keys efforts={u.efforts} live={false} onEffort={effortNext} note="" />}
+        <Section title="SPEND" right={<Text color={C.yellow} bold>{tel.costUsd ? `$${tel.costUsd.toFixed(2)}` : '—'}</Text>} />
+        <Text color={C.dim} wrap="truncate-end">{tel.calls} calls · ↓{compact(tel.inputTokens)} ↑{compact(tel.outputTokens)}</Text>
+        {meterBars}
+        {times.length > 1 && RasterEl ? <Section title="ACTIVITY" /> : null}
+        {times.length > 1 && RasterEl ? raster('spark', meterW, 1, live, t => paint.spark(meterW, 1, t, { values: bucketE.map(f => f(t)), live })) : null}
+      </Box>
+    ) : (
+      <Box flexDirection="column" borderStyle="round" borderColor={u.focus === 'agents' ? C.violet : C.border} paddingX={1}>
+        <Box justifyContent="space-between">
+          <Text color={u.focus === 'agents' ? C.violet : C.mute} bold>AGENTS</Text>
+          <Text color={C.yellow} bold>{tel.costUsd ? `$${tel.costUsd.toFixed(2)}` : ''}</Text>
+        </Box>
+        <Box flexWrap="wrap">{agentRows.map(r => <AgentCard r={r} compactCard />)}</Box>
+        {live && u.composing?.kind !== 'run' ? seatsLive : null}
+        {byAgent.length ? <Box flexDirection="column" width={Math.min(cols - 4, meterW + 2)}>{meterBars}</Box> : null}
+      </Box>
+    )
+
+    // ── tasks: grouped by what they need, the selected one always in view ──
+
+    const GROUPS: [string, string, (t: CockpitTask) => boolean, boolean][] = [
+      ['attention', 'NEEDS ATTENTION', t => ['failed', 'lease_conflict', 'needs_input', 'escalated', 'changes_requested'].includes(t.status), false],
+      ['running', 'RUNNING', t => t.status === 'running' || t.status === 'validating', false],
+      ['review', 'IN REVIEW', t => t.status === 'in_review', false],
+      ['queued', 'QUEUED', t => t.status === 'pending' || t.status === 'ready', false],
+      ['done', 'DONE', t => isDone(t), true],
+      ['cancelled', 'CANCELLED', t => t.status === 'cancelled', true],
     ]
+    type Item = { kind: 'group'; id: string; label: string; count: number; folded: boolean } | { kind: 'task'; t: CockpitTask }
+    const items: Item[] = []
+    const ordered: CockpitTask[] = []
+    for (const [id, label, test, foldable] of GROUPS) {
+      // Keys carry the round (TASK-3xx): finished work newest first, the rest in plan order.
+      const list = run.tasks.filter(test).sort((a, b) => (foldable ? b.key.localeCompare(a.key) : a.key.localeCompare(b.key)))
+      if (!list.length) continue
+      const folded = foldable && !isOpen(`grp-${id}`)
+      items.push({ kind: 'group', id, label, count: list.length, folded })
+      if (!folded) for (const t of list) items.push({ kind: 'task', t }), ordered.push(t)
+    }
+    const selTask = run.tasks.find(t => t.key === u.task) ?? ordered[0] ?? run.tasks[0] ?? null
+    const pickTask = (t: CockpitTask | undefined) => t && void patchUi($, { task: t.key, tab: 'task', focus: 'tasks' })
+    const listH = bodyH - 3
+    const selRow = Math.max(0, items.findIndex(i => i.kind === 'task' && i.t.key === selTask?.key))
+    const start = Math.max(0, Math.min(selRow - Math.floor(listH / 2), items.length - listH))
+    const visible = items.slice(start, start + listH)
+    const TaskLine = ({ t }: { t: CockpitTask }) => {
+      const color = STATUS_COLOR[t.status] ?? C.text
+      const moving = MOVING.has(t.status)
+      const fin = isDone(t) || t.status === 'cancelled'
+      const picked = t.key === selTask?.key
+      const meta = [t.agentId, t.iteration > 1 ? `↺${t.iteration}` : '', t.dependsOn.length && !fin ? `⇠${t.dependsOn.join(',')}` : ''].filter(Boolean).join(' ')
+      return (
+        <Box key={`task-${t.key}`} justifyContent="space-between" hover={{ backgroundColor: C.hover }} backgroundColor={picked ? C.chipOn : undefined}>
+          <Box flexShrink={1}>
+            <Text color={picked && u.focus === 'tasks' ? C.accent : picked ? C.dim : C.bgDeep}>▌</Text>
+            <Text color={moving ? pulse(n, color, C.white, 0.5) : color}>{glyph(t.status, n)} </Text>
+            <Button plain dimColor={fin && !picked} key={`task-pick-${t.key}`} label={t.key} onPress={() => pickTask(t)} />
+            <Text color={fin ? C.dim : C.text} wrap="truncate-end"> {t.title}</Text>
+          </Box>
+          <Text color={C.dim}>{meta ? ` ${clip(meta, 22)}` : ''}</Text>
+        </Box>
+      )
+    }
+    const barW = Math.max(8, tasksIn - 26)
+    const tasksPanel = (
+      <Box flexDirection="column" borderStyle="round" borderColor={u.focus === 'tasks' ? C.cyan : C.border} paddingX={1} width={wide || medium ? tasksW : undefined} height={bodyH} overflow="hidden">
+        <Box justifyContent="space-between">
+          <Text color={u.focus === 'tasks' ? C.cyan : C.mute} bold>TASKS <Text color={C.dim}>{done}/{run.tasks.length}</Text></Text>
+          <Box>
+            {raster('progress', barW, 1, live, t => paint.progress(barW, 1, t, { frac: fracE(t), live }), <Text color={C.cyan}>{'█'.repeat(Math.round(fracE(anim) * barW))}{' '.repeat(Math.max(0, barW - Math.round(fracE(anim) * barW)))}</Text>)}
+            <Text color={C.ink} bold> {String(pct).padStart(3)}%</Text>
+          </Box>
+        </Box>
+        <Text color={C.borderDim}>{'─'.repeat(Math.max(1, tasksIn))}</Text>
+        {run.tasks.length === 0 ? (
+          <Text color={C.violet}>{ORBIT[Math.floor(n / 2) % 4]} {live ? 'the lead is drafting the task graph…' : 'no tasks'}</Text>
+        ) : visible.map(it => it.kind === 'task' ? <TaskLine t={it.t} /> : (
+          <Box key={`grp-${it.id}`}>
+            <Text color={C.mute} bold>{it.label} </Text>
+            <Text color={C.dim}>{it.count}</Text>
+            {it.folded || GROUPS.find(g => g[0] === it.id)?.[3] ? <Text> </Text> : null}
+            {GROUPS.find(g => g[0] === it.id)?.[3] ? <Button plain dimColor key={`open-grp-${it.id}`} label={it.folded ? '▸ show' : '▾ hide'} onPress={() => toggle(`grp-${it.id}`)} /> : null}
+          </Box>
+        ))}
+        {start + listH < items.length ? <Text color={C.dim}>  ↓ {items.length - start - listH} more</Text> : null}
+      </Box>
+    )
+
+    // ── right panel: the followed agent live, the selected task, the event log or the report ──
+
+    const Label = ({ text }: { text: string }) => <Text color={C.dim} bold>{text}</Text>
+    const TaskDetail = ({ t }: { t: CockpitTask }) => {
+      const d = t.detail
+      const color = STATUS_COLOR[t.status] ?? C.text
+      const verdictColor = d?.review ? (d.review.verdict === 'approve' ? C.green : d.review.verdict === 'escalate' ? C.yellow : C.red) : C.dim
+      return (
+        <Box flexDirection="column">
+          <Text wrap="truncate-end"><Pill label={t.status.replace(/_/g, ' ')} bg={color} /><Text color={C.ink} bold> {t.key}</Text><Text color={C.dim}>  {[t.agentId, t.iteration > 1 ? `${t.iteration} tries` : '', t.repo].filter(Boolean).join(' · ')}</Text></Text>
+          <Text color={C.ink} bold wrap="wrap">{t.title}</Text>
+          {t.dependsOn.length ? <Text color={C.dim} wrap="truncate-end">after {t.dependsOn.join(', ')}</Text> : null}
+          {t.blockedReason ? <Text color={C.yellow} wrap="wrap">↳ {t.blockedReason}</Text> : null}
+          {!d ? <Text color={C.dim}>No details for this task yet.</Text> : (
+            <Box flexDirection="column">
+              <Text> </Text>
+              <Text color={C.text} wrap="wrap">{d.description}</Text>
+              <Text color={C.dim} wrap="wrap">{d.kind} · risk {d.risk} · complexity {d.complexity} · tests {d.testsRequired ? (d.testCommand ?? 'repo default') : 'not required'}</Text>
+              {d.acceptanceCriteria.length ? <Section title="ACCEPTANCE" /> : null}
+              {d.acceptanceCriteria.map(c => <Box><Text color={C.green}>✓ </Text><Box flexShrink={1}><Text color={C.text} wrap="wrap">{c}</Text></Box></Box>)}
+              {d.scope.files.length + d.scope.modules.length + d.scope.resources.length ? <Section title="SCOPE" /> : null}
+              {d.scope.files.map(f => <Text color={C.mute} wrap="truncate-end">◦ {f}</Text>)}
+              {d.scope.modules.map(m => <Text color={C.mute} wrap="truncate-end">▣ {m}</Text>)}
+              {d.scope.resources.map(r => <Text color={C.yellow} wrap="truncate-end">⛁ {r}</Text>)}
+              {d.summary ? <Section title="WORKER" /> : null}
+              {d.summary ? <Text color={C.text} wrap="wrap">{d.summary}</Text> : null}
+              {d.review ? <Box marginTop={1}><Label text={`REVIEW it${d.review.iteration} `} /><Text color={verdictColor} bold>{d.review.verdict.replace(/_/g, ' ')}</Text></Box> : null}
+              {d.review ? <Text color={C.text} wrap="wrap">{d.review.summary}</Text> : null}
+              {d.review?.issues.map(i => (
+                <Box>
+                  <Text color={i.severity === 'blocker' ? C.red : i.severity === 'major' ? C.yellow : C.dim}>✗ {i.severity.padEnd(7)} </Text>
+                  <Box flexShrink={1}><Text color={C.text} wrap="wrap">{i.file ? `${i.file}: ` : ''}{i.description}</Text></Box>
+                </Box>
+              ))}
+            </Box>
+          )}
+        </Box>
+      )
+    }
+
+    const thinkingNow = minds.filter(m => m.status === 'active').length
+    const liveView = (): RenderChildren => {
+      if (!followed) return <Text color={C.dim}>{live ? `${SPIN[n % SPIN.length]} no model has spoken yet…` : 'No model ran in this mission.'}</Text>
+      const color = ROLE_COLOR[followed.role] ?? C.text
+      const active = followed.status === 'active'
+      const end = followed.endedAt ? Date.parse(followed.endedAt) : now
+      const width = Math.max(20, rightIn - 14)
+      const cap = { thinking: 4, text: 6, tool: 1 } as const
+      const entryId = (e: CockpitMind['activity'][number]) => `mind-${followed.sessionId}-${e.ts}-${e.kind}-${e.text.length}`
+      const entries = [...followed.activity].reverse()
+      return (
+        <Box flexDirection="column">
+          <Box justifyContent="space-between">
+            <Text wrap="truncate-end">
+              <Pill label={followed.role.toUpperCase()} bg={color} />
+              <Text color={C.ink} bold> {followed.agentId}</Text>
+              <Text color={C.text}>  {doing(followed)}{followed.task ? ` ${followed.task}` : ''}</Text>
+              {followed.effort ? <Text color={C.dim}>  ⚡{followed.effort}</Text> : null}
+            </Text>
+            <Text color={active ? color : C.dim}>{active ? `${SPIN[n % SPIN.length]} live ` : `${followed.status} `}{ago(end - Date.parse(followed.startedAt))}</Text>
+          </Box>
+          {entries.length ? entries.map((e, k) => {
+            const fresh = Math.max(0, 1 - (now - Date.parse(e.ts)) / 8000)
+            const opened = isOpen(entryId(e))
+            const lines = opened ? 999 : e.kind === 'tool' ? 1 : cap[e.kind]
+            const stamp = <Box flexShrink={0}><Fold id={entryId(e)} /><Text color={C.faint}>{e.ts.slice(11, 19)} </Text></Box>
+            if (e.kind === 'tool') {
+              const at = e.text.indexOf(': ')
+              const name = at > 0 ? e.text.slice(0, at) : e.text
+              const arg = at > 0 ? e.text.slice(at + 2) : ''
+              return opened ? (
+                <Box>{stamp}<Text color={mix(C.cyan, C.white, fresh * 0.6)}>{name} </Text><Box flexShrink={1}><Text color={C.text} wrap="wrap">{arg}</Text></Box></Box>
+              ) : (
+                <Box>{stamp}<Text wrap="truncate-end"><Text color={mix(C.cyan, C.white, fresh * 0.6)}>{name}</Text><Text color={C.mute}>  {toolDetail(arg)}</Text></Text></Box>
+              )
+            }
+            const body = opened ? e.text.trim() : clip(e.text.trim().replace(/\s*\n\s*/g, ' ⏎ '), lines * width)
+            return e.kind === 'thinking' ? (
+              <Box>{stamp}<Text color={mix(C.violet, C.white, fresh * 0.5)}>{k === 0 && active ? ORBIT[Math.floor(n / 2) % 4] : '∴'} </Text><Box flexShrink={1}><Text color={mix(C.thinkDim, C.violet, fresh)} italic wrap="wrap">{body}</Text></Box></Box>
+            ) : (
+              <Box>{stamp}<Text color={color}>▍ </Text><Box flexShrink={1}><Text color={mix(C.text, C.white, fresh)} wrap="wrap">{body}</Text></Box></Box>
+            )
+          }) : <Text color={C.dim}>{active ? `${SPIN[n % SPIN.length]} waiting for the first words…` : 'It produced no visible output.'}</Text>}
+        </Box>
+      )
+    }
+    const eventsView = (): RenderChildren => {
+      const evId = (ev: CockpitRun['recentEvents'][number]) => `ev-${ev.ts}-${ev.type}`
+      const evs = [...run.recentEvents].reverse()
+      return evs.length ? evs.map((ev, i) => {
+        const fresh = Math.max(0, 1 - (now - Date.parse(ev.ts)) / 6000)
+        const c = eventColor(ev.type)
+        return (
+          <Box flexDirection="column" key={evId(ev)}>
+            <Box>
+              <Fold id={evId(ev)} />
+              <Text wrap="truncate-end">
+                <Text color={mix(C.dim, C.white, fresh)}>{ev.ts.slice(11, 19)} </Text>
+                <Text color={mix(c, C.white, fresh * 0.6)}>{i === 0 && live ? glyph('running', n) : '●'} </Text>
+                <Text color={mix(c, C.white, fresh * 0.6)} bold>{ev.type}</Text>
+                <Text color={mix(C.mute, C.text, fresh)}>  {ev.text === ev.type ? '' : ev.text}</Text>
+              </Text>
+            </Box>
+            {isOpen(evId(ev)) ? <Box paddingLeft={13}><Text color={C.text} wrap="wrap">{ev.detail ?? ev.text}</Text></Box> : null}
+          </Box>
+        )
+      }) : <Text color={C.dim}>No events yet.</Text>
+    }
+
+    const views: [CockpitTab, string, string][] = [
+      ['live', 'Live', thinkingNow ? ` ${SPIN[n % SPIN.length]}${thinkingNow}` : ''],
+      ['task', 'Task', selTask ? ` ${selTask.key}` : ''],
+      ['events', 'Events', ` ${run.recentEvents.length}`],
+      ['report', 'Report', ''],
+    ]
+    const showView = (id: CockpitTab) => (id === 'report' && u.report?.runId !== run.id ? void loadReport($, run.id) : void patchUi($, { tab: id }))
+    const tabW = views.map(([, label, badge]) => label.length + badge.length + 5)
+    const tabIdx = Math.max(0, views.findIndex(([id]) => id === u.tab))
+    const tabE = ease('tab', tabIdx, 220)
+    tabE(anim) // retarget now so `easing` sees it
+    let used = 0
+    const underlineText = (
+      <Text>
+        {views.map(([id], i) => {
+          const w = Math.max(0, Math.min(tabW[i]!, rightIn - used))
+          used += w
+          return <Text color={id === u.tab ? C.accent : C.borderDim}>{'▔'.repeat(w)}</Text>
+        })}
+        <Text color={C.borderDim}>{'▔'.repeat(Math.max(0, rightIn - used))}</Text>
+      </Text>
+    )
+    const underline = raster('tab-underline', rightIn, 1, easing('tab'), t => paint.underline(rightIn, 1, t, { tabs: tabW, active: tabE(t), color: K.accent }), underlineText)
+    const rightBody: RenderChildren =
+      u.tab === 'task' ? (selTask ? <TaskDetail t={selTask} /> : <Text color={C.dim}>No task selected.</Text>)
+      : u.tab === 'events' ? eventsView()
+      : u.tab === 'report' ? (u.report?.runId === run.id
+        ? <Box flexDirection="column">{markdownChunks(u.report.text).map(part => <Markdown text={part} />)}</Box>
+        : <Text color={C.cyan}>{SPIN[n % SPIN.length]} fetching report…</Text>)
+      : liveView()
+    const rightPanel = (
+      <Box flexDirection="column" borderStyle="round" borderColor={C.border} paddingX={1} width={wide || medium ? rightW : undefined} height={wide || medium ? bodyH : undefined} overflow="hidden">
+        <Box>
+          {views.map(([id, label, badge], i) => (
+            <Box backgroundColor={u.tab === id ? C.tabActive : undefined} paddingX={1}>
+              <Button plain hotkey={String(i + 1)} key={`tab-${id}`} dimColor={u.tab !== id} label={`${label}${badge}`} onPress={() => showView(id)} />
+            </Box>
+          ))}
+        </Box>
+        {underline}
+        {rightBody}
+      </Box>
+    )
+
+    // ── keys: j/k move in the focused list, h/l switch it; the footer shows what the focus offers ──
+
+    const move = (d: 1 | -1) => {
+      if (u.focus === 'agents') {
+        const next = pickable[(selAgent + d + pickable.length) % Math.max(1, pickable.length)]
+        if (next) followMind(next.mind)
+        return
+      }
+      if (!ordered.length) return
+      const at = ordered.findIndex(t => t.key === selTask?.key)
+      pickTask(ordered[(at + d + ordered.length) % ordered.length])
+    }
+    const nav: [string, string, () => void][] = [
+      ['j', 'down', () => move(1)],
+      ['k', 'up', () => move(-1)],
+      ['h', 'agents', () => void patchUi($, { focus: 'agents', tab: 'live' })],
+      ['l', 'tasks', () => void patchUi($, { focus: 'tasks', tab: 'task' })],
+      ...(u.focus === 'tasks' && GROUPS.some(g => g[3] && run.tasks.some(g[2])) ? ([['o', isOpen('grp-done') ? 'hide done' : 'show done', () => toggle('grp-done')]] as [string, string, () => void][]) : []),
+    ]
+    const actions: [string, string, () => void][] = [
+      ['n', 'new', () => void patchUi($, { composing: { kind: 'run' } })],
+      ...(failed ? ([['t', 'retry', () => void busy($, 'retrying…', () => cli($, ['retry', run.id])).then(r => say($, r.text))]] as [string, string, () => void][]) : []),
+      ['p', 'report', () => void loadReport($, run.id)],
+      ['d', 'dashboard', () => void busy($, 'opening the dashboard…', () => cli($, ['dashboard', run.id])).then(r => say($, r.text))],
+      ['x', 'stop', () => void daemon($, false)],
+    ]
+    const keyName: Record<string, string> = { p: 'report', d: 'dashboard', x: 'stop', t: 'retry', n: 'new' }
+    const footer = (
+      <Box flexDirection="column" paddingX={1}>
+        {u.busy ? (
+          <Text color={C.cyan}>{SPIN[n % SPIN.length]} {u.busy}</Text>
+        ) : v.message ? (
+          <Text color={C.mute} wrap="truncate-end">↳ {firstLine(v.message)}</Text>
+        ) : null}
+        {e.props.isFocused ? (
+          <Box flexWrap="wrap" gap={2}>
+            {nav.map(([k, label, fn]) => <Button plain hotkey={k} key={`nav-${k}`} label={label} onPress={fn} />)}
+            <Text color={C.faint}>│</Text>
+            {u.focus === 'agents' ? <Text color={C.dim}>v b seats · f g w effort</Text> : <Text color={C.dim}>1-4 view</Text>}
+            <Text color={C.faint}>│</Text>
+            {actions.map(([k, label, fn]) => <Button plain hotkey={k} key={keyName[k] ?? `act-${k}`} label={label} onPress={fn} />)}
+          </Box>
+        ) : <Text color={C.dim}>ctrl+x tab  focus the cockpit — every action is one key away</Text>}
+      </Box>
+    )
+
+    const body = wide ? (
+      <Box>
+        {agentsPanel}
+        {tasksPanel}
+        {rightPanel}
+      </Box>
+    ) : medium ? (
+      <Box flexDirection="column">
+        {agentsPanel}
+        <Box>{tasksPanel}{rightPanel}</Box>
+      </Box>
+    ) : (
+      <Box flexDirection="column">
+        {agentsPanel}
+        {tasksPanel}
+        {rightPanel}
+      </Box>
+    )
+
     return out(
       <Box flexDirection="column">
-        {hero}
-        {wide ? (
-          <Box minHeight={Math.max(10, rows - 6)}>
-            {runList}
-            {center}
-            {side}
-          </Box>
-        ) : (
-          <Box flexDirection="column">
-            {center}
-            {side}
-          </Box>
-        )}
-        {keybar(keys)}
+        {header}
+        {lifecycle}
+        {divider}
+        {run.error ? <Box paddingX={1}><Text color={C.red} wrap="truncate-end">✗ {run.error}</Text></Box> : null}
+        {failureCard}
+        {approvals.map(a => <ApprovalCard a={a} />)}
+        {u.composing?.kind === 'run' ? composer : null}
+        {body}
+        {footer}
       </Box>
     )
   }

@@ -79,7 +79,8 @@ export type CockpitSnapshot = {
 
 export type CockpitView = { snapshot: CockpitSnapshot | null; error: string | null; message: string | null }
 
-export type CockpitTab = 'tasks' | 'events' | 'minds' | 'report'
+/** What the right-hand panel shows: the followed agent's stream, the selected task, the event log, or the report. */
+export type CockpitTab = 'live' | 'task' | 'events' | 'report'
 
 /** Pane-local interaction state: what the person has selected and is composing. */
 export type CockpitUi = {
@@ -102,6 +103,10 @@ export type CockpitUi = {
   mind: string | null
   /** Rows opened to show what their one line cuts off (tasks, events, Minds entries). */
   open: string[]
+  /** The list j/k move in: the agents or the tasks panel. */
+  focus: 'agents' | 'tasks'
+  /** The selected task (its key); null picks the first that needs attention or is running. */
+  task: string | null
 }
 
 declare module 'claude-code' {

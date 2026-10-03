@@ -123,7 +123,8 @@ const hash = (x: number, y: number) => {
 }
 const FADE_LEVELS = 4
 
-export type HeroData = { online: boolean; left: string; right: string; alert: boolean }
+/** `brand`, when set, is drawn in the letter gradient before `left` (the one-row header has no room for the pixel word). */
+export type HeroData = { online: boolean; left: string; right: string; alert: boolean; brand?: string }
 
 function paintHero(cols: number, rows: number, t: number, d: HeroData): string {
   const s = t / 1000
@@ -166,6 +167,7 @@ function paintHero(cols: number, rows: number, t: number, d: HeroData): string {
     }
   }
   const sweep = ((s * SWEEP_SPEED) % (ww + 30)) - 10
+  if (rows < 3) return heroStrip(p, cols, rows, s, sweep, d)
   for (let gy = 0; gy < 5; gy++)
     for (let gx = 0; gx < ww; gx++) {
       if (!ink[gy * ww + gx]) continue
@@ -183,6 +185,29 @@ function paintHero(cols: number, rows: number, t: number, d: HeroData): string {
     ? lerpRgb(K.green, K.greenDeep, quant(wave(DOT_RATE.online, s), 6))
     : lerpRgb(K.red, K.redDim, quant(wave(DOT_RATE.offline, s), 6))
   const rx = cols - d.right.length - 2
+  cells.set(rx - 2, y, '●', dot, bgAt(rx - 2))
+  cells.text(rx, y, d.right, K.text, bgAt)
+  return cells.encode()
+}
+
+/** The one-row header: the aurora behind a gradient brand, `left` after it and the status on the right. */
+function heroStrip(p: Pixels, cols: number, rows: number, s: number, sweep: number, d: HeroData): string {
+  const cells = p.toCells()
+  const y = rows - 1
+  const bgAt = (x: number) => lerpRgb(p.get(x, y * 2), p.get(x, y * 2 + 1), 0.5)
+  const brand = d.brand ?? ''
+  for (let i = 0; i < brand.length && 1 + i < cols; i++) {
+    const f = (i / Math.max(1, brand.length) - s * LETTER_DRIFT) % 1
+    const base = cycle(LETTERS, quant(f < 0 ? f + 1 : f, 16))
+    const shine = quant(Math.max(0, 1 - Math.abs(i * 4 - sweep) / 6), 4)
+    cells.set(1 + i, y, brand[i]!, lerpRgb(base, WHITE, shine * 0.75), bgAt(1 + i))
+  }
+  const lx = brand ? brand.length + 3 : 1
+  cells.text(lx, y, d.left.slice(0, Math.max(0, cols - lx - d.right.length - 5)), K.lavender, bgAt)
+  const dot = d.online
+    ? lerpRgb(K.green, K.greenDeep, quant(wave(DOT_RATE.online, s), 6))
+    : lerpRgb(K.red, K.redDim, quant(wave(DOT_RATE.offline, s), 6))
+  const rx = cols - d.right.length - 1
   cells.set(rx - 2, y, '●', dot, bgAt(rx - 2))
   cells.text(rx, y, d.right, K.text, bgAt)
   return cells.encode()
