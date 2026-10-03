@@ -67,18 +67,31 @@ test('orb paints any size, including 1x1 and 8x4', () => {
   }
 })
 
-test('frame-rate independence: 16 ms and 33 ms stepping give identical frames at t and t+1000', () => {
-  // t and t+1000 are multiples of 16 and 33 apart only at 528 ms boundaries, so use 528*k+0 and the nearest shared instants.
-  const frames = (step: number, from: number, to: number, paint: (t: number) => string) => {
+const pairCount = (b64: string) => {
+  const w = new Uint32Array(decode(b64).buffer)
+  const pairs = new Set<string>()
+  for (let i = 0; i < w.length; i += 3) pairs.add(`${w[i + 1]}/${w[i + 2]}`)
+  return pairs.size
+}
+
+test('frame-rate independence: 16 ms and 33 ms clocks give identical frames at shared instants', () => {
+  // Simulated clocks accumulate ticks and paint each one; 1000 is not a multiple of 16, so the shared instants
+  // are 528 ms apart: T and T+1056 (~1 s). Animated painters must also differ between them.
+  const run = (step: number, to: number, paint: (t: number) => string) => {
     const out = new Map<number, string>()
-    for (let t = from; t <= to; t += step) out.set(t, paint(t))
+    for (let t = 0; t <= to; t += step) if (t % 528 === 0) out.set(t, paint(t))
     return out
   }
-  const T = 528 * 100, T2 = T + 528 * 2 // 1056 ms later: a shared tick of both clocks
+  const T = 528 * 100, T2 = T + 1056
+  const moving = new Set(['hero', 'pipeline', 'progress', 'divider'])
   for (const [name, rows, paint] of cases) {
     const z = sizeFor(name, rows, 100)
-    const a = frames(16, T, T2, t => paint(z, t)), b = frames(33, T, T2, t => paint(z, t))
-    for (const t of [T, T2]) expect(a.get(t) === b.get(t) && a.get(t) !== undefined).toBe(true)
+    const a = run(16, T2, t => paint(z, t)), b = run(33, T2, t => paint(z, t))
+    for (const t of [T, T2]) {
+      expect(a.get(t)).toBeDefined()
+      expect(a.get(t)).toBe(b.get(t))
+    }
+    if (moving.has(name)) expect(a.get(T)).not.toBe(a.get(T2))
   }
 })
 
@@ -95,13 +108,19 @@ test('<=512 distinct fg/bg pairs per frame at 140 columns', () => {
   for (const [name, rows, paint] of cases) {
     const z = sizeFor(name, rows, 140)
     for (const t of [0, 1500, 7777, 123457, 987654]) {
-      const w = new Uint32Array(decode(paint(z, t)).buffer)
-      const pairs = new Set<string>()
-      for (let i = 0; i < w.length; i += 3) pairs.add(`${w[i + 1]}/${w[i + 2]}`)
-      if (pairs.size > 512) over.push(`${name}@${t}: ${pairs.size}`)
+      const n = pairCount(paint(z, t))
+      if (n > 512) over.push(`${name}@${t}: ${n}`)
     }
   }
   expect(over).toEqual([])
+})
+
+test('hero stays <=512 pairs over 200 timestamps, alert on/off, 4 and 6 rows', () => {
+  let max = 0
+  for (const alert of [true, false])
+    for (const rows of [4, 6])
+      for (let i = 0; i < 200; i++) max = Math.max(max, pairCount(r.hero({ cols: 140, rows }, i * 997, { ...hdata, alert })))
+  expect(max).toBeLessThanOrEqual(512)
 })
 
 test('pipeline: integer phase drives glyphs, fractional fill only paints the connector', () => {
@@ -116,30 +135,6 @@ test('pipeline: integer phase drives glyphs, fractional fill only paints the con
   expect(glyphs(0.5, true).map(c => String.fromCodePoint(c)).join('')).toBe('●●●✗○○○○')
 })
 
-// Source grep. The plugin test host forbids node:fs imports, so this only runs where fs is importable
-// (e.g. node --test); under `claude plugin test` it is a no-op and `npm run palette` style greps cover it.
-declare const URL: new (path: string, base: string) => unknown
-const read = async (rel: string): Promise<string | null> => {
-  try {
-    // @ts-ignore node builtin, absent from the plugin type surface
-    const { readFileSync } = (await import('node:fs')) as { readFileSync: (p: unknown, enc: string) => string }
-    return readFileSync(new URL(rel, (import.meta as unknown as { url: string }).url), 'utf8')
-  } catch {
-    return null
-  }
-}
-const HEX = /#[0-9a-fA-F]{6}/
-const skip = (test as unknown as { skip?: typeof test }).skip ?? (() => {})
-
-test('raster.ts has no palette literals; theme.ts owns them', async () => {
-  const [ras, theme] = [await read('../hooks/raster.ts'), await read('../hooks/theme.ts')]
-  if (ras === null || theme === null) return
-  expect(HEX.test(ras)).toBe(false)
-  expect(HEX.test(theme)).toBe(true)
-})
-
-// TASK-204 migrates register.tsx onto theme.ts and must unskip this.
-skip('register.tsx has no palette literals', async () => {
-  const src = await read('../hooks/register.tsx')
-  if (src !== null) expect(HEX.test(src)).toBe(false)
-})
+// Palette-literal greps (raster.ts has none, theme.ts owns them, 'register.tsx has no palette literals')
+// run in `npm run palette` (tests/tools.mjs), since the plugin test host has no fs. TASK-204 must set
+// REGISTER_STRICT = true there.
