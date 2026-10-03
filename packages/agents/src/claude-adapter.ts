@@ -131,6 +131,8 @@ export function translate(msg: Record<string, any>, model: string): AgentEvent[]
         out.push({ type: 'tool', name: block.name, detail: summarizeInput(block.input) });
       }
     }
+  } else if (msg.type === 'rate_limit_event') {
+    out.push({ type: 'limits', provider: 'claude', raw: msg });
   } else if (msg.type === 'result') {
     const u = msg.usage ?? {};
     const models = Object.keys(msg.modelUsage ?? {});

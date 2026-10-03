@@ -4,6 +4,7 @@ import type { Store } from '@cockpit/persistence';
 import type { Telemetry } from '@cockpit/telemetry';
 import type { EventBus } from './event-bus';
 import { describeOutcome } from './outcome';
+import { claudeLimits } from './limits';
 
 /** Longest model message or reasoning block kept per event. */
 const MAX_OUTPUT = 4000;
@@ -144,6 +145,11 @@ export class AgentRunner {
           case 'usage':
             usage = ev.usage;
             break;
+          case 'limits': {
+            const l = ev.provider === 'claude' ? claudeLimits(ev.raw) : null;
+            if (l) this.bus.emit('usage.limits', call.runId, { provider: ev.provider, windows: l.windows });
+            break;
+          }
           case 'result':
             output = ev.output;
             gotOutput = true;

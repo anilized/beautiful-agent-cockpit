@@ -13,6 +13,7 @@ import { PermissionEngine } from './permission-engine';
 import { buildSnapshot, runView, writeSnapshot } from './snapshot';
 import { dashboardHtml, telemetryView } from './dashboard';
 import { LiveWorkspaces } from './live';
+import { LimitsStore, readCodexLimits } from './limits';
 
 export interface EngineOptions {
   /** Register extra adapter factories (tests use the fake adapter). */
@@ -55,6 +56,8 @@ export interface Daemon {
 /** The orchestrator service: engine + local transport + snapshot projection for the cockpit. */
 /** How often the worktrees of live tasks are re-read for the cockpit. */
 const LIVE_REFRESH_MS = 3000;
+/** How often Codex's session logs are re-read for its limits. */
+const LIMITS_REFRESH_MS = 60_000;
 
 export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {}): Promise<Daemon> {
   const engine = await createEngine(config, opts);
@@ -69,13 +72,29 @@ export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {
     timer = setTimeout(() => {
       timer = null;
       try {
-        writeSnapshot(dataDir, buildSnapshot(store, config, { pid: process.pid, port }, (id) => live.get(id)));
+        writeSnapshot(dataDir, buildSnapshot(store, config, { pid: process.pid, port }, (id) => live.get(id), limits.get()));
       } catch {
         /* presentation only */
       }
     }, 300);
   };
   const unsubscribe = bus.subscribe(refreshSnapshot);
+  // Subscription limits: Claude reports them on every call; Codex keeps them in its session logs.
+  const limits = new LimitsStore(join(dataDir, 'limits.json'));
+  const offLimits = bus.subscribe((e) => {
+    if (e.type !== 'usage.limits') return;
+    const d = e.data as { provider: 'claude' | 'codex'; windows: { name: string; usedPercent: number; resetsAt: string | null }[] };
+    limits.set(d.provider, { windows: d.windows, at: e.ts });
+  });
+  const readCodex = () => {
+    try {
+      if (limits.set('codex', readCodexLimits())) refreshSnapshot();
+    } catch {
+      /* no Codex, or an unreadable log */
+    }
+  };
+  readCodex();
+  const limitsTimer = setInterval(readCodex, LIMITS_REFRESH_MS);
   // The worktrees of live tasks, read every few seconds: the cockpit's changed files and code preview.
   const live = new LiveWorkspaces(store, refreshSnapshot);
   const liveTimer = setInterval(() => void live.refresh().catch(() => {}), LIVE_REFRESH_MS);
@@ -88,7 +107,7 @@ export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {
 
   server
     .route('GET', '/health', () => ({ ok: true, pid: process.pid }))
-    .route('GET', '/snapshot', () => buildSnapshot(store, config, { pid: process.pid, port }, (id) => live.get(id)))
+    .route('GET', '/snapshot', () => buildSnapshot(store, config, { pid: process.pid, port }, (id) => live.get(id), limits.get()))
     .route('GET', '/runs', () => store.runs(50))
     .route('POST', '/runs', async ({ body }) => engine.startRun(body as StartRunInput))
     .route('GET', '/runs/:id', ({ params }) => {
@@ -143,7 +162,9 @@ export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {
     if (stopped) return;
     stopped = true;
     unsubscribe();
+    offLimits();
     clearInterval(liveTimer);
+    clearInterval(limitsTimer);
     await engine.shutdown();
     await server.close(dataDir);
     if (timer) clearTimeout(timer);

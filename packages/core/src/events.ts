@@ -49,6 +49,8 @@ export interface EventPayloads {
   'integration.completed': { repoId: string; branch: string; passed: boolean };
   'validation.completed': { verdict: string; summary: string };
   'merge.completed': { repoId: string; branch: string; into: string };
+  /** A subscription's rate-limit windows: how much is used and when each resets. */
+  'usage.limits': { provider: 'claude' | 'codex'; windows: { name: string; usedPercent: number; resetsAt: string | null }[] };
   'usage.recorded': { agentId: string; model: string; inputTokens: number; outputTokens: number; costUsd: number | null };
 }
 

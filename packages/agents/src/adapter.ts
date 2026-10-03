@@ -42,6 +42,8 @@ export type AgentEvent =
   | { type: 'thinking'; text: string }
   | { type: 'tool'; name: string; detail: string }
   | { type: 'usage'; usage: UsageReport }
+  /** The provider's subscription limits as the CLI reported them (raw, read by the orchestrator). */
+  | { type: 'limits'; provider: 'claude' | 'codex'; raw: Record<string, unknown> }
   | { type: 'result'; output: unknown }
   | { type: 'error'; error: string; retryable: boolean };
 

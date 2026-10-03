@@ -5,6 +5,7 @@ import type { Store } from '@cockpit/persistence';
 import type { CockpitConfig } from '@cockpit/core';
 import type { RunMeta, TaskContext } from './context';
 import type { TaskLive } from './live';
+import type { Limits } from './limits';
 
 /**
  * Read-only projection of workflow state for presentation layers. The cockpit
@@ -20,6 +21,8 @@ export interface Snapshot {
   runs: RunView[];
   /** `summary` is capped where it is stored; `text` is the whole question or result the human decides on. */
   pendingApprovals: { id: string; runId: string; kind: string; operation: string | null; summary: string; text: string; createdAt: string }[];
+  /** Subscription rate limits per provider, as last reported (Claude per call, Codex from its session logs). */
+  limits: Limits;
 }
 
 export interface RunView {
@@ -174,7 +177,7 @@ export function describe(e: CockpitEvent, keyOf: (id: unknown) => string): strin
   }
 }
 
-export function buildSnapshot(store: Store, config: CockpitConfig, daemon: { pid: number; port: number | null }, live?: (taskId: string) => TaskLive | undefined): Snapshot {
+export function buildSnapshot(store: Store, config: CockpitConfig, daemon: { pid: number; port: number | null }, live?: (taskId: string) => TaskLive | undefined, limits: Limits = {}): Snapshot {
   const runs = store.runs(10);
   const visible = runs.filter((r, i) => i < 3 || !['completed', 'rejected', 'failed'].includes(r.status));
   return {
@@ -183,6 +186,7 @@ export function buildSnapshot(store: Store, config: CockpitConfig, daemon: { pid
     hierarchy: config.agents.hierarchy,
     agents: config.agents.agents.map((a) => ({ id: a.id, adapter: a.adapter, model: a.model, roles: [...a.roles], enabled: a.enabled, effort: a.effort, efforts: effortLevels(a.adapter) })),
     runs: visible.map((r) => runView(store, config, r, live)),
+    limits,
     pendingApprovals: store.approvals({ status: 'pending' }).map((a) => ({
       id: a.id, runId: a.runId, kind: a.kind, operation: a.operation, summary: a.summary, text: approvalText(store, a), createdAt: a.createdAt,
     })),
