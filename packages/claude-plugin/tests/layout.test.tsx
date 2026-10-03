@@ -24,6 +24,8 @@ export function width(s: string): number {
 }
 const textOf = (n: string | Node): string => (typeof n === 'string' ? n : (n.children ?? []).map(textOf).join(''))
 
+const rasterKeys = (n: string | Node): string[] => (typeof n === 'string' ? [] : [...(n.type === 'Raster' ? [String(n.props?.key)] : []), ...(n.children ?? []).flatMap(rasterKeys)])
+
 // Outermost Text elements: a Text that wraps or truncates is the host's to fit, so its longest word is what must fit; the rest must fit whole.
 function audit(root: Node, cols: number) {
   const bad: string[] = []
@@ -46,7 +48,7 @@ function audit(root: Node, cols: number) {
     for (const c of n.children ?? []) walk(c)
   }
   walk(root)
-  return { bad, texts }
+  return { bad, texts, keys: rasterKeys(root), text: textOf(root) }
 }
 
 test('width() counts wide characters as two cells', () => {
@@ -75,8 +77,13 @@ for (const [name, snap] of [['live', LIVE], ['offline', OFFLINE]] as const) {
         const tabs = name === 'live' ? ['tab-tasks', 'tab-events', 'tab-report'] : ['']
         for (const tab of tabs) {
           if (tab) await ui.press({ key: tab })
-          const { bad, texts } = audit((await ui.drawn()) as Node, cols)
+          const { bad, texts, keys, text } = audit((await ui.drawn()) as Node, cols)
           seen += texts
+          if (surface === 'terminal') expect(keys).toEqual(expect.arrayContaining(name === 'live' ? ['hero', 'divider', 'tab-underline', 'meters'] : ['hero']))
+          else {
+            expect(keys).toEqual([])
+            if (name === 'live') expect(text).toMatch(/▔[\s\S]*▕/) // underline and meter fallbacks
+          }
           expect([surface, cols, tab, bad]).toEqual([surface, cols, tab, []])
         }
         await ui.unmount()
