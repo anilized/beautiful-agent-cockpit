@@ -7,8 +7,8 @@
   "scripts": {
     "typecheck": "node tests/tools.mjs typecheck",
     "test": "claude plugin test .",
-    "bench": "node --experimental-transform-types --no-warnings tests/bench.ts",
-    "capture": "node tests/tools.mjs capture",
-    "probe": "node tests/tools.mjs probe"
+    "bench": "node --experimental-transform-types --no-warnings scripts/bench.ts",
+    "capture": "node --experimental-transform-types --no-warnings scripts/capture.ts",
+    "probe": "node --experimental-transform-types --no-warnings scripts/probe.ts"
   }
 }
