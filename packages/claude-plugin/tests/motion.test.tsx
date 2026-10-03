@@ -29,7 +29,7 @@ const twoLive = () => {
   return s
 }
 
-async function boot($: any, on: any, snap: Snap, opts: { hold?: number; env?: Record<string, string> } = {}) {
+async function boot($: any, on: any, snap: Snap, opts: { hold?: number; deny?: string[]; env?: Record<string, string> } = {}) {
   // The kit redraws lazily and offers no render hook, so the text tick is counted where it fires: one clock.every dispatch per period.
   const every: number[] = []
   const spy = ((name: string, ...rest: any[]) => {
@@ -52,7 +52,7 @@ async function boot($: any, on: any, snap: Snap, opts: { hold?: number; env?: Re
     st.maxInflight[e.key] = Math.max(st.maxInflight[e.key] ?? 0, (st.inflight[e.key] = (st.inflight[e.key] ?? 0) + 1))
     try {
       if (opts.hold) await clock.sleep(opts.hold)
-      return { value: {} } as never
+      return { value: opts.deny?.includes(e.key) ? { deny: 'full' } : {} } as never
     } finally {
       st.inflight[e.key]!--
     }
@@ -64,7 +64,7 @@ async function boot($: any, on: any, snap: Snap, opts: { hold?: number; env?: Re
 const perKey = (bl: { key: string }[]) => bl.reduce((m, b) => ((m[b.key] = (m[b.key] ?? 0) + 1), m), {} as Record<string, number>)
 const pcts = async (ui: any) => ((await ui.findAll({ type: 'Text' })) as { text: string }[]).flatMap(x => /^\s*(\d+)%$/.exec(x.text)?.[1] ?? []).map(Number)
 
-test('live @140 conservative: <=60 blits/s total, Tier A <=30 fps each, text tick <=10 fps', async ($, on) => {
+test('live @140: 16 ms raster loop, every key <=62 blits/s, text tick <=10 fps', async ($, on) => {
   const { clock, st } = await boot($, on, live())
   const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(140) })
   await clock.advance(1000)
@@ -72,15 +72,23 @@ test('live @140 conservative: <=60 blits/s total, Tier A <=30 fps each, text tic
   st.every.length = 0
   await clock.advance(5000)
   const by = perKey(st.blits)
-  expect(Object.keys(by)).toEqual(expect.arrayContaining(['hero', 'pipeline', 'progress', 'divider', 'underline', 'orb-sup']))
-  expect(st.blits.length / 5).toBeLessThanOrEqual(60)
-  expect(by.hero! / 5).toBeLessThanOrEqual(30)
-  expect(by.pipeline! / 5).toBeLessThanOrEqual(30)
-  const ticks = st.every.filter(ms => ms >= 100 && ms < 500).length / 5 // the text tick; scheduler periods are 16 ms, poll 1000
-  expect(Math.min(...st.every.filter(ms => ms > 20))).toBeGreaterThanOrEqual(100)
-  expect(ticks).toBeLessThanOrEqual(10)
-  expect(ticks).toBeGreaterThanOrEqual(6) // and it does tick
-  expect(by.hero!).toBeGreaterThan(5 * 10) // actually animating
+  expect(Object.keys(by)).toEqual(expect.arrayContaining(['hero', 'pipeline', 'progress', 'divider', 'orb-w0']))
+  for (const [k, n] of Object.entries(by)) expect([k, n / 5 <= 63, n / 5 >= 30]).toEqual([k, true, true]) // ~60 fps, never faster than the 16 ms loop
+  const text = st.every.filter(ms => ms === 125).length / 5 // the text tick fires once per period
+  expect(text).toBeLessThanOrEqual(10)
+  expect(text).toBeGreaterThanOrEqual(6) // and it does tick
+  expect(st.every.filter(ms => ms === 16).length / 5).toBeGreaterThan(55)
+  expect(st.every.filter(ms => ms > 16 && ms < 125)).toEqual([]) // no other fast timer
+  await ui.unmount()
+})
+
+test('a denied key is unregistered while the others keep painting', async ($, on) => {
+  const { clock, st } = await boot($, on, live(), { deny: ['pipeline'] })
+  const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(140) })
+  await clock.advance(800) // held 1 s after the deny, though every render redraws it
+  const by = perKey(st.blits)
+  expect(by.pipeline).toBe(1)
+  expect(by.hero!).toBeGreaterThan(30)
   await ui.unmount()
 })
 
@@ -134,7 +142,7 @@ for (const [name, snap] of [['offline', offline], ['no active run', () => ({ ...
     // No fast text tick: only the 1 s poll and the 1 s idle beat remain (>=1000 ms periods), plus the scheduler's slow 500 ms idle timer.
     st.every.length = 0
     await clock.advance(10_000)
-    expect(st.every.filter(ms => ms < 500 && ms > 20)).toEqual([])
+    expect(st.every.filter(ms => ms < 500)).toEqual([]) // no 16 ms loop, no 125 ms text tick
     expect(st.every.filter(ms => ms === 1000).length / 10).toBeLessThanOrEqual(2)
     await ui.unmount()
   })
