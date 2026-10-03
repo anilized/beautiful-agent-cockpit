@@ -110,6 +110,10 @@
   .entry.text .body { color: var(--ink); }
   .entry.thinking .body { color: var(--think); font-style: italic; }
   .entry.thinking .ic { color: var(--think); }
+  .entry.result { background: color-mix(in srgb, var(--neon-a) 8%, transparent); margin: 4px 0; }
+  .entry.result .ic { color: var(--neon-a); }
+  .entry.result .body { color: var(--ink); white-space: pre-wrap; }
+  .entry.result .body::first-line { font-weight: 700; }
   .entry.tool .body { font: 12px/1.5 ui-monospace, Consolas, monospace; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .entry.tool.open .body { white-space: pre-wrap; word-break: break-word; }
   .entry.tool { cursor: pointer; }
@@ -457,6 +461,7 @@
       </div>
       <div class="stream-head keyline" style="padding-top:6px;padding-bottom:6px">
         <span><span style="color:var(--neon-b)">▍</span> what the model says it is doing</span>
+        <span><span style="color:var(--neon-a)">✦</span> what the call concluded (plan, verdict, ruling)</span>
         <span><span style="color:var(--think)">∴</span> reasoning (models that publish it: Codex summaries; the Claude CLI keeps its thinking private)</span>
         <span><span style="color:var(--tool)">◎ ✎ ❯</span> tools it ran (click to see the whole call)</span>
       </div>
@@ -467,7 +472,7 @@
           const id = `${m.sessionId}|${a.ts}|${a.text.length}`;
           return `<div class="entry tool ${openTools.has(id) ? 'open' : ''} ${isFresh ? 'fresh' : ''}" data-t="${esc(id)}"><span class="ts">${clock(a.ts)}</span><span class="ic">${toolIcon(name)}</span><span class="body"><span class="tn">${esc(name)}</span>${esc(openTools.has(id) ? arg : toolArg(arg))}</span></div>`;
         }
-        return `<div class="entry ${a.kind} ${isFresh ? 'fresh' : ''}"><span class="ts">${clock(a.ts)}</span><span class="ic">${a.kind === 'thinking' ? '∴' : `<span style="color:${color}">▍</span>`}</span><span class="body ${i === 0 && active ? 'caret' : ''}">${esc(a.text.trim())}</span></div>`;
+        return `<div class="entry ${a.kind} ${isFresh ? 'fresh' : ''}"><span class="ts">${clock(a.ts)}</span><span class="ic">${a.kind === 'thinking' ? '∴' : a.kind === 'result' ? '✦' : `<span style="color:${color}">▍</span>`}</span><span class="body ${i === 0 && active ? 'caret' : ''}">${esc(a.text.trim())}</span></div>`;
       }).join('') : `<p class="empty">${active ? 'waiting for the first words…' : 'This session produced no visible output.'}</p>`}</div>`;
     $('stream').querySelector('.stream-body').scrollTop = scroll;
     $('follow').onchange = (e) => { follow = e.target.checked; renderMinds(); };

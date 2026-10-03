@@ -123,6 +123,8 @@ test('the Minds tab follows each model and streams its reasoning, words and tool
       ],
     },
     { sessionId: 'ses_l', agentId: 'codex', role: 'lead', task: 'TASK-101', contract: 'LeadReview', effort: null, status: 'completed', startedAt: '2026-10-03T13:10:00.000Z', endedAt: '2026-10-03T13:11:00.000Z', activity: [] },
+    { sessionId: 'ses_p', agentId: 'codex', role: 'lead', task: null, contract: 'LeadPlan', effort: null, status: 'completed', startedAt: '2026-10-03T13:01:00.000Z', endedAt: '2026-10-03T13:02:00.000Z',
+      activity: [{ ts: '2026-10-03T13:02:00.000Z', kind: 'result', text: 'Planned 2 tasks: strings first\nTASK-101 strings → sonnet\nTASK-102 math (after TASK-101)' }] },
   ]
   on('fs.read', async () => ({ value: JSON.stringify(snap) }))
   mock.clock(on)
@@ -136,15 +138,21 @@ test('the Minds tab follows each model and streams its reasoning, words and tool
   for (const cols of [60, 100, 140]) {
     const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(cols) })
     await ui.press({ key: 'tab-live' })
-    expect(await ui.find({ type: 'Text', text: /implementing/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /collapse repeated dashes/ })).toBeDefined()
+    await ui.press({ key: 'agent-pick-w0' }) // the selection outlives a remount: start each width on the worker
+    expect(['/implementing/'.toString(), cols, !!(await ui.find({ type: 'Text', text: /implementing/ }))]).toEqual(['/implementing/'.toString(), cols, true])
+    expect(['/collapse repeated dashes/'.toString(), cols, !!(await ui.find({ type: 'Text', text: /collapse repeated dashes/ }))]).toEqual(['/collapse repeated dashes/'.toString(), cols, true])
     expect(await ui.find({ type: 'Text', text: /src\/strings\.js/ })).toBeDefined()
+    // j/k on the agents panel walk the sessions that have a stream: the lead's review above the worker, the plan below.
     await ui.press({ key: 'nav-h' })
-    await ui.press({ key: 'nav-j' })
-    expect(await ui.find({ type: 'Text', text: /reviewing the work/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /no visible output/ })).toBeDefined()
+    await ui.press({ key: 'nav-k' })
+    expect(['/reviewing the work/'.toString(), cols, !!(await ui.find({ type: 'Text', text: /reviewing the work/ }))]).toEqual(['/reviewing the work/'.toString(), cols, true])
+    expect(['/no visible output/'.toString(), cols, !!(await ui.find({ type: 'Text', text: /no visible output/ }))]).toEqual(['/no visible output/'.toString(), cols, true])
     await ui.press({ key: 'agent-pick-w0' })
-    expect(await ui.find({ type: 'Text', text: /collapse repeated dashes/ })).toBeDefined()
+    expect(['/collapse repeated dashes/'.toString(), cols, !!(await ui.find({ type: 'Text', text: /collapse repeated dashes/ }))]).toEqual(['/collapse repeated dashes/'.toString(), cols, true])
+    // An earlier session reads back what it concluded, line by line.
+    await ui.press({ key: 'nav-j' })
+    expect(['/Planned 2 tasks/'.toString(), cols, !!(await ui.find({ type: 'Text', text: /Planned 2 tasks/ }))]).toEqual(['/Planned 2 tasks/'.toString(), cols, true])
+    expect(['/TASK-102 math/'.toString(), cols, !!(await ui.find({ type: 'Text', text: /TASK-102 math/ }))]).toEqual(['/TASK-102 math/'.toString(), cols, true])
     await ui.unmount()
   }
 })

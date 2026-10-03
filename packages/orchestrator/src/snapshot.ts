@@ -82,7 +82,7 @@ export interface MindView {
   status: string;
   startedAt: string;
   endedAt: string | null;
-  activity: { ts: string; kind: 'text' | 'thinking' | 'tool'; text: string }[];
+  activity: { ts: string; kind: 'text' | 'thinking' | 'tool' | 'result'; text: string }[];
 }
 
 /** Sessions shown in the Minds view, and how much of each one's stream. */
@@ -120,7 +120,7 @@ export function minds(
   const byId = new Map(chosen.map((s) => [s.id, [] as MindView['activity']]));
   for (const e of events) {
     if (e.type !== 'agent.output') continue;
-    const d = e.data as { agentId: string; taskId?: string | null; text: string; kind?: 'text' | 'thinking' | 'tool'; sessionId?: string };
+    const d = e.data as { agentId: string; taskId?: string | null; text: string; kind?: 'text' | 'thinking' | 'tool' | 'result'; sessionId?: string };
     const owner = d.sessionId
       ?? sessions.filter((s) => s.agentId === d.agentId && (s.taskId ?? null) === (d.taskId ?? null) && s.startedAt <= e.ts).sort((a, b) => b.startedAt.localeCompare(a.startedAt))[0]?.id;
     const list = owner ? byId.get(owner) : undefined;

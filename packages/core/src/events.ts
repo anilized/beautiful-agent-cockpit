@@ -23,7 +23,7 @@ export interface EventPayloads {
   'agent.started': { agentId: string; role: string; sessionId: string; taskId?: string | null; contract?: string; effort?: string | null };
   'agent.waiting': { agentId: string; taskId?: string | null; question: string };
   /** What a model is doing: its visible text, its reasoning, or a tool it ran. */
-  'agent.output': { agentId: string; taskId?: string | null; text: string; kind?: 'text' | 'thinking' | 'tool'; role?: string; sessionId?: string };
+  'agent.output': { agentId: string; taskId?: string | null; text: string; kind?: 'text' | 'thinking' | 'tool' | 'result'; role?: string; sessionId?: string };
   'agent.completed': { agentId: string; sessionId: string; taskId?: string | null };
   'agent.failed': { agentId: string; taskId?: string | null; error: string };
   'question.asked': { taskId: string; questions: string[] };

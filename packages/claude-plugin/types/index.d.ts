@@ -61,7 +61,7 @@ export type CockpitMind = {
   status: string
   startedAt: string
   endedAt: string | null
-  activity: { ts: string; kind: 'text' | 'thinking' | 'tool'; text: string }[]
+  activity: { ts: string; kind: 'text' | 'thinking' | 'tool' | 'result'; text: string }[]
 }
 
 /** `text` is the whole question or result; `summary` is capped (and all an older orchestrator sends). */

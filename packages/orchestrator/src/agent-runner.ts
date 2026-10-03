@@ -3,6 +3,7 @@ import type { AdapterRegistry, AgentSession, UsageReport } from '@cockpit/agents
 import type { Store } from '@cockpit/persistence';
 import type { Telemetry } from '@cockpit/telemetry';
 import type { EventBus } from './event-bus';
+import { describeOutcome } from './outcome';
 
 /** Longest model message or reasoning block kept per event. */
 const MAX_OUTPUT = 4000;
@@ -76,7 +77,13 @@ export class AgentRunner {
               span.setAttributes({ 'gen_ai.usage.input_tokens': usage.inputTokens, 'gen_ai.usage.output_tokens': usage.outputTokens });
             }
             try {
-              return { output: parseContract(call.contract, res.output), externalId: res.externalId, usage };
+              const output = parseContract(call.contract, res.output);
+              // What the call concluded, for the Live view: a plan, a verdict, a ruling.
+              this.bus.emit('agent.output', call.runId, {
+                agentId: call.agentId, role: call.role, sessionId: res.sessionId, taskId: call.taskId ?? null, kind: 'result',
+                text: describeOutcome(call.contract, output).slice(0, MAX_OUTPUT),
+              });
+              return { output, externalId: res.externalId, usage };
             } catch (err) {
               lastError = `output did not match ${call.contract}: ${errorMessage(err).slice(0, 1500)}`;
               resumeId = null;
@@ -164,6 +171,6 @@ export class AgentRunner {
     }
     this.store.updateSession(record.id, { status: 'completed' });
     this.bus.emit('agent.completed', call.runId, { agentId: call.agentId, sessionId: record.id, taskId: call.taskId ?? null });
-    return { output, externalId: session.externalId, usage: u };
+    return { output, externalId: session.externalId, usage: u, sessionId: record.id };
   }
 }

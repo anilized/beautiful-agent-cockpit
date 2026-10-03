@@ -1,4 +1,4 @@
 blit-rate: mock clock, 10 s window after 1 s settle, 140 columns, baseline before this work = 112 blits/s (16/s x 7 keys)
-live {}: total 97/s (87% of 112) per key {"hero":62,"spark":7,"orb-w0":7,"divider":7,"pipeline":7,"progress":7}
+live {}: total 97/s (87% of 112) per key {"hero":62,"pipeline":12,"divider":11.5,"progress":11.5}
 offline {}: total 1/s (1% of 112) per key {"hero":1}
 live {"COCKPIT_REDUCED_MOTION":"1"}: total 0/s (0% of 112) per key {}

@@ -72,7 +72,7 @@ test('live @140: 16 ms raster loop, hero ~60/s, the rest share a <=100/s budget,
   st.every.length = 0
   await clock.advance(5000)
   const by = perKey(st.blits)
-  expect(Object.keys(by)).toEqual(expect.arrayContaining(['hero', 'pipeline', 'progress', 'divider', 'orb-w0']))
+  expect(Object.keys(by)).toEqual(expect.arrayContaining(['hero', 'pipeline', 'progress', 'divider']))
   // The hero keeps the frame rate; every other animated key is capped near 15/s and never starved; all of them stay under the host's ~120/s.
   expect(by.hero! / 5).toBeGreaterThanOrEqual(50)
   expect(by.hero! / 5).toBeLessThanOrEqual(63)
@@ -166,7 +166,7 @@ test('COCKPIT_REDUCED_MOTION=1: animation time frozen, status changes still rend
     return m
   }
   const a = await cellsOf()
-  expect(a.size).toBeGreaterThan(5)
+  expect(a.size).toBeGreaterThanOrEqual(4)
   st.blits.length = 0
   await clock.advance(5000)
   expect(Object.keys(perKey(st.blits)).filter(k => k !== 'hero')).toEqual([]) // nothing but the clock-bearing hero is repainted

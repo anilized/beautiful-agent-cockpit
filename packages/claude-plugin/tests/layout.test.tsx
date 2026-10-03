@@ -79,7 +79,7 @@ for (const [name, snap] of [['live', LIVE], ['offline', OFFLINE]] as const) {
           if (tab) await ui.press({ key: tab })
           const { bad, texts, keys, text } = audit((await ui.drawn()) as Node, cols)
           seen += texts
-          if (surface === 'terminal') expect(keys).toEqual(expect.arrayContaining(name === 'live' ? ['hero', 'divider', 'tab-underline', 'meters'] : ['hero']))
+          if (surface === 'terminal') expect(keys).toEqual(expect.arrayContaining(name === 'live' ? ['hero', 'pipeline', 'divider', 'progress', 'tab-underline'] : ['hero']))
           else {
             expect(keys).toEqual([])
             if (name === 'live') expect([/▔/.test(text), /▕/.test(text)]).toEqual([true, true]) // underline and meter fallbacks

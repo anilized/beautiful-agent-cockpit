@@ -108,6 +108,14 @@ function markdownChunks(text: string, max = 9000): string[] {
   if (cur) out.push(cur)
   return out
 }
+/** A bar of `w` cells filled to `frac` in eighths: smooth at any width, no raster needed. */
+const EIGHTHS = ['', '▏', '▎', '▍', '▌', '▋', '▊', '▉']
+const smoothBar = (frac: number, w: number) => {
+  const eighths = Math.round(Math.min(1, Math.max(0, frac)) * w * 8)
+  const full = Math.floor(eighths / 8)
+  const part = EIGHTHS[eighths % 8]!
+  return { fill: '█'.repeat(full) + part, rest: ' '.repeat(Math.max(0, w - full - (part ? 1 : 0))) }
+}
 const isDone = (t: CockpitTask) => t.status === 'approved' || t.status === 'integrated'
 const clip = (s: string, n: number) => (n <= 1 ? '' : s.length > n ? `${s.slice(0, n - 1)}…` : s)
 const firstLine = (s: string) => s.split('\n')[0]!.trim()
@@ -955,13 +963,16 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       return (
         <Box key={`agent-${r.id}`} width={compactCard ? 30 : undefined} hover={{ backgroundColor: C.hover }} backgroundColor={picked ? C.chipOn : undefined}>
           <Text color={focused ? C.accent : picked ? C.dim : C.bgDeep}>▌</Text>
-          {r.orb ? raster(r.orb, 4, 2, r.active, t => paint.orb(4, 2, t, { color: paint.hex(color), active: r.active, seed: r.id.length + agentRows.indexOf(r) * 2 }), <Text color={r.active ? pulse(n, color, C.white, 0.4) : C.faint}>◉ </Text>) : null}
-          <Box flexDirection="column" flexShrink={1} marginLeft={1}>
+          <Box flexDirection="column" marginRight={1}>
+            <Text backgroundColor={r.active ? pulse(n, color, C.white, 0.25) : C.chip} color={r.active ? C.bgDeep : color} bold> {r.role === 'supervisor' ? 'S' : r.role === 'lead' ? 'L' : 'W'} </Text>
+            <Text color={r.active ? color : C.faint}>{r.active ? ` ${SPIN[(n + agentRows.indexOf(r)) % SPIN.length]} ` : ' · '}</Text>
+          </Box>
+          <Box flexDirection="column" flexShrink={1}>
             <Box justifyContent="space-between">
               <Button plain dimColor={!picked} key={`agent-pick-${r.id}`} label={`${r.name} · ${r.role}`} onPress={() => followMind(r.mind)} />
               <Text color={r.active ? color : C.faint}>{r.since ? ago(now - Date.parse(r.since)) : ''}</Text>
             </Box>
-            <Text color={r.active ? color : C.dim} wrap="truncate-end">{r.active ? `${SPIN[(n + agentRows.indexOf(r)) % SPIN.length]} ` : ''}{compactCard || !lastWords ? doingNow : `${doingNow} · ${firstLine(lastWords)}`}</Text>
+            <Text color={r.active ? color : C.dim} wrap="truncate-end">{compactCard || !lastWords ? doingNow : `${doingNow} · ${firstLine(lastWords)}`}</Text>
           </Box>
         </Box>
       )
@@ -973,6 +984,55 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           <Text color={picked && u.focus === 'agents' ? C.accent : C.bgDeep}>▌</Text>
           <Text color={m.status === 'failed' ? C.red : C.faint}>{m.status === 'failed' ? '✗' : '✓'} </Text>
           <Button plain dimColor key={`agent-pick-${m.sessionId}`} label={clip(`${m.agentId} ${m.role} ${m.task ?? ''} ${doing(m)}`, agentsW - 8)} onPress={() => followMind(m)} />
+        </Box>
+      )
+    }
+    const SeatLines = ({ seats, isLive }: { seats: Seats; isLive: boolean }) => {
+      const efforts = isLive ? run.efforts ?? {} : u.efforts
+      const levelOf = (role: Role | 'worker', id: string) => efforts[`${role}:${id}`] ?? efforts[id] ?? agentInfo(id)?.effort ?? null
+      const ring = (id: string, level: string | null) => {
+        const levels = levelsOf(id)
+        const all: (string | null)[] = isLive ? levels : [null, ...levels]
+        return all[(all.indexOf(level) + 1) % Math.max(1, all.length)] ?? null
+      }
+      const setLevel = (changes: Record<string, string | null>) =>
+        isLive ? void setEffort($, run.id, Object.fromEntries(Object.entries(changes).filter((kv): kv is [string, string] => kv[1] !== null))) : effortNext(changes)
+      const pick = (role: Role, agent: string) => (isLive ? void setSeat($, run.id, role, agent) : pickNext(role, agent))
+      const line = (role: Role, glyphs: string, tone: string, seatKey: string, effortKey: string) => {
+        const current = seats[role]
+        const other = seats[role === 'supervisor' ? 'lead' : 'supervisor']
+        const choices = eligible(role).map(a => a.id).filter(id => id !== other)
+        const next = choices[(choices.indexOf(current) + 1) % Math.max(1, choices.length)]
+        const level = levelOf(role, current)
+        return (
+          <Box>
+            <Text color={tone} bold>{glyphs} </Text>
+            {next && next !== current
+              ? <Button plain hotkey={seatKey} key={`cycle-${role}`} label={current} onPress={() => pick(role, next)} />
+              : <Text color={C.text}>{current}</Text>}
+            <Text color={C.faint}>  </Text>
+            {levelsOf(current).length ? <Button plain hotkey={effortKey} dimColor={!level} key={`effort-${role}:${current}`} label={level ?? 'default'} onPress={() => setLevel({ [`${role}:${current}`]: ring(current, level) })} /> : null}
+          </Box>
+        )
+      }
+      const workers = eligible('worker' as Role)
+      const w0 = workers[0]
+      const wLevel = w0 ? levelOf('worker', w0.id) : null
+      return (
+        <Box flexDirection="column">
+          {line('supervisor', '◆', C.violet, 'v', 'f')}
+          {line('lead', '◇', C.cyan, 'b', 'g')}
+          {w0 ? (
+            <Box>
+              <Text color={C.green} bold>◈ </Text>
+              <Text color={C.text}>{clip(workers.map(w => w.id).join('·'), 12)}</Text>
+              <Text color={C.faint}>  </Text>
+              <Button plain hotkey="w" dimColor={!wLevel} key={`effort-worker:${w0.id}`} label={wLevel ?? 'default'} onPress={() => {
+                const lv = ring(w0.id, wLevel)
+                setLevel(Object.fromEntries(workers.filter(w => lv === null || levelsOf(w.id).includes(lv)).map(w => [`worker:${w.id}`, lv])))
+              }} />
+            </Box>
+          ) : null}
         </Box>
       )
     }
@@ -1006,9 +1066,21 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         </Text>
       )
     })
-    const meterBars = byAgent.length && RasterEl ? raster('meters', meterW, byAgent.length, byAgent.some((_, i) => easing(`meter${i}`)), t => paint.meters(meterW, byAgent.length, t, {
-      values: meterE.map(f => f(t)), colors: byAgent.map((_, i) => meterColors[i % meterColors.length]!), labels: byAgent.map(a => `${a.agentId.slice(0, 7)} ${a.costUsd ? `$${a.costUsd.toFixed(2)}` : `${a.calls}`}`),
-    })) : meterText
+    const barColors = [C.cyan, C.violet, C.green, C.yellow, C.pink]
+    const meterBars = byAgent.map((a, i) => {
+      const w = Math.max(4, meterW - 15)
+      const bar = smoothBar(meterE[i]!(anim), w)
+      return (
+        <Text wrap="truncate-end">
+          <Text color={C.mute}>{a.agentId.padEnd(7).slice(0, 7)} </Text>
+          <Text color={C.faint}>▕</Text>
+          <Text color={barColors[i % barColors.length]}>{bar.fill}</Text>
+          <Text color={C.track}>{bar.rest}</Text>
+          <Text color={C.faint}>▏</Text>
+          <Text color={C.dim}> {a.costUsd ? `$${a.costUsd.toFixed(2)}` : `${a.calls} calls`}</Text>
+        </Text>
+      )
+    })
     const Section = ({ title, right }: { title: string; right?: RenderChildren }) => (
       <Box justifyContent="space-between" marginTop={1}>
         <Text color={C.mute} bold>{title}</Text>
@@ -1033,12 +1105,10 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         {earlier.map(m => <EarlierRow m={m} />)}
         {/* while the composer is open it carries the seat chips itself */}
         {u.composing?.kind === 'run' ? null : <Section title="SEATS" right={<Text color={C.dim}>{live ? 'live' : 'next run'}</Text>} />}
-        {u.composing?.kind === 'run' ? null : live ? seatsLive : <SeatBar compact seats={nextSeats!} onPick={pickNext} keys efforts={u.efforts} live={false} onEffort={effortNext} note="" />}
+        {u.composing?.kind === 'run' ? null : <SeatLines seats={live ? roles : nextSeats!} isLive={live} />}
         <Section title="SPEND" right={<Text color={C.yellow} bold>{tel.costUsd ? `$${tel.costUsd.toFixed(2)}` : '—'}</Text>} />
         <Text color={C.dim} wrap="truncate-end">{tel.calls} calls · ↓{compact(tel.inputTokens)} ↑{compact(tel.outputTokens)}</Text>
         {meterBars}
-        {times.length > 1 && RasterEl ? <Section title="ACTIVITY" /> : null}
-        {times.length > 1 && RasterEl ? raster('spark', meterW, 1, live, t => paint.spark(meterW, 1, t, { values: bucketE.map(f => f(t)), live })) : null}
       </Box>
     ) : (
       <Box flexDirection="column" borderStyle="round" borderColor={u.focus === 'agents' ? C.violet : C.border} paddingX={1}>
@@ -1090,8 +1160,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           <Box flexShrink={1}>
             <Text color={picked && u.focus === 'tasks' ? C.accent : picked ? C.dim : C.bgDeep}>▌</Text>
             <Text color={moving ? pulse(n, color, C.white, 0.5) : color}>{glyph(t.status, n)} </Text>
-            <Button plain dimColor={fin && !picked} key={`task-pick-${t.key}`} label={t.key} onPress={() => pickTask(t)} />
-            <Text color={fin ? C.dim : C.text} wrap="truncate-end"> {t.title}</Text>
+            <Button plain dimColor={fin && !picked} key={`task-pick-${t.key}`} label={clip(`${t.key}  ${t.title}`, Math.max(12, tasksIn - 6 - Math.min(22, meta.length + 1)))} onPress={() => pickTask(t)} />
           </Box>
           <Text color={C.dim}>{meta ? ` ${clip(meta, 22)}` : ''}</Text>
         </Box>
@@ -1169,7 +1238,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       const active = followed.status === 'active'
       const end = followed.endedAt ? Date.parse(followed.endedAt) : now
       const width = Math.max(20, rightIn - 14)
-      const cap = { thinking: 4, text: 6, tool: 1 } as const
+      const cap = { thinking: 4, text: 6, tool: 1, result: 10 } as const
       const entryId = (e: CockpitMind['activity'][number]) => `mind-${followed.sessionId}-${e.ts}-${e.kind}-${e.text.length}`
       const entries = [...followed.activity].reverse()
       return (
@@ -1196,6 +1265,18 @@ async function drawPane($: EngineInterface, e: PaneRender) {
                 <Box>{stamp}<Text color={mix(C.cyan, C.white, fresh * 0.6)}>{name} </Text><Box flexShrink={1}><Text color={C.text} wrap="wrap">{arg}</Text></Box></Box>
               ) : (
                 <Box>{stamp}<Text wrap="truncate-end"><Text color={mix(C.cyan, C.white, fresh * 0.6)}>{name}</Text><Text color={C.mute}>  {toolDetail(arg)}</Text></Text></Box>
+              )
+            }
+            if (e.kind === 'result') {
+              // The call's conclusion keeps its own line breaks: a plan's tasks, a review's issues.
+              const shown = opened ? e.text.trim().split('\n') : e.text.trim().split('\n').slice(0, lines)
+              const more = e.text.trim().split('\n').length - shown.length
+              return (
+                <Box flexDirection="column" marginBottom={1}>
+                  <Box>{stamp}<Text color={C.accent} bold>✦ </Text><Box flexShrink={1}><Text color={C.ink} bold wrap="wrap">{shown[0]}</Text></Box></Box>
+                  {shown.slice(1).map(l => <Box paddingLeft={14}><Text color={C.text} wrap="wrap">{l}</Text></Box>)}
+                  {more > 0 ? <Box paddingLeft={14}><Text color={C.dim}>… {more} more (▸ opens)</Text></Box> : null}
+                </Box>
               )
             }
             const body = opened ? e.text.trim() : clip(e.text.trim().replace(/\s*\n\s*/g, ' ⏎ '), lines * width)

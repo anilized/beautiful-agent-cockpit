@@ -170,6 +170,9 @@ describe('human-chosen roles', () => {
     expect(view.events.some((e) => e.type === 'approval.requested' && e.detail.includes('approvalId'))).toBe(true);
     expect(view.minds.length).toBe(view.calls.length);
     expect(view.minds.every((m) => m.status === 'completed' && m.contract)).toBe(true);
+    // Every call reads back what it concluded.
+    expect(view.minds.every((m) => m.activity.some((a) => a.kind === 'result'))).toBe(true);
+    expect(view.minds.find((m) => m.contract === 'LeadPlan')?.activity.find((a) => a.kind === 'result')?.text).toMatch(/^Planned 1 task/);
     expect(view.tasks[0]?.description).toContain('alpha');
 
     const server = new LocalServer()
