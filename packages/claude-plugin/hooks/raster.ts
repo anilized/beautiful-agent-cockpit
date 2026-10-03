@@ -1,17 +1,17 @@
 // Cell-grid painters for the terminal's Raster element. Each painter is a pure function of
-// (size, timeMs, data) → base64 `cells` (exactly cols*rows*3 uint32 words); every speed is per second,
+// (cols, rows, timeMs, data) → base64 `cells` (exactly cols*rows*3 uint32 words); every speed is per second,
 // so output depends only on the clock value, never on how often it is sampled. Colours come from
 // theme.ts and are quantized to a few levels so a frame holds ≤512 distinct fg/bg pairs (the host paints 1024).
 //
-// Signatures (size = {cols, rows}; t = elapsed ms; data in braces):
-//   hero(size, t, {online, left, right, alert})                rows ≥ 2 (4 live)
-//   pipeline(size, t, {steps, phase, fill, failed, color})     rows 2; phase = discrete step, fill 0..1 = tweened connector
-//   progress(size, t, {frac, live})                            rows 1; frac 0..1 tweened
-//   spark(size, t, {values, live})                             rows ≥ 1
-//   orb(size, t, {color, active, seed})                        any size (4x2 live)
-//   divider(size, t, {color, active})                          rows ≥ 1, line on the middle row
-//   underline(size, t, {tabs, active, color})                  tabs = cell widths, active may be fractional; line on last row
-//   meters(size, t, {values, colors, labels})                  one bar per row; values 0..1 tweened
+// Signatures (t = elapsed ms; data in braces):
+//   hero(cols, rows, t, {online, left, right, alert})                rows ≥ 2 (4 live)
+//   pipeline(cols, rows, t, {steps, phase, fill, failed, color})     rows 2; phase = discrete step, fill 0..1 = tweened connector
+//   progress(cols, rows, t, {frac, live})                            rows 1; frac 0..1 tweened
+//   spark(cols, rows, t, {values, live})                             rows ≥ 1
+//   orb(cols, rows, t, {color, active, seed})                        any size (4x2 live)
+//   divider(cols, rows, t, {color, active})                          rows ≥ 1, line on the middle row
+//   underline(cols, rows, t, {tabs, active, color})                  tabs = cell widths, active may be fractional; line on last row
+//   meters(cols, rows, t, {values, colors, labels})                  one bar per row; values 0..1 tweened
 //   hex(css) → 0xRRGGBB; pairCount(cells) → distinct fg/bg pairs in a frame
 
 import { AURORA, BAR, K, LETTERS, SPARK, cycle, hex, lerpRgb, quant, ramp, scale } from './theme'
@@ -125,7 +125,7 @@ const FADE_LEVELS = 4
 
 export type HeroData = { online: boolean; left: string; right: string; alert: boolean }
 
-function paintHero({ cols, rows }: Size, t: number, d: HeroData): string {
+function paintHero(cols: number, rows: number, t: number, d: HeroData): string {
   const s = t / 1000
   const p = new Pixels(cols, rows)
   const H = rows * 2
@@ -197,7 +197,7 @@ const NODE_PULSE = 5.83 // rad/s
 /** `phase` is the discrete current step; `fill` (0..1, tweened) is how far the connector after it is lit. */
 export type PipelineData = { steps: string[]; phase: number; fill: number; failed: boolean; color: number }
 
-function paintPipeline({ cols, rows }: Size, t: number, d: PipelineData): string {
+function paintPipeline(cols: number, rows: number, t: number, d: PipelineData): string {
   const s = t / 1000
   const c = new Cells(cols, rows)
   const n = d.steps.length
@@ -246,7 +246,7 @@ const SHINE_SPEED = 11.67 // cells/s
 
 export type ProgressData = { frac: number; live: boolean }
 
-function paintProgress({ cols, rows }: Size, t: number, d: ProgressData): string {
+function paintProgress(cols: number, rows: number, t: number, d: ProgressData): string {
   const s = t / 1000
   const c = new Cells(cols, rows)
   const exact = clamp01(d.frac) * cols
@@ -273,7 +273,7 @@ const SPARK_PULSE = 6.67 // rad/s
 
 export type SparkData = { values: number[]; live: boolean }
 
-function paintSpark({ cols, rows }: Size, t: number, d: SparkData): string {
+function paintSpark(cols: number, rows: number, t: number, d: SparkData): string {
   const s = t / 1000
   const c = new Cells(cols, rows)
   let max = 1
@@ -301,7 +301,7 @@ const ORB_ORBIT = 1.2 // rad/s, highlight travel
 
 export type OrbData = { color: number; active: boolean; seed: number }
 
-function paintOrb({ cols, rows }: Size, t: number, d: OrbData): string {
+function paintOrb(cols: number, rows: number, t: number, d: OrbData): string {
   const s = t / 1000
   const p = new Pixels(cols, rows)
   const w = cols, h = rows * 2
@@ -327,7 +327,7 @@ const DIVIDER_SPEED = 30 // cells/s
 
 export type DividerData = { color: number; active: boolean }
 
-function paintDivider({ cols, rows }: Size, t: number, d: DividerData): string {
+function paintDivider(cols: number, rows: number, t: number, d: DividerData): string {
   const s = t / 1000
   const c = new Cells(cols, rows)
   const base = scale(d.color, 0.3)
@@ -347,7 +347,7 @@ const UNDERLINE_SPEED = 18 // cells/s
 /** `tabs` are the cell widths of the tabs laid out left to right; `active` may be fractional (tweened) to slide between tabs. */
 export type UnderlineData = { tabs: number[]; active: number; color: number }
 
-function paintUnderline({ cols, rows }: Size, t: number, d: UnderlineData): string {
+function paintUnderline(cols: number, rows: number, t: number, d: UnderlineData): string {
   const s = t / 1000
   const c = new Cells(cols, rows)
   const y = rows - 1
@@ -375,7 +375,7 @@ function paintUnderline({ cols, rows }: Size, t: number, d: UnderlineData): stri
 /** One bar per row: `values` 0..1 (tweened), `colors` per bar, `labels` left-aligned. */
 export type MetersData = { values: number[]; colors: number[]; labels: string[] }
 
-function paintMeters({ cols, rows }: Size, t: number, d: MetersData): string {
+function paintMeters(cols: number, rows: number, t: number, d: MetersData): string {
   const s = t / 1000
   const c = new Cells(cols, rows)
   let lw = 0
@@ -403,7 +403,7 @@ function paintMeters({ cols, rows }: Size, t: number, d: MetersData): string {
 // ── public API ─────────────────────────────────────────────────────────────────
 
 export const hero = paintHero
-export const pipeline = paintPipeline as (size: Size, t: number, d: PipelineData) => string
+export const pipeline = paintPipeline
 export const progress = paintProgress
 export const spark = paintSpark
 export const orb = paintOrb

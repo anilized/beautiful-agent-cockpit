@@ -19,25 +19,25 @@ const meter = { values: [0.8, 0.35, 0.6], colors: [K.cyan, K.violet, K.green], l
 
 type Case = [name: string, rows: number, paint: (size: r.Size, t: number) => string]
 const cases: Case[] = [
-  ['hero', 4, (z, t) => r.hero(z, t, hdata)],
-  ['hero-offline', 4, (z, t) => r.hero(z, t, { ...hdata, online: false, alert: false })],
-  ['pipeline', 2, (z, t) => r.pipeline(z, t, { steps, phase: 3, fill: 0.4, failed: false, color: K.cyan })],
-  ['pipeline-failed', 2, (z, t) => r.pipeline(z, t, { steps, phase: 5, fill: 0.9, failed: true, color: K.cyan })],
-  ['pipeline-one', 2, (z, t) => r.pipeline(z, t, { steps: ['solo'], phase: 0, fill: 0, failed: false, color: K.cyan })],
-  ['pipeline-none', 2, (z, t) => r.pipeline(z, t, { steps: [], phase: 0, fill: 0, failed: false, color: K.cyan })],
-  ['progress', 1, (z, t) => r.progress(z, t, { frac: 0.75, live: true })],
-  ['progress-idle', 1, (z, t) => r.progress(z, t, { frac: 0, live: false })],
-  ['spark', 1, (z, t) => r.spark(z, t, { values, live: true })],
-  ['spark-3rows', 3, (z, t) => r.spark(z, t, { values, live: true })],
-  ['spark-empty', 1, (z, t) => r.spark(z, t, { values: [], live: false })],
-  ['orb', 2, (z, t) => r.orb(z, t, { color: K.violet, active: true, seed: 2 })],
-  ['orb-idle', 2, (z, t) => r.orb(z, t, { color: K.violet, active: false, seed: 0 })],
-  ['divider', 1, (z, t) => r.divider(z, t, { color: K.violet, active: true })],
-  ['divider-idle', 1, (z, t) => r.divider(z, t, { color: K.violet, active: false })],
-  ['underline', 1, (z, t) => r.underline(z, t, { tabs, active: 1.5, color: K.accent })],
-  ['underline-none', 1, (z, t) => r.underline(z, t, { tabs: [], active: 0, color: K.accent })],
-  ['meters', 3, (z, t) => r.meters(z, t, meter)],
-  ['meters-none', 3, (z, t) => r.meters(z, t, { values: [], colors: [], labels: [] })],
+  ['hero', 4, (z, t) => r.hero(z.cols, z.rows, t, hdata)],
+  ['hero-offline', 4, (z, t) => r.hero(z.cols, z.rows, t, { ...hdata, online: false, alert: false })],
+  ['pipeline', 2, (z, t) => r.pipeline(z.cols, z.rows, t, { steps, phase: 3, fill: 0.4, failed: false, color: K.cyan })],
+  ['pipeline-failed', 2, (z, t) => r.pipeline(z.cols, z.rows, t, { steps, phase: 5, fill: 0.9, failed: true, color: K.cyan })],
+  ['pipeline-one', 2, (z, t) => r.pipeline(z.cols, z.rows, t, { steps: ['solo'], phase: 0, fill: 0, failed: false, color: K.cyan })],
+  ['pipeline-none', 2, (z, t) => r.pipeline(z.cols, z.rows, t, { steps: [], phase: 0, fill: 0, failed: false, color: K.cyan })],
+  ['progress', 1, (z, t) => r.progress(z.cols, z.rows, t, { frac: 0.75, live: true })],
+  ['progress-idle', 1, (z, t) => r.progress(z.cols, z.rows, t, { frac: 0, live: false })],
+  ['spark', 1, (z, t) => r.spark(z.cols, z.rows, t, { values, live: true })],
+  ['spark-3rows', 3, (z, t) => r.spark(z.cols, z.rows, t, { values, live: true })],
+  ['spark-empty', 1, (z, t) => r.spark(z.cols, z.rows, t, { values: [], live: false })],
+  ['orb', 2, (z, t) => r.orb(z.cols, z.rows, t, { color: K.violet, active: true, seed: 2 })],
+  ['orb-idle', 2, (z, t) => r.orb(z.cols, z.rows, t, { color: K.violet, active: false, seed: 0 })],
+  ['divider', 1, (z, t) => r.divider(z.cols, z.rows, t, { color: K.violet, active: true })],
+  ['divider-idle', 1, (z, t) => r.divider(z.cols, z.rows, t, { color: K.violet, active: false })],
+  ['underline', 1, (z, t) => r.underline(z.cols, z.rows, t, { tabs, active: 1.5, color: K.accent })],
+  ['underline-none', 1, (z, t) => r.underline(z.cols, z.rows, t, { tabs: [], active: 0, color: K.accent })],
+  ['meters', 3, (z, t) => r.meters(z.cols, z.rows, t, meter)],
+  ['meters-none', 3, (z, t) => r.meters(z.cols, z.rows, t, { values: [], colors: [], labels: [] })],
 ]
 const COLS = [1, 2, 40, 60, 100, 140]
 
@@ -62,7 +62,7 @@ test('every painter returns exactly cols*rows*12 bytes at every width, determini
 
 test('orb paints any size, including 1x1 and 8x4', () => {
   for (const [cols, rows] of [[1, 1], [2, 1], [4, 2], [8, 4]] as const) {
-    const out = r.orb({ cols, rows }, 777, { color: K.cyan, active: true, seed: 1 })
+    const out = r.orb(cols, rows, 777, { color: K.cyan, active: true, seed: 1 })
     expect(decode(out).length).toBe(cols * rows * 12)
   }
 })
@@ -70,8 +70,8 @@ test('orb paints any size, including 1x1 and 8x4', () => {
 const pairCount = r.pairCount
 
 test('pairCount counts distinct fg/bg pairs', () => {
-  expect(pairCount(r.progress({ cols: 10, rows: 1 }, 0, { frac: 0, live: false }))).toBe(1)
-  expect(pairCount(r.hero({ cols: 100, rows: 4 }, 0, hdata))).toBeGreaterThan(20)
+  expect(pairCount(r.progress(10, 1, 0, { frac: 0, live: false }))).toBe(1)
+  expect(pairCount(r.hero(100, 4, 0, hdata))).toBeGreaterThan(20)
 })
 
 test('frame-rate independence: 16 ms and 33 ms clocks give identical frames at shared instants', () => {
@@ -96,13 +96,12 @@ test('frame-rate independence: 16 ms and 33 ms clocks give identical frames at s
 })
 
 test('animation depends on time: moving painters differ across a second, static ones do not', () => {
-  const z = (rows: number) => ({ cols: 100, rows })
-  expect(r.hero(z(4), 0, hdata)).not.toBe(r.hero(z(4), 400, hdata))
-  expect(r.divider(z(1), 0, { color: K.cyan, active: true })).not.toBe(r.divider(z(1), 400, { color: K.cyan, active: true }))
-  expect(r.divider(z(1), 0, { color: K.cyan, active: false })).toBe(r.divider(z(1), 400, { color: K.cyan, active: false }))
+  expect(r.hero(100, 4, 0, hdata)).not.toBe(r.hero(100, 4, 400, hdata))
+  expect(r.divider(100, 1, 0, { color: K.cyan, active: true })).not.toBe(r.divider(100, 1, 400, { color: K.cyan, active: true }))
+  expect(r.divider(100, 1, 0, { color: K.cyan, active: false })).toBe(r.divider(100, 1, 400, { color: K.cyan, active: false }))
   const u = { tabs, active: 1.5, color: K.accent }
-  expect(r.underline(z(1), 0, u)).not.toBe(r.underline(z(1), 400, u))
-  expect(r.progress(z(1), 0, { frac: 0.5, live: false })).toBe(r.progress(z(1), 400, { frac: 0.5, live: false }))
+  expect(r.underline(100, 1, 0, u)).not.toBe(r.underline(100, 1, 400, u))
+  expect(r.progress(100, 1, 0, { frac: 0.5, live: false })).toBe(r.progress(100, 1, 400, { frac: 0.5, live: false }))
 })
 
 test('<=512 distinct fg/bg pairs per frame at 140 columns', () => {
@@ -121,13 +120,13 @@ test('hero stays <=512 pairs over 200 timestamps, alert on/off, 4 and 6 rows', (
   let max = 0
   for (const alert of [true, false])
     for (const rows of [4, 6])
-      for (let i = 0; i < 200; i++) max = Math.max(max, pairCount(r.hero({ cols: 140, rows }, i * 997, { ...hdata, alert })))
+      for (let i = 0; i < 200; i++) max = Math.max(max, pairCount(r.hero(140, rows, i * 997, { ...hdata, alert })))
   expect(max).toBeLessThanOrEqual(512)
 })
 
 test('pipeline: integer phase drives glyphs, fractional fill only paints the connector', () => {
   const glyphs = (fill: number, failed = false) => {
-    const w = new Uint32Array(decode(r.pipeline({ cols: 100, rows: 2 }, 5000, { steps, phase: 3, fill, failed, color: K.cyan })).buffer)
+    const w = new Uint32Array(decode(r.pipeline(100, 2, 5000, { steps, phase: 3, fill, failed, color: K.cyan })).buffer)
     const row: number[] = []
     for (let x = 0; x < 100; x++) row.push(w[x * 3]!)
     return row.filter(ch => ch !== 0x20 && ch !== 0x2501 && ch !== 0x254c)
@@ -142,14 +141,14 @@ test('pipeline: integer phase drives glyphs, fractional fill only paints the con
 
 test('perf guard: all live painters at 140 columns stay well under the 4 ms budget (loose; tests/bench.ts is the real number)', () => {
   const paint = (t: number) => [
-    r.hero({ cols: 140, rows: 4 }, t, hdata),
-    r.pipeline({ cols: 70, rows: 2 }, t, { steps, phase: 3, fill: 0.5, failed: false, color: K.cyan }),
-    r.progress({ cols: 64, rows: 1 }, t, { frac: 0.75, live: true }),
-    r.spark({ cols: 61, rows: 1 }, t, { values, live: true }),
-    r.divider({ cols: 72, rows: 1 }, t, { color: K.cyan, active: true }),
-    r.underline({ cols: 70, rows: 1 }, t, { tabs, active: 1.4, color: K.accent }),
-    r.meters({ cols: 34, rows: 3 }, t, meter),
-    r.orb({ cols: 4, rows: 2 }, t, { color: K.violet, active: true, seed: 1 }),
+    r.hero(140, 4, t, hdata),
+    r.pipeline(70, 2, t, { steps, phase: 3, fill: 0.5, failed: false, color: K.cyan }),
+    r.progress(64, 1, t, { frac: 0.75, live: true }),
+    r.spark(61, 1, t, { values, live: true }),
+    r.divider(72, 1, t, { color: K.cyan, active: true }),
+    r.underline(70, 1, t, { tabs, active: 1.4, color: K.accent }),
+    r.meters(34, 3, t, meter),
+    r.orb(4, 2, t, { color: K.violet, active: true, seed: 1 }),
   ]
   for (let i = 0; i < 100; i++) paint(i * 16)
   const N = 300, t0 = performance.now()

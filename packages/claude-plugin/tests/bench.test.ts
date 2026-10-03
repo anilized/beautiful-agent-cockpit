@@ -17,14 +17,14 @@ const cyan = r.hex('#22d3ee')
 
 // The live fixture's mount at 140 columns (sizes as in scripts/bench.ts and tests/evidence/after/live-140.json).
 const paintAll = (t: number) => [
-  r.hero({ cols: 140, rows: 4 }, t, { online: true, left: 'opus ▸ codex ▸ workers', right: 'online :4317  00:00:00', alert: true }),
-  r.divider({ cols: 72, rows: 1 }, t, { color: cyan, active: true }),
-  r.pipeline({ cols: 70, rows: 2 }, t, { steps, phase: 3, fill: 0.5, failed: false, color: cyan }),
-  r.progress({ cols: 64, rows: 1 }, t, { frac: 0.75, live: true }),
-  r.spark({ cols: 61, rows: 1 }, t, { values, live: true }),
-  r.underline({ cols: 70, rows: 1 }, t, { tabs: [12, 12, 8], active: 1.4, color: cyan }),
-  r.meters({ cols: 34, rows: 3 }, t, { values: mv, colors: mv.map(() => cyan), labels: ['sup 3', 'lead 2', 'w0 1'] }),
-  ...[0, 1, 2].map(i => r.orb({ cols: 4, rows: 2 }, t, { color: cyan, active: true, seed: i })),
+  r.hero(140, 4, t, { online: true, left: 'opus ▸ codex ▸ workers', right: 'online :4317  00:00:00', alert: true }),
+  r.divider(72, 1, t, { color: cyan, active: true }),
+  r.pipeline(70, 2, t, { steps, phase: 3, fill: 0.5, failed: false, color: cyan }),
+  r.progress(64, 1, t, { frac: 0.75, live: true }),
+  r.spark(61, 1, t, { values, live: true }),
+  r.underline(70, 1, t, { tabs: [12, 12, 8], active: 1.4, color: cyan }),
+  r.meters(34, 3, t, { values: mv, colors: mv.map(() => cyan), labels: ['sup 3', 'lead 2', 'w0 1'] }),
+  ...[0, 1, 2].map(i => r.orb(4, 2, t, { color: cyan, active: true, seed: i })),
 ]
 
 test('bench: all live rasters at 140 columns paint in < 4 ms mean per frame', () => {

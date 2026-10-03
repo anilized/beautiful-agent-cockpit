@@ -22,14 +22,14 @@ const cyan = r.hex('#22d3ee')
 type Case = [name: string, paint: (f: number) => string]
 const ms = (f: number) => f * 16 // frame f at 16 ms
 const after: Case[] = [
-  ['hero 140x4', f => r.hero({ cols: 140, rows: 4 }, ms(f), { online: true, left: 'opus ▸ codex ▸ workers', right: 'online :4317  00:00:00', alert: true })],
-  ['divider 72x1', f => r.divider({ cols: 72, rows: 1 }, ms(f), { color: cyan, active: true })],
-  ['pipeline 70x2', f => r.pipeline({ cols: 70, rows: 2 }, ms(f), { steps, phase: 3, fill: 0.5, failed: false, color: cyan })],
-  ['progress 64x1', f => r.progress({ cols: 64, rows: 1 }, ms(f), { frac: 0.75, live: true })],
-  ['spark 61x1', f => r.spark({ cols: 61, rows: 1 }, ms(f), { values, live: true })],
-  ['underline 70x1', f => r.underline({ cols: 70, rows: 1 }, ms(f), { tabs: [12, 12, 8], active: 1.4, color: r.hex('#ff8a3d') })],
-  ['meters 34x3', f => r.meters({ cols: 34, rows: 3 }, ms(f), { values: mv, colors: mv.map(() => r.hex('#34d399')), labels: ['sup 3', 'lead 2', 'w0 1'] })],
-  ...(['sup', 'lead', 'w0'] as const).map((k, i): Case => [`orb-${k} 4x2`, f => r.orb({ cols: 4, rows: 2 }, ms(f), { color: r.hex('#a78bfa'), active: true, seed: i })]),
+  ['hero 140x4', f => r.hero(140, 4, ms(f), { online: true, left: 'opus ▸ codex ▸ workers', right: 'online :4317  00:00:00', alert: true })],
+  ['divider 72x1', f => r.divider(72, 1, ms(f), { color: cyan, active: true })],
+  ['pipeline 70x2', f => r.pipeline(70, 2, ms(f), { steps, phase: 3, fill: 0.5, failed: false, color: cyan })],
+  ['progress 64x1', f => r.progress(64, 1, ms(f), { frac: 0.75, live: true })],
+  ['spark 61x1', f => r.spark(61, 1, ms(f), { values, live: true })],
+  ['underline 70x1', f => r.underline(70, 1, ms(f), { tabs: [12, 12, 8], active: 1.4, color: r.hex('#ff8a3d') })],
+  ['meters 34x3', f => r.meters(34, 3, ms(f), { values: mv, colors: mv.map(() => r.hex('#34d399')), labels: ['sup 3', 'lead 2', 'w0 1'] })],
+  ...(['sup', 'lead', 'w0'] as const).map((k, i): Case => [`orb-${k} 4x2`, f => r.orb(4, 2, ms(f), { color: r.hex('#a78bfa'), active: true, seed: i })]),
 ]
 
 const stats = (xs: number[]) => {
