@@ -653,7 +653,7 @@ export const register: Register = on => {
     const dividerW = Math.max(1, centerW - 2)
     const divider = (
       <Box paddingX={1}>
-        {raster('divider', dividerW, 1, live, t => paint.divider(dividerW, 1, t, { color: paint.hex(runColor), active: live }), <Text color={C.borderDim}>{'─'.repeat(dividerW)}</Text>)}
+        {raster('divider', dividerW, 1, live, t => paint.divider(dividerW, 1, t, { color: paint.hex(runAttention ? C.yellow : runColor), active: live || runAttention }), <Text color={C.borderDim}>{'─'.repeat(dividerW)}</Text>)}
       </Box>
     )
 
@@ -841,7 +841,7 @@ export const register: Register = on => {
         <Text color={C.borderDim}>{'▔'.repeat(Math.max(0, inner - used))}</Text>
       </Text>
     )
-    const underline = raster('underline', inner, 1, easing('tab'), t => paint.underline(inner, 1, t, { tabs: tabW, active: tabE(t), color: K.accent }), underlineText)
+    const underline = raster('tab-underline', inner, 1, easing('tab'), t => paint.underline(inner, 1, t, { tabs: tabW, active: tabE(t), color: K.accent }), underlineText)
 
     const work = (
       <Box flexDirection="column" borderStyle="round" borderColor={C.border} paddingX={1} flexGrow={1}>
