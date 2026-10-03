@@ -518,7 +518,7 @@ export const register: Register = on => {
       left: chain,
       right: `${online ? `online :${s!.daemon.port}` : 'offline'}  ${clock}`,
     })
-    const hero = raster('hero', cols, 4, 'A', t => paint.hero({ cols, rows: 4 }, t, heroInfo()), (
+    const hero = raster('hero', cols, 4, 'A', t => paint.hero(cols, 4, t, heroInfo()), (
       <Box justifyContent="space-between" paddingX={1}>
         <Text bold>{[...'◆ AGENT COCKPIT'].map((ch, i) => <Text color={gradient(LOGO_GRADIENT, i / 22 - n / 40)}>{ch}</Text>)}</Text>
         <Text color={C.mute}>{online ? '● online' : '○ offline'}  {clock}</Text>
@@ -698,7 +698,7 @@ export const register: Register = on => {
     const dividerW = Math.max(1, centerW - 2)
     const divider = (
       <Box paddingX={1}>
-        {raster('divider', dividerW, 1, 'B', t => paint.divider({ cols: dividerW, rows: 1 }, t, { color: paint.hex(runColor), active: live }), <Text color={C.borderDim}>{'─'.repeat(dividerW)}</Text>)}
+        {raster('divider', dividerW, 1, 'B', t => paint.divider(dividerW, 1, t, { color: paint.hex(runColor), active: live }), <Text color={C.borderDim}>{'─'.repeat(dividerW)}</Text>)}
       </Box>
     )
 
@@ -736,16 +736,16 @@ export const register: Register = on => {
         color={runAttention ? pulse(n, C.yellow, C.yellowDeep, 0.35) : live ? pulse(n, C.violetDeep, C.border, 0.2) : C.border}
       >
         <Text> </Text>
-        {raster('pipeline', inner, 2, 'A', t => paint.pipeline({ cols: inner, rows: 2 }, t, { steps: stepNames, phase, fill: fillE(t), failed, color: paint.hex(runColor) }), textStepper)}
+        {raster('pipeline', inner, 2, 'A', t => paint.pipeline(inner, 2, t, { steps: stepNames, phase, fill: fillE(t), failed, color: paint.hex(runColor) }), textStepper)}
         <Text> </Text>
         <Box>
-          {raster('progress', barW, 1, 'B', t => paint.progress({ cols: barW, rows: 1 }, t, { frac: fracE(t), live }), <Text color={C.cyan}>{'█'.repeat(Math.round(fracE(anim) * barW))}</Text>)}
+          {raster('progress', barW, 1, 'B', t => paint.progress(barW, 1, t, { frac: fracE(t), live }), <Text color={C.cyan}>{'█'.repeat(Math.round(fracE(anim) * barW))}</Text>)}
           <Text color={C.ink} bold> {String(pct).padStart(3)}%</Text>
         </Box>
         {times.length > 1 && RasterEl ? (
           <Box>
             <Text color={C.dim}>activity </Text>
-            {raster('spark', sparkW, 1, 'B', t => paint.spark({ cols: sparkW, rows: 1 }, t, { values: bucketE.map(f => f(t)), live }))}
+            {raster('spark', sparkW, 1, 'B', t => paint.spark(sparkW, 1, t, { values: bucketE.map(f => f(t)), live }))}
           </Box>
         ) : null}
       </Card>
@@ -885,7 +885,7 @@ export const register: Register = on => {
         <Text color={C.borderDim}>{'▔'.repeat(Math.max(0, inner - used))}</Text>
       </Text>
     )
-    const underline = raster('underline', inner, 1, 'B', t => paint.underline({ cols: inner, rows: 1 }, t, { tabs: tabW, active: tabE(t), color: K.accent }), underlineText)
+    const underline = raster('underline', inner, 1, 'B', t => paint.underline(inner, 1, t, { tabs: tabW, active: tabE(t), color: K.accent }), underlineText)
 
     const work = (
       <Box flexDirection="column" borderStyle="round" borderColor={C.border} paddingX={1} flexGrow={1}>
@@ -927,7 +927,7 @@ export const register: Register = on => {
       const active = state !== 'idle'
       return (
         <Box gap={1}>
-          {raster(`orb-${id}`, 4, 2, 'B', t => paint.orb({ cols: 4, rows: 2 }, t, { color: paint.hex(color), active, seed }), <Text color={active ? pulse(n, color, C.white, 0.4) : C.faint}>◉</Text>)}
+          {raster(`orb-${id}`, 4, 2, 'B', t => paint.orb(4, 2, t, { color: paint.hex(color), active, seed }), <Text color={active ? pulse(n, color, C.white, 0.4) : C.faint}>◉</Text>)}
           <Box flexDirection="column" flexShrink={1}>
             <Text wrap="truncate-end"><Text color={C.ink} bold>{name}</Text><Text color={C.dim}>  {role}</Text></Text>
             <Text color={active ? color : C.dim} wrap="truncate-end">{active ? `${SPIN[(n + seed) % SPIN.length]} ` : ''}{state}</Text>
@@ -998,7 +998,7 @@ export const register: Register = on => {
         </Text>
       )
     })
-    const meterBars = byAgent.length && RasterEl ? raster('meters', Math.max(1, sideCols - 4), byAgent.length, 'B', t => paint.meters({ cols: Math.max(1, sideCols - 4), rows: byAgent.length }, t, {
+    const meterBars = byAgent.length && RasterEl ? raster('meters', Math.max(1, sideCols - 4), byAgent.length, 'B', t => paint.meters(Math.max(1, sideCols - 4), byAgent.length, t, {
       values: meterE.map(f => f(t)), colors: byAgent.map((_, i) => meterColors[i % meterColors.length]!), labels: byAgent.map(a => `${a.agentId.slice(0, 7)} ${a.calls}`),
     })) : meterFall
     const meter = (
