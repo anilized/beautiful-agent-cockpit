@@ -505,7 +505,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const n = Math.floor(anim / TICK_MS) // text beat: derived from animation time, so it stops with it
     const s = v.snapshot
     const cols = Math.max(40, e.props.bodyColumns ?? e.viewport?.columns ?? 100)
-    const rows = e.props.scroll?.bodyRows ?? e.viewport?.rows ?? 40
+    const rows = Math.max(e.props.scroll?.bodyRows ?? 0, (e.viewport?.rows ?? 40) - 8)
     const online = !!s && s.daemon.port !== null
     const specs = new Map<string, RasterSpec>()
 
@@ -1118,7 +1118,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       // Newest first (top down): fill from the newest entry back until the room runs out; each kind has a line budget.
       const width = Math.max(20, inner - 14)
       const chipCols = minds.reduce((a, m) => a + `${m.agentId}·${m.role}${m.task ? ` ${m.task}` : ''}`.length + 4, minds.length > 1 ? 24 : 0)
-      const budget = Math.max(3, room - Math.ceil(chipCols / Math.max(20, inner)) - 2)
+      const budget = Math.max(room - Math.ceil(chipCols / Math.max(20, inner)) - 2, 400)
       const cap = { thinking: 4, text: 6, tool: 1 } as const
       const entryId = (e: CockpitMind['activity'][number]) => `mind-${followed.sessionId}-${e.ts}-${e.kind}-${e.text.length}`
       const shown: { e: CockpitMind['activity'][number]; lines: number }[] = []
@@ -1189,7 +1189,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       let used = 0
       for (const ev of [...run.recentEvents].reverse()) {
         const h = 1 + (isOpen(evId(ev)) ? wrapped(ev.detail ?? ev.text, bodyW - 8) : 0)
-        if (used > 0 && used + h > room) break
+        if (used > 0 && used + h > Math.max(room, 400)) break
         evs.push(ev)
         used += h
       }
@@ -1230,13 +1230,13 @@ async function drawPane($: EngineInterface, e: PaneRender) {
             let used = 0
             const fit = tasks.filter(t => {
               const h = 1 + (t.blockedReason ? 1 : 0) + (isOpen(`task-${t.key}`) ? taskLines(t) + 1 : 0)
-              if (used > 0 && used + h > room - 1) return false
+              if (used > 0 && used + h > Math.max(room - 1, 400)) return false
               used += h
               return true
             })
             return [
               ...fit.map(t => <TaskRow t={t} />),
-              fit.length < tasks.length ? <Text color={C.dim}>   … {tasks.length - fit.length} more (close an open task to see them)</Text> : null,
+              fit.length < tasks.length ? <Text color={C.dim}>   … {tasks.length - fit.length} more</Text> : null,
             ]
           })()}
         </Box>
