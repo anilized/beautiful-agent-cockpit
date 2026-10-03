@@ -5,7 +5,7 @@ import type { CockpitApproval, CockpitMind, CockpitRun, CockpitSnapshot, Cockpit
 import * as paint from './raster'
 import { COCKPIT_ROOT } from './root'
 import { createScheduler, makeClock, type RasterScheduler, type RasterSpec } from './scheduler'
-import { C, K, LOGO_GRADIENT } from './theme'
+import { C, K, LOGO_GRADIENT, onTheme, useTheme } from './theme'
 import { createTweens, type Tweens } from './tween'
 
 // Presentation only: the orchestrator owns all workflow state. This mod reads the
@@ -21,13 +21,15 @@ const tickAtom = atom({ plugin: 'agent-cockpit', key: 'tick' } as const, 0)
 
 // ── palette ──────────────────────────────────────────────────────────────────
 
-const STATUS_COLOR: Record<string, string> = {
+// Built from the palette, and rebuilt when the theme switches.
+const STATUS_COLOR: Record<string, string> = {}
+onTheme(() => Object.assign(STATUS_COLOR, {
   running: C.cyan, needs_input: C.yellow, validating: C.blue, in_review: C.violet, changes_requested: C.yellow,
   lease_conflict: C.red, approved: C.green, integrated: C.green, escalated: C.yellow, failed: C.red, cancelled: C.dim,
   pending: C.dim, ready: C.text, created: C.mute, architecting: C.violet, proposing: C.violet, deciding: C.violet,
   planning: C.blue, executing: C.cyan, integrating: C.cyan, merging: C.green, awaiting_approval: C.yellow,
   awaiting_human_decision: C.yellow, completed: C.green, rejected: C.red, passed: C.green, started: C.cyan,
-}
+}))
 const ICON: Record<string, string> = {
   pending: '·', ready: '○', needs_input: '?', in_review: '◎', changes_requested: '↺', lease_conflict: '⚠',
   approved: '✓', integrated: '✓', escalated: '⇧', failed: '✗', cancelled: '–', passed: '✓', completed: '✓', rejected: '✗',
@@ -145,7 +147,8 @@ const DOING: Record<string, string> = {
   LeadReview: 'reviewing the work', LeadLeaseDecision: 'settling a file conflict', LeadIntegrationResult: 'resolving merge conflicts',
   SupervisorValidation: 'validating the result', SupervisorRevision: 'revising the direction',
 }
-const ROLE_COLOR: Record<string, string> = { supervisor: C.violet, lead: C.cyan, worker: C.green }
+const ROLE_COLOR: Record<string, string> = {}
+onTheme(() => Object.assign(ROLE_COLOR, { supervisor: C.violet, lead: C.cyan, worker: C.orange }))
 // A tool's argument on one line: a heredoc shows its first line, a path inside a task worktree its repo-relative part.
 const toolDetail = (detail: string) => {
   const lines = detail.split('\n')
@@ -184,6 +187,7 @@ const STALE_MS = 1500 // the host has no unmount event: no render for longer tha
 
 async function createLife($: EngineInterface): Promise<Life> {
   const reduced = (await $.env.get('COCKPIT_REDUCED_MOTION')) === '1'
+  useTheme(await $.env.get('COCKPIT_THEME')) // phosphor unless COCKPIT_THEME=neon
   const wall = await $.clock.now()
   const clock = makeClock({ fetch: () => $.clock.now() })
   if (reduced) clock.freeze(true)
