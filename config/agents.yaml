@@ -1,0 +1,45 @@
+# Roles are bound to agent profiles here, never to model names in code.
+hierarchy:
+  supervisor: opus          # architecture, decisions, final validation
+  lead: codex               # decomposition, routing, review, integration
+
+agents:
+  - id: opus
+    adapter: claude
+    model: opus
+    roles: [supervisor]
+    capabilities: { reasoningDepth: high, costTier: high, latencyTier: high, maxContextTokens: 1000000 }
+
+  - id: codex
+    adapter: codex
+    model: null               # null = the model configured in ~/.codex/config.toml
+    roles: [lead]
+    capabilities: { reasoningDepth: high, costTier: medium, latencyTier: medium }
+    options:
+      # binary: C:\path\to\codex.exe   # auto-discovered (PATH, then the desktop app bundle)
+      writeSandbox: workspace-write    # used only when resolving integration conflicts
+
+  - id: sonnet
+    adapter: claude
+    model: sonnet
+    roles: [worker]
+    specialties: ["*"]
+    maxConcurrent: 4
+    capabilities: { reasoningDepth: high, costTier: medium, latencyTier: medium }
+
+  # Examples of additional workers. Enable to let the router use them.
+  - id: haiku
+    adapter: claude
+    model: haiku
+    roles: [worker]
+    specialties: [documentation, research]
+    enabled: false
+    capabilities: { reasoningDepth: low, costTier: low, latencyTier: low }
+
+  - id: codex-worker
+    adapter: codex
+    model: null
+    roles: [worker]
+    specialties: ["*"]
+    enabled: false
+    capabilities: { reasoningDepth: high, costTier: medium, latencyTier: medium }

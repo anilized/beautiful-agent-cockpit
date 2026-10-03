@@ -1,0 +1,14 @@
+# The Lead assigns task metadata; the router turns it into a worker choice.
+# The Supervisor may switch the strategy for a run (prefer_quality / prefer_cost / prefer_speed).
+strategy: balanced
+fallback: [sonnet]
+rules:
+  - name: high-risk-needs-depth
+    when: { risk: [high] }
+    requireReasoningDepth: high
+  - name: cheap-docs
+    when: { kind: [docs, research] }
+    prefer: [haiku, sonnet]
+  - name: codex-for-refactors
+    when: { kind: [refactor, performance] }
+    prefer: [codex-worker, sonnet]

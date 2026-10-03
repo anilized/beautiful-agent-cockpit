@@ -1,0 +1,6 @@
+{
+  "name": "agent-cockpit",
+  "version": "0.1.0",
+  "description": "Cockpit for the hierarchical multi-agent orchestrator: leadership, tasks, workers, conflicts, tests, approvals, telemetry",
+  "types": "./types/index.d.ts"
+}

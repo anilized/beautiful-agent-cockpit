@@ -1,0 +1,17 @@
+# Engine settings. Everything here is safe to change without code changes.
+# dataDir: ~/.agent-cockpit           # SQLite DB, worktrees, traces, snapshot (env COCKPIT_DATA_DIR)
+maxParallelTasks: 4
+review:
+  maxIterations: 3                   # Worker -> Codex review loop before escalating to Opus
+decisions:
+  maxRounds: 2                       # Codex <-> Opus proposal rounds before planning
+validation:
+  maxRevisions: 1                    # Opus "revise" rounds before presenting to the human
+agentTimeoutMs: 2700000
+testTimeoutMs: 900000
+finalMerge: merge                    # merge | branch (leave the integration branch for the human)
+telemetry:
+  fileExport: true                   # <dataDir>/traces/spans-*.jsonl
+  otlpEndpoint: null                 # e.g. http://localhost:4318/v1/traces (Tempo / Jaeger)
+transport:
+  port: 0                            # 0 = random free port, published in <dataDir>/daemon.json

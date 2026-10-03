@@ -1,0 +1,33 @@
+# Operations that always require explicit human approval.
+requireApproval:
+  - merge_protected
+  - protected_push
+  - production
+  - destructive_migration
+  - secret_access
+  - cloud_infrastructure
+  - destructive_shell
+  - external_side_effect
+
+protectedBranches: [main, master, "release/*", production]
+
+# Extra regexes (case-insensitive) classifying commands the orchestrator would run.
+classifiers:
+  production: ['\bprod(uction)?\b.*\b(migrate|deploy|seed)\b']
+
+# Tool policy for workers that edit code (Claude workers run with --permission-mode acceptEdits).
+worker:
+  allowedTools: [Read, Edit, Write, Glob, Grep, Bash]
+  disallowedTools:
+    - "Bash(git push:*)"
+    - "Bash(git commit:*)"
+    - "Bash(git checkout:*)"
+    - "Bash(git switch:*)"
+    - "Bash(git reset:*)"
+    - "Bash(git rebase:*)"
+    - "Bash(git merge:*)"
+    - "Bash(git worktree:*)"
+    - "Bash(rm -rf:*)"
+    - "Bash(npm publish:*)"
+    - "Bash(terraform:*)"
+    - "Bash(kubectl:*)"
