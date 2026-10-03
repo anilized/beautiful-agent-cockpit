@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 const pkg = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const ev = join(pkg, 'tests', 'evidence')
 const DFLT = 0x01000000
+const LATER = [500, 1056]
 
 function harness(baseline: boolean): string[] {
   const tmp = mkdtempSync(join(tmpdir(), 'cockpit-capture-'))
@@ -32,9 +33,9 @@ function harness(baseline: boolean): string[] {
 type Dump = { key: string; columns: number; rows: number; props: Record<string, unknown>; cells: number[][][]; base64: string }
 
 // Parses the CAP<cols>| lines of the `live` scenario into rasters.
-function parse(lines: string[], cols: number): Dump[] {
+function parse(lines: string[], cols: number, t = 0): Dump[] {
   const mine = lines.filter(l => l.startsWith(`CAP${cols}|`)).map(l => l.slice(l.indexOf('|') + 1))
-  const start = mine.findIndex(l => l.startsWith('=== live @'))
+  const start = mine.findIndex(l => l.startsWith('=== live @') && l.includes(`(mock t=${t})`))
   const end = mine.findIndex((l, i) => i > start && l.startsWith('=== '))
   const live = mine.slice(start, end < 0 ? undefined : end)
   const out: Dump[] = []
@@ -77,8 +78,10 @@ for (const [label, baseline] of [['before', true], ['after', false]] as const) {
   for (const cols of [60, 140]) {
     const ds = parse(lines, cols)
     if (!ds.length) throw new Error(`no rasters captured for ${label} @ ${cols}`)
-    writeFileSync(join(dir, `live-${cols}.txt`), grid(label, cols, ds) + '\n')
-    writeFileSync(join(dir, `live-${cols}.json`), JSON.stringify({ scenario: 'live', label, columns: cols, note: 'cells[row][col] = [codepoint, fg, bg]; 0x01000000 = default colour', rasters: ds.map(({ cells, ...d }) => ({ ...d, cells })) }) + '\n')
+    // Later mock times (after only) show motion; before/ stays t=0.
+    const later = label === 'after' ? LATER.map(t => ({ t, ds: parse(lines, cols, t) })).filter(x => x.ds.length) : []
+    writeFileSync(join(dir, `live-${cols}.txt`), [grid(label, cols, ds), ...later.map(x => grid(label, cols, x.ds).replace('harness mock t=0', `harness mock t=${x.t}`))].join('\n') + '\n')
+    writeFileSync(join(dir, `live-${cols}.json`), JSON.stringify({ scenario: 'live', label, columns: cols, note: 'cells[row][col] = [codepoint, fg, bg]; 0x01000000 = default colour', rasters: ds.map(({ cells, ...d }) => ({ ...d, cells })), ...(later.length ? { later: later.map(x => ({ t: x.t, rasters: x.ds })) } : {}) }) + '\n')
     console.log(`wrote tests/evidence/${label}/live-${cols}.txt and .json: ${ds.map(d => `${d.key}(${d.columns}x${d.rows},${pairsOf(d)} pairs)`).join(' ')}`)
   }
 }
