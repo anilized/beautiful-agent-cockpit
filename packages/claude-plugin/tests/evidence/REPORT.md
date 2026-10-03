@@ -1,4 +1,365 @@
-# TASK-101 evidence: host limits, baseline, interface agreements
+# TASK-205 evidence: benchmark, before/after dumps, validation run, criteria-to-proof
+
+**Status: validation evidence only. Nothing ships.** Default `COCKPIT_CADENCE` stays `'conservative'`. Gate 0 is PENDING (section 5).
+
+## 0. Environment for every number below: ALL NUMBERS PROVISIONAL
+| Item | Value |
+|---|---|
+| Node | v22.14.0 (bench/capture scripts use `--experimental-transform-types`) |
+| OS / CPU | Windows 11 Pro 10.0.26200 (win32/x64), AMD Ryzen 7 7800X3D 8-core (16 threads), 64 GiB |
+| Engine | Claude Code 2.1.286 (`claude plugin test`) |
+| Mock clock | `mock.clock(on)` from `claude-code/testing`; blit-rate window = 10 s after 1 s settle; bench uses real `performance.now()`, frame f = f x 16 ms |
+| COCKPIT_CADENCE | unset => `conservative` (default) everywhere except the explicitly labelled `full` supplemental row in 2.3 |
+| COCKPIT_TRACE | unset (off) everywhere, except the probe run in 4.5 (`COCKPIT_TRACE=1`) |
+| COCKPIT_REDUCED_MOTION | unset, except the labelled reduced-motion row in 2.3 |
+| Terminal | none. No live terminal exists in this session. |
+
+All timings are harness/Node numbers on one dev machine, one run each: PROVISIONAL, not a host measurement.
+
+## 1. Tooling notes
+- `run` skill loaded. No project skill under `.claude/skills` launches this app. The TUI recipe needs `tmux` (not installed on Windows) and the pane is a mod inside an interactive Claude Code session; this session is non-interactive. **No real terminal screenshot was possible.** The dumps in section 3 are decoded Raster cells from the test harness at mock t=0, not terminal paints.
+- Typecheck needs `CLAUDE_CODE_DTS=D:/Claude/agent-cockpit/packages/claude-plugin/.claude/types/claude-code.d.ts` (the gitignored engine types) and finds tsc via the main checkout. Root runs used a temporary `node_modules` junction to the main checkout, removed afterwards.
+- Raw outputs below have ANSI colour codes stripped and are otherwise unedited.
+
+## 2. Numbers
+### 2.1 Paint bench at 140 columns (2000 frames after 300 warm-up; `npm run bench`, full raw output in 4.3)
+Rasters are the 10 that register.tsx mounts for the LIVE fixture at 140 cols (sizes from `after/live-140.json`).
+
+| Painter | mean ms | p95 ms | max ms |
+|---|---|---|---|
+| hero 140x4 | 0.120 | 0.163 | 0.347 |
+| divider 72x1 | 0.002 | 0.003 | 0.099 |
+| pipeline 70x2 | 0.004 | 0.005 | 0.098 |
+| progress 64x1 | 0.003 | 0.004 | 0.100 |
+| spark 61x1 | 0.003 | 0.004 | 0.066 |
+| underline 70x1 | 0.004 | 0.007 | 0.118 |
+| meters 34x3 | 0.003 | 0.004 | 0.115 |
+| orb-sup / orb-lead / orb-w0 4x2 | 0.001 | 0.001-0.002 | 0.007-0.099 |
+| **COMBINED (AFTER, 10 rasters)** | **0.143** | **0.190** | **0.367** |
+| **COMBINED (BEFORE, baseline, 7 rasters)** | **0.267** | **0.342** | **1.605** |
+
+Budget < 4 ms: PASS with ~28x margin. The earlier 0.28 ms baseline figure is consistent (0.267 ms here). Inside the `claude plugin test` runtime the same paint set measures about 1.2 ms/frame (tests/bench.test.ts, 1529-1596 ms for 1300 frames, includes a JS base64 shim): still < 4 ms but with a 3x margin, not 28x.
+
+### 2.2 Pre-change baseline
+112 blits/s = 16/s x 7 keys (TASK-101 appendix, "Baseline"; also `tests/evidence/before-bench.txt`).
+
+### 2.3 Blit rate, LIVE fixture at 140 columns (`npm run blitrate`, mock clock, 10 s window)
+```text
+blit-rate: mock clock, 10 s window after 1 s settle, 140 columns, baseline before this work = 112 blits/s (16/s x 7 keys)
+live {"COCKPIT_CADENCE":"conservative"}: total 54/s (48% of 112) per key {"orb-lead":3.6,"hero":12.8,"orb-w0":3.6,"pipeline":12.8,"meters":3.6,"divider":3.6,"progress":3.5,"spark":3.5,"underline":3.5,"orb-sup":3.5}
+live {"COCKPIT_CADENCE":"full"}: total 83.4/s (74% of 112) per key {"pipeline":20.9,"underline":5.3,"orb-sup":5.2,"hero":20.8,"orb-lead":5.2,"orb-w0":5.2,"meters":5.2,"divider":5.2,"progress":5.2,"spark":5.2}
+offline {"COCKPIT_CADENCE":"conservative"}: total 2/s (2% of 112) per key {"hero":2}
+live {"COCKPIT_CADENCE":"conservative","COCKPIT_REDUCED_MOTION":"1"}: total 2/s (2% of 112) per key {"hero":2}
+```
+- Conservative: **54 blits/s total (48% of 112)**, within the 60 budget. Per key: hero 12.8, pipeline 12.8, the other eight 3.5-3.6.
+- Hero/pipeline reach about 13/s, not the 30/s Tier A cap: the 60/s total is shared with eight slower keys. Observation, not a defect.
+- The `full` row is supplemental only (not the default): 83.4/s.
+- Offline and reduced motion: 2/s, hero only.
+
+## 3. Before/after decoded cell dumps (LIVE fixture, harness mock t=0)
+Produced by `npm run capture` (scripts/capture.ts). BEFORE = baseline register+raster compiled only in a scratch dir; AFTER = current hooks.
+| | 60 cols | 140 cols |
+|---|---|---|
+| before | `before/live-60.txt`, `.json` (7 rasters) | `before/live-140.txt`, `.json` (7 rasters) |
+| after | `after/live-60.txt`, `.json` (10 rasters) | `after/live-140.txt`, `.json` (10 rasters) |
+
+`.txt` = per raster: char grid plus fg and bg hex grids per row. `.json` = `cells[row][col] = [codepoint, fg, bg]` plus the base64 payload and props. Distinct colour pairs, before -> after, 140 cols: hero 458 -> 146, progress 49 -> 11, pipeline 19 -> 17, spark 2 -> 2; new rasters divider 1, underline 2, meters 22 (all < 512 per raster).
+
+## 4. Raw validation output
+### 4.1 plugin typecheck (`npm --prefix packages/claude-plugin run typecheck`)
+```text
+
+> @cockpit/claude-plugin@0.1.0 typecheck
+> node tests/tools.mjs typecheck
+
+exit=0
+```
+
+### 4.2 plugin test (`npm --prefix packages/claude-plugin test`)
+```text
+
+> @cockpit/claude-plugin@0.1.0 test
+> node tests/tools.mjs palette && claude plugin test .
+
+PROBE rasters@60 = {"count":10,"keys":["hero:60x4","divider:58x1","pipeline:56x2","progress:50x1","spark:47x1","underline:56x1","orb-sup:4x2","orb-lead:4x2","orb-w0:4x2","meters:56x3"]}
+PROBE max serialized blit bytes per key @60 = {"perKey":{"hero":3893,"pipeline":1849,"divider":984,"progress":857,"spark":806,"underline":954,"orb-sup":184,"orb-lead":185,"orb-w0":183,"meters":2743},"worstKey":3893,"perFrameSum":12638}
+PROBE 1s mock, instant blits @60 = {"blitsPerSec":53,"perKey":{"hero":12,"pipeline":12,"divider":4,"progress":4,"spark":4,"underline":4,"orb-sup":4,"orb-lead":3,"orb-w0":3,"meters":3},"maxInflight":1,"harnessElapsedMsFor1s":191.8}
+PROBE press latency ms @60 (instant blits) = {"p50":7.47,"p95":13.01,"max":14.74}
+PROBE slow host (500ms/blit) 1s @60 = {"started":20,"maxInflight":10,"inflightAtEnd":10}
+PROBE press with 10 blits pending @60 (harness ms) = 9.33
+PROBE rasters@140 = {"count":10,"keys":["hero:140x4","divider:72x1","pipeline:70x2","progress:64x1","spark:61x1","underline:70x1","orb-sup:4x2","orb-lead:4x2","orb-w0:4x2","meters:34x3"]}
+PROBE max serialized blit bytes per key @140 = {"perKey":{"hero":9013,"pipeline":2297,"divider":1208,"progress":1081,"spark":1030,"underline":1178,"orb-sup":184,"orb-lead":185,"orb-w0":183,"meters":1687},"worstKey":9013,"perFrameSum":18046}
+PROBE 1s mock, instant blits @140 = {"blitsPerSec":53,"perKey":{"hero":12,"pipeline":12,"divider":4,"progress":4,"spark":4,"underline":4,"orb-sup":4,"orb-lead":3,"orb-w0":3,"meters":3},"maxInflight":1,"harnessElapsedMsFor1s":113.7}
+PROBE press latency ms @140 (instant blits) = {"p50":5.87,"p95":7.48,"max":7.96}
+
+tests\bench.test.ts:
+(pass) bench: all live rasters at 140 columns paint in < 4 ms mean per frame [1528.81ms]
+PROBE slow host (500ms/blit) 1s @140 = {"started":20,"maxInflight":10,"inflightAtEnd":10}
+PROBE press with 10 blits pending @140 (harness ms) = 7.79
+PROBE hero blits during 500ms with deny, then 500ms accepting = {"duringDeny":4,"total":9,"note":"a deny drops the key, but the next 125 ms text render re-registers it: stale-deny guard needed"}
+PROBE blits in 500ms after ui.unmount (all denied only by a real host) = {"blits":27,"uiCloseEvents":[]}
+PROBE blits in 500ms after session.end = 0
+
+tests\host-probe.test.tsx:
+(pass) blit cadence, backpressure and latency @60 cols (current code) [573.61ms]
+(pass) unresolved blits pile up @60 cols (current code has no backpressure) [657.93ms]
+(pass) blit cadence, backpressure and latency @140 cols (current code) [301.33ms]
+(pass) unresolved blits pile up @140 cols (current code has no backpressure) [587.37ms]
+(pass) deny semantics: current code unregisters on any deny, stale or not [149.91ms]
+(pass) lifecycle: what the plugin hears when the drawing or session goes away (current code) [94.76ms]
+
+tests\layout.test.tsx:
+(pass) width() counts wide characters as two cells [2.19ms]
+(pass) no Text line exceeds bodyColumns: live, terminal and desktop, 60/100/140 [499.96ms]
+(pass) no Text line exceeds bodyColumns: offline, terminal and desktop, 60/100/140 [113.52ms]
+
+tests\limits.test.ts:
+(pass) resolveCadence: unset, invalid and valid COCKPIT_CADENCE [2.18ms]
+(pass) trace off: record is a no-op and dump is empty [0.32ms]
+(pass) trace on: fixed-size per-key ring wraps and keeps the newest events [0.61ms]
+(pass) HOST_LIMITS: every field tagged, documented fields cited [1.39ms]
+
+tests\motion.test.tsx:
+(pass) live @140 conservative: <=60 blits/s total, Tier A <=30 fps each, text tick <=10 fps [1029.02ms]
+(pass) a host that never resolves: at most one blit in flight per key [2369.70ms]
+(pass) zero blits after session.end [103.48ms]
+(pass) a key that leaves the render is not blitted from the next tick [143.82ms]
+(pass) idle (offline): <=2 blits/s in total, text tick <=1 fps [216.73ms]
+(pass) idle (no active run): <=2 blits/s in total, text tick <=1 fps [245.11ms]
+(pass) COCKPIT_REDUCED_MOTION=1: animation time frozen, status changes still render [135.64ms]
+(pass) progress eases between snapshots of one run, snaps on a run switch [490.99ms]
+(pass) tweens snap on remount (no host unmount event: a render gap past the idle beat resets them) [247.05ms]
+
+tests\pane.test.tsx:
+(pass) pane draws offline at every width [218.20ms]
+(pass) pane draws live at every width [515.92ms]
+(pass) a refused launch shows a failure card with the fix [96.66ms]
+
+tests\raster.test.ts:
+(pass) every painter returns exactly cols*rows*12 bytes at every width, deterministically [54.33ms]
+(pass) orb paints any size, including 1x1 and 8x4 [0.56ms]
+(pass) frame-rate independence: 16 ms and 33 ms clocks give identical frames at shared instants [556.66ms]
+(pass) animation depends on time: moving painters differ across a second, static ones do not [2.32ms]
+(pass) <=512 distinct fg/bg pairs per frame at 140 columns [25.59ms]
+(pass) hero stays <=512 pairs over 200 timestamps, alert on/off, 4 and 6 rows [847.37ms]
+(pass) pipeline: integer phase drives glyphs, fractional fill only paints the connector [0.84ms]
+
+tests\scheduler.test.ts:
+(pass) (a) never-resolving host: in-flight <=1 per key over 5 s, skipped not queued [6.91ms]
+(pass) deny still unregisters the key [0.71ms]
+(pass) (b) zero blits after close and after end [1.76ms]
+(pass) (c) dropped key is not blitted from the next tick [2.48ms]
+(pass) (d) timer stops when there are no live keys [0.44ms]
+(pass) (e) 140-col live set for 10 s: <=60 blits/s total, Tier A <=30 fps, far below 112 [13.70ms]
+(pass) (f) watchdog: refused period kills the interval, re-arm, late old-gen resolve ignored [0.93ms]
+(pass) (g) stale deny does not unregister the replacement [0.58ms]
+(pass) (h) degrade halves Tier A and restores after 2 s healthy [1.41ms]
+(pass) (i) idle: <=2 fps per key with motion off, back to frame rate on motion [1.44ms]
+(pass) idle: every one of 10 keys paints within ~1 s of mounting with motion off [0.84ms]
+(pass) deny unregisters even after an unrelated generation bump [0.34ms]
+(pass) a blit pending past the stall age is aborted so the key can paint again [1.87ms]
+(pass) panes() polling: <=1 Hz, only idle or degraded, never while healthy and moving [2.22ms]
+(pass) urgent repaint uses the reserve and still respects one pending slot [0.83ms]
+
+tests\tween.test.ts:
+(pass) endpoints and monotonic easing [4.32ms]
+(pass) retarget starts from the sampled value, not the old target [0.57ms]
+(pass) per-channel colour: red -> blue midpoint [1.24ms]
+(pass) run-id isolation, run switch snap, reset, motion off snap [0.63ms]
+
+ 52 pass
+ 0 fail
+Ran 52 tests across 9 files. [5.23s]
+exit=0
+```
+
+### 4.3 plugin bench (`npm --prefix packages/claude-plugin run bench`)
+```text
+
+> @cockpit/claude-plugin@0.1.0 bench
+> node --experimental-transform-types --no-warnings --import ./tests/resolve-ts.mjs scripts/bench.ts
+
+bench: node v22.14.0, win32/x64, BENCH_N=2000
+
+AFTER (hooks/raster.ts): 2000 frames after 300 warm-up, 140 columns
+painter           mean ms   p95 ms   max ms  bytes(b64)
+hero 140x4         0.120    0.163    0.347  8960
+divider 72x1       0.002    0.003    0.099  1152
+pipeline 70x2      0.004    0.005    0.098  2240
+progress 64x1      0.003    0.004    0.100  1024
+spark 61x1         0.003    0.004    0.066  976
+underline 70x1     0.004    0.007    0.118  1120
+meters 34x3        0.003    0.004    0.115  1632
+orb-sup 4x2        0.001    0.001    0.099  128
+orb-lead 4x2       0.001    0.002    0.077  128
+orb-w0 4x2         0.001    0.001    0.007  128
+COMBINED           0.143    0.190    0.367  (budget: mean < 4 ms) PASS
+
+BEFORE (baseline raster, frame-counter API): 2000 frames after 300 warm-up, 140 columns
+painter           mean ms   p95 ms   max ms  bytes(b64)
+hero 140x4         0.239    0.311    1.576  8960
+pipeline 70x2      0.008    0.012    0.076  2240
+progress 64x1      0.006    0.008    0.104  1024
+spark 61x1         0.007    0.010    0.145  976
+orb-sup 4x2        0.003    0.004    0.087  128
+orb-lead 4x2       0.003    0.004    0.123  128
+orb-w0 4x2         0.002    0.003    0.082  128
+COMBINED           0.267    0.342    1.605  (budget: mean < 4 ms) PASS
+
+before combined mean 0.267 ms (7 rasters) vs after 0.143 ms (10 rasters)
+exit=0
+```
+
+### 4.4 plugin capture (`npm --prefix packages/claude-plugin run capture`)
+```text
+
+> @cockpit/claude-plugin@0.1.0 capture
+> node --experimental-transform-types --no-warnings scripts/capture.ts
+
+wrote tests/evidence/before/live-60.txt and .json: hero(60x4,215 pairs) pipeline(56x2,17 pairs) progress(50x1,39 pairs) spark(47x1,1 pairs) orb-sup(4x2,3 pairs) orb-lead(4x2,3 pairs) orb-w0(4x2,4 pairs)
+wrote tests/evidence/before/live-140.txt and .json: hero(140x4,458 pairs) pipeline(70x2,19 pairs) progress(64x1,49 pairs) spark(61x1,2 pairs) orb-sup(4x2,3 pairs) orb-lead(4x2,3 pairs) orb-w0(4x2,4 pairs)
+wrote tests/evidence/after/live-60.txt and .json: hero(60x4,101 pairs) divider(58x1,1 pairs) pipeline(56x2,17 pairs) progress(50x1,11 pairs) spark(47x1,1 pairs) underline(56x1,2 pairs) orb-sup(4x2,3 pairs) orb-lead(4x2,3 pairs) orb-w0(4x2,4 pairs) meters(56x3,22 pairs)
+wrote tests/evidence/after/live-140.txt and .json: hero(140x4,146 pairs) divider(72x1,1 pairs) pipeline(70x2,17 pairs) progress(64x1,11 pairs) spark(61x1,2 pairs) underline(70x1,2 pairs) orb-sup(4x2,3 pairs) orb-lead(4x2,3 pairs) orb-w0(4x2,4 pairs) meters(34x3,22 pairs)
+exit=0
+```
+
+### 4.5 plugin probe (`COCKPIT_TRACE=1 npm --prefix packages/claude-plugin run probe`)
+```text
+
+> @cockpit/claude-plugin@0.1.0 probe
+> node --experimental-transform-types --no-warnings scripts/probe.ts
+
+## HOST_LIMITS
+- blitRate: 120 [default] d.ts:2178-2180 (scope unstated) scope=plugin
+- shownFps: 60 [documented] d.ts:2178-2180
+- payloadCap: null [default] d.ts:2184-2187 (deny reasons only; no cap stated) scope=cols*rows*3 words
+- colorPairCap: 1024 [default] none scope=unverified
+- clockMinMs: 1 [documented] d.ts:3228-3231
+- panesPollMaxHz: 1 [default] d.ts:2308-2319 (cost unstated)
+- fps30Achievable: null [default] none
+
+## CADENCE conservative
+{"totalPerSec":60,"tierAFps":30,"tierBFps":15,"urgentReserve":0.1,"framePeriodMs":16,"idlePeriodMs":500}
+
+## TRACE (on=true)
+(no events recorded in this process)
+exit=0
+```
+
+The probe runs in a bare Node process that never blits, so the trace ring is empty ("no events recorded in this process"). There is no exported trace artifact to build a Gate 0 report from (finding F1).
+
+### 4.6 root `npm run typecheck`
+```text
+
+> agent-cockpit@0.1.0 typecheck
+> tsc -p tsconfig.json --noEmit
+
+exit=0
+```
+
+### 4.7 root `npm test`
+```text
+
+> agent-cockpit@0.1.0 test
+> vitest run
+
+
+ RUN  v3.2.7 C:/Users/pc/.agent-cockpit/worktrees/ebf4b7b4/agent-cockpit/TASK-205
+
+(node:16436) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:47504) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ✓ test/core.test.ts (9 tests) 14ms
+warning: in the working copy of 'check.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'check.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'check.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'check.js', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'check.js', LF will be replaced by CRLF the next time Git touches it
+ ✓ test/milestone.test.ts (4 tests) 11077ms
+   ✓ first vertical milestone > runs the full hierarchy with parallel isolated workers, review correction, integration and approval  3870ms
+   ✓ first vertical milestone > REQUEST CHANGES continues the same run with a new planning round  2882ms
+   ✓ first vertical milestone > survives an orchestrator restart and resumes from the database  2114ms
+   ✓ first vertical milestone > detects an undeclared file overlap at runtime and lets the lead resolve it  2210ms
+
+ Test Files  2 passed (2)
+      Tests  13 passed (13)
+   Start at  19:37:55
+   Duration  11.75s (transform 249ms, setup 0ms, collect 877ms, tests 11.09s, environment 0ms, prepare 258ms)
+
+exit=0
+```
+
+### 4.8 pane.test.tsx hash and diff
+```text
+eec875fabcb37ce6009cc222c1cd9b60b2c3c774e9f233f10150f6ced775f4fb *tests/pane.test.tsx
+eec875fabcb37ce6009cc222c1cd9b60b2c3c774e9f233f10150f6ced775f4fb *tests/pane.test.tsx
+```
+
+The two hashes are identical: **match**.
+```text
+exit=0
+```
+
+`git diff --exit-code` real result: **exit 0** (no diff against the index). The brief says the file was modified before this round; in this worktree its only commit is `3fd39cb Initial commit` and its hash equals `baseline/pane.test.sha256`, so no modification is visible here.
+
+## 5. Gate 0 (human-owned): all 7 items PENDING
+Not measured, because no live terminal exists in this session. Harness numbers above are supplemental only and satisfy no item.
+| # | Item (HOST_LIMITS field) | Status |
+|---|---|---|
+| 1 | live delivered fps (`shownFps`, `fps30Achievable`) | PENDING |
+| 2 | input latency | PENDING |
+| 3 | CPU | PENDING |
+| 4 | real layout | PENDING |
+| 5 | blit scope (`blitRate` scope: plugin / key / global) | PENDING |
+| 6 | payload cap (`payloadCap`) | PENDING |
+| 7 | colour-pair scope (`colorPairCap`) | PENDING |
+
+The default CADENCE remains `'conservative'`. Nothing ships; a Gate 0 report built from an exported trace, or a written human waiver per item, is still required.
+
+## 6. Acceptance criterion -> proof
+Test names are in `packages/claude-plugin/tests/`. All pass in 4.2 (52 tests, 9 files). GAP = not proven.
+| Criterion | Proof |
+|---|---|
+| Frame-rate independence | raster.test.ts: "frame-rate independence: 16 ms and 33 ms clocks give identical frames at shared instants"; "animation depends on time: moving painters differ across a second, static ones do not" |
+| Pure painters, exact word count | raster.test.ts: "every painter returns exactly cols*rows*12 bytes at every width, deterministically" |
+| Backpressure, one in-flight per key | scheduler.test.ts "(a) never-resolving host: in-flight <=1 per key over 5 s, skipped not queued"; motion.test.tsx "a host that never resolves: at most one blit in flight per key" |
+| Deny handling | scheduler.test.ts "deny still unregisters the key", "(g) stale deny does not unregister the replacement", "deny unregisters even after an unrelated generation bump" |
+| Idle / offline / no active run | motion.test.tsx "idle (offline)" and "idle (no active run): <=2 blits/s in total, text tick <=1 fps"; scheduler.test.ts "(i) idle: <=2 fps per key with motion off ..."; evidence 2.3 (offline 2/s) |
+| COCKPIT_REDUCED_MOTION | motion.test.tsx "COCKPIT_REDUCED_MOTION=1: animation time frozen, status changes still render"; evidence 2.3 (2/s) |
+| Tween unit tests | tween.test.ts (4 tests); motion.test.tsx "progress eases between snapshots of one run, snaps on a run switch", "tweens snap on remount ..." |
+| Single theme module | `npm test` runs `tools.mjs palette` first (no hex literals outside hooks/theme.ts); passes in 4.2 |
+| New rasters (divider, underline, meters) | raster.test.ts painter cases (divider, underline, meters); mounted in after/*.json |
+| Painter size tests at 1 and 140 cols | raster.test.ts "every painter returns exactly cols*rows*12 bytes at every width", "orb paints any size, including 1x1 and 8x4" |
+| Colour pairs <= 512 | raster.test.ts "<=512 distinct fg/bg pairs per frame at 140 columns", "hero stays <=512 pairs ..."; pair counts in section 3 |
+| Bench < 4 ms | scripts/bench.ts (2.1, 4.3); tests/bench.test.ts "bench: all live rasters at 140 columns paint in < 4 ms mean per frame" |
+| Blit rate vs 112 baseline | 2.3 (54/s conservative); motion.test.tsx "live @140 conservative: <=60 blits/s total, Tier A <=30 fps each, text tick <=10 fps"; scheduler.test.ts "(e) ..." |
+| pane.test.tsx unchanged | 4.8 (hash match, git diff exit 0); the file's 3 tests pass in 4.2 |
+| Button keys / layout / breakpoints | pane.test.tsx "pane draws ... at every width"; layout.test.tsx "no Text line exceeds bodyColumns ... 60/100/140". Hotkeys have no dedicated new test (GAP, F3) |
+| Before/after evidence | section 3 files |
+| Watchdog regression | scheduler.test.ts "(f) watchdog: refused period kills the interval, re-arm, late old-gen resolve ignored"; "a blit pending past the stall age is aborted so the key can paint again" (see F2) |
+| Zero blits after close / end | scheduler.test.ts "(b) zero blits after close and after end"; motion.test.tsx "zero blits after session.end" |
+| Vanished key | scheduler.test.ts "(c) dropped key is not blitted from the next tick"; motion.test.tsx "a key that leaves the render is not blitted from the next tick" |
+| Timer stops | scheduler.test.ts "(d) timer stops when there are no live keys" |
+| HOST_LIMITS tagged, 1:1 with Gate 0 | limits.test.ts "HOST_LIMITS: every field tagged, documented fields cited"; probe output 4.5 |
+| Trace off => no output; ring wrap | limits.test.ts "trace off: record is a no-op and dump is empty", "trace on: fixed-size per-key ring wraps and keeps the newest events" |
+| Trace export round-trip (JSON, command, ui.close/session.end) | **GAP** (F1) |
+| Trace-off export writes no file | **GAP** (F1) |
+| Root typecheck / test green | 4.6, 4.7 |
+| Gate 0 report / CADENCE evidence | **PENDING** (section 5) |
+
+## 7. Findings (reported, not fixed; hooks are outside this task's scope)
+- **F1 (owner: whichever task owns hooks/limits.ts and the Observability amendment; TASK-202/TASK-204 scope): trace export is missing.** limits.ts has only the text `dump()`. There is no JSON export {version, cadence, hostLimits, keys}, no `/cockpit trace` command, no export on ui.close/session.end, and no round-trip or trace-off-no-file test. The `cockpit` command is registered but its description lists only start/stop/run/status/approve/changes/reject/report. Consequence: the probe and GATE0.md have no exported artifact to consume, so a Gate 0 report cannot be built from a trace yet. The brief says the Lead reports back before going further on this.
+- **F2 (owner: TASK-202 scheduler): stall abort versus the TASK-101 agreement.** The appendix ("Interface agreements") says a stalled blit must NOT release `pending`, because host blits cannot be cancelled. scheduler.test.ts "a blit pending past the stall age is aborted so the key can paint again" and "(f)" expect the scheduler to abort and send a new blit (>= 2 blits for a never-resolving host over 8 s). The host-side count of unresolved requests for one key can therefore exceed 1 over time. The Lead should decide whether "at most one in-flight per key" is measured scheduler-side or host-side.
+- **F3 (minor, owner: TASK-204): the hotkeys s,n,a,c,r,e,i,1,2,3,j,k,p,t,x have no dedicated test** beyond pane.test.tsx.
+- Housekeeping: package.json was edited, outside the listed scope (`bench` now runs scripts/bench.ts; new `blitrate` script). tests/bench.ts (the older bench) is now unused and left in place.
+
+## 8. Commands
+`npm --prefix packages/claude-plugin run typecheck | test | bench | capture | blitrate | probe`. `bench` reads the baseline files in `tests/evidence/baseline/`; it writes and removes `raster.baseline.run.ts` there at run time.
+
+---
+
+# Appendix: TASK-101 evidence (historical, unchanged)
 
 Engine: Claude Code 2.1.286. Declarations: `claude-code.d.ts` written by the plugin-authoring skill (cited as `d.ts:<line>`).
 Each fact is tagged **[doc]** (declared), **[measured]** (probe in this repo, mock clock) or **[open]**.
@@ -157,3 +518,4 @@ Consistent with the Lifecycle contract above; all limits come from `HOST_LIMITS`
 - `HOST_LIMITS.blit.sharedPerSec: 100` in 2b is the unverified upper bound; the active `CADENCE` budget (60 or 90) is what the scheduler enforces. The documented host figure (120 taken / ~60 shown, d.ts:2179) is unchanged.
 - Payload contract (cols*rows*3 words, <= 140x8 raster cap, size-mismatch refusal test) is binding; baseline max is 140x4 (9013 B serialized). No discrepancy claimed.
 - Baseline cadence of current code (16/s x 7 keys = 112/s) already exceeds both profiles' totals: the scheduler worker must throttle.
+
