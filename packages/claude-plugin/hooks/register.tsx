@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, InputProps, Register, RenderChildren } from 'claude-code'
 
 import type { CockpitApproval, CockpitRun, CockpitSnapshot, CockpitTab, CockpitTask, CockpitUi, CockpitView } from '../types'
-import { enableTrace, resolveCadence } from './limits'
+import { enableTrace, exportTrace, resolveCadence, trace, writeTrace } from './limits'
 import * as paint from './raster'
 import { COCKPIT_ROOT } from './root'
 import { createScheduler, type KeySpec, type Scheduler } from './scheduler'
@@ -121,6 +121,7 @@ type Life = {
   epoch: number
   frozenAt: number | null
   motion: boolean
+  denied: Map<string, number>
   seen: number
   tick: (() => void) | null
   cancels: (() => void)[]
@@ -134,6 +135,7 @@ let life: Promise<Life> | null = null
 let stopPoll: (() => void) | null = null
 const TICK_MS = 125 // text spinners and pulses: <=10 fps with motion
 const IDLE_TICK_MS = 1000
+const DENY_HOLD_MS = 2000 // a denied raster is retried this rarely
 const STALE_MS = 1500 // the host has no unmount event: no render for longer than the 1 s idle beat means the pane was gone, tweens snap
 
 async function createLife($: EngineInterface): Promise<Life> {
@@ -141,7 +143,7 @@ async function createLife($: EngineInterface): Promise<Life> {
   enableTrace(await $.env.get('COCKPIT_TRACE'))
   const cadence = resolveCadence({ COCKPIT_CADENCE: await $.env.get('COCKPIT_CADENCE') })
   const l: Life = {
-    sched: null as never, tweens: createTweens(), open: true, T: T0, epoch: T0, frozenAt: null, motion: false, seen: T0, tick: null, cancels: [],
+    sched: null as never, tweens: createTweens(), open: true, T: T0, epoch: T0, frozenAt: null, motion: false, denied: new Map(), seen: T0, tick: null, cancels: [],
     anim: () => l.frozenAt ?? l.T - l.epoch,
     freeze(on) {
       if (on && l.frozenAt === null) l.frozenAt = l.T - l.epoch
@@ -182,7 +184,11 @@ async function createLife($: EngineInterface): Promise<Life> {
       every: (ms, fn) => { const t = $.clock.every(ms, stamp(fn)); return () => t.cancel() },
       after: (ms, fn) => { const t = $.clock.after(ms, stamp(fn)); return () => t.cancel() },
     },
-    blit: (key, cells) => $.ui.blit({ requestId: PANE, key, cells }),
+    blit: async (key, cells) => { // UiBlitResult.deny: absent when taken, else why not (d.ts)
+      const r = await $.ui.blit({ requestId: PANE, key, cells })
+      if (r && 'deny' in r && r.deny) l.denied.set(key, l.T) // the next render must not re-register it at once
+      return r
+    },
   })
   l.sched.setMotion(false)
   l.tweens.setMotion(false)
@@ -191,6 +197,21 @@ async function createLife($: EngineInterface): Promise<Life> {
 }
 let ended = false // a render after session.end gets an inert Life: no timers, no blits
 const getLife = ($: EngineInterface) => (life ??= createLife($).then(l => (ended && l.close(), l)))
+// Trace export: explicit triggers only (ui.close, session.end, /cockpit trace), never on the paint/blit path. No documented plugin
+// data dir exists (d.ts has $.fs.write for any path), so close/end write to the cockpit data dir and the command returns the dump.
+async function exportOnClose($: EngineInterface) {
+  if (!trace.on) return
+  let timer: { cancel: () => void } | undefined
+  try {
+    const out = (async () => {
+      const { dataDir } = await locate($)
+      await writeTrace({ dataDir, write: (path, text) => $.fs.write(path, text) }, exportTrace())
+    })()
+    // a hung write must not stall teardown
+    await Promise.race([out, new Promise<void>(r => (timer = $.clock.after(2000, () => r())))])
+  } catch {}
+  timer?.cancel()
+}
 function closeLife() {
   const p = life
   life = null
@@ -348,7 +369,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'cockpit',
-      description: 'Agent cockpit: /cockpit [start|stop|run <request>|status|approve|changes <text>|reject|report]',
+      description: 'Agent cockpit: /cockpit [start|stop|run <request>|status|approve|changes <text>|reject|report|trace]',
     })
     ended = false
     closeLife()
@@ -362,12 +383,18 @@ export const register: Register = on => {
 
   on('ui.close', async ($, e, next) => {
     const r = await next(e) // a hook may keep the pane open: tear down only after it is really closing
-    if (e.id === PANE) closeLife()
+    if (e.id === PANE) {
+      const done = exportOnClose($)
+      closeLife()
+      await done
+    }
     return r
   })
   on('session.end', async ($, e, next) => {
     ended = true
+    const done = exportOnClose($)
     closeLife()
+    await done
     stopPoll?.()
     stopPoll = null
     return next(e)
@@ -389,6 +416,10 @@ export const register: Register = on => {
         await openPane($)
         return { text: await startRun($, e.args.replace(/^\s*run\s*/, '')) }
       }
+      case 'trace': {
+        const out = await writeTrace({}, exportTrace())
+        return { text: out && 'text' in out ? out.text : 'Trace is off (set COCKPIT_TRACE=1).' }
+      }
       case 'status':
         return { text: (await cli($, ['status'])).text }
       case 'report': {
@@ -404,7 +435,7 @@ export const register: Register = on => {
         return { text: await decide($, sub, target, note) }
       }
       default:
-        return { text: 'Usage: /cockpit [start|stop|run <request>|status|approve [note]|changes <text>|reject [note]|report]' }
+        return { text: 'Usage: /cockpit [start|stop|run <request>|status|approve [note]|changes <text>|reject [note]|report|trace]' }
     }
   })
 
@@ -435,7 +466,9 @@ export const register: Register = on => {
     const raster = (key: string, columns: number, height: number, tier: 'A' | 'B', fn: (t: number) => string, fallback: RenderChildren = null) => {
       if (!RasterEl || columns < 1) return fallback
       // At rest only the hero (wall clock) is repainted by the scheduler (<=2 fps); the rest are redrawn by the 1 Hz render.
-      if (l.motion || key === 'hero') specs.set(key, { tier, id: `${columns}x${height}`, paint: () => fn(l.anim()) })
+      const held = l.denied.get(key)
+      if (held !== undefined && l.T - held >= DENY_HOLD_MS) l.denied.delete(key)
+      if ((l.motion || key === 'hero') && !l.denied.has(key)) specs.set(key, { tier, id: `${columns}x${height}`, paint: () => fn(l.anim()) })
       return RasterEl({ key, columns, rows: height, cells: fn(anim) })
     }
     // Every return path reports the mounted raster keys; text-only surfaces have none and leave the scheduler alone.

@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { CADENCE } from '../hooks/limits'
-import { createScheduler, type BlitResult, type KeySpec } from '../hooks/scheduler'
+import { createScheduler, makeSyncClock, type BlitResult, type KeySpec } from '../hooks/scheduler'
 
 type Timer = { at: number; period?: number; fn: () => void }
 // Deterministic fake clock: kill() ends every() the way a refused period does (d.ts:3228-3231).
@@ -144,7 +144,7 @@ test('(e) 140-col live set for 10 s: <=60 blits/s total, Tier A <=30 fps, far be
   for (let sec = 0; sec < 10; sec++) expect(host.log.filter(l => l.t > sec * 1000 && l.t <= (sec + 1) * 1000).length).toBeLessThanOrEqual(61)
 })
 
-test('(f) watchdog: refused period kills the interval, re-arm, late old-gen resolve ignored', async () => {
+test('(f) watchdog: refused period kills the interval, re-arm, late old-gen resolve does not clear the new slot', async () => {
   const { clock, host, s } = setup('manual')
   s.sync(new Map([['hero', spec('A')]]))
   await clock.advance(100)
@@ -156,16 +156,20 @@ test('(f) watchdog: refused period kills the interval, re-arm, late old-gen reso
   await clock.advance(400)
   expect(clock.everyActive()).toBe(1)
   expect(s.stats().gen).toBeGreaterThan(g0)
-  // the stuck old blit was aborted: hero has a fresh blit holding the new slot
-  const fresh = host.pending.filter(p => p.key === 'hero' && p !== old[0])
-  expect(fresh.length).toBe(1)
-  const n = host.count('hero')
-  old[0]!.res({}) // late resolve from the old generation
-  await clock.advance(100)
-  expect(host.count('hero')).toBe(n) // did not free the new slot: still skipped, in-flight <=1
+  // F2: the old blit is still in flight host side, so no second blit is sent for the key
+  expect(host.count('hero')).toBe(1)
   expect(s.stats().pending).toBe(1)
-  fresh[0]!.res({})
+  old[0]!.res({}) // late resolve from the old generation: frees only its own slot, no other effect
   await clock.advance(100)
+  expect(host.count('hero')).toBeGreaterThan(1)
+  expect(host.pending.filter(p => p.key === 'hero' && p !== old[0]).length).toBe(1) // in-flight <=1
+  const g1 = s.stats().gen
+  const fresh = host.pending.find(p => p.key === 'hero' && p !== old[0])!
+  const n = host.count('hero')
+  fresh.res({})
+  old[0]!.res({}) // double resolve of a dead token is dropped
+  await clock.advance(50)
+  expect(s.stats().gen).toBe(g1)
   expect(host.count('hero')).toBeGreaterThan(n)
 })
 
@@ -209,26 +213,19 @@ test('(h) degrade halves Tier A and restores after 2 s healthy', async () => {
   expect(restored).toBeLessThanOrEqual(CADENCE.conservative.tierAFps)
 })
 
-test('(i) idle: <=2 fps per key with motion off, back to frame rate on motion', async () => {
+test('(i) idle: total <=2/s, hero only, back to frame rate on motion', async () => {
   const { clock, host, s } = setup()
   s.setMotion(false)
   s.sync(live140())
-  expect(s.stats().timerMs).toBeGreaterThanOrEqual(500)
+  expect(s.stats().timerMs).toBeLessThanOrEqual(500)
   await clock.advance(10_000)
-  for (const k of ['hero', 'orb0', 'spark']) expect(host.count(k) / 10).toBeLessThanOrEqual(2)
+  expect(host.count() / 10).toBeLessThanOrEqual(2)
+  expect(host.count('hero')).toBe(host.count())
   expect(host.count('hero')).toBeGreaterThan(0)
   s.setMotion(true)
   expect(s.stats().timerMs).toBe(16)
   s.sync(new Map())
   expect(clock.everyActive()).toBe(0)
-})
-
-test('idle: every one of 10 keys paints within ~1 s of mounting with motion off', async () => {
-  const { clock, host, s } = setup()
-  s.setMotion(false)
-  s.sync(live140())
-  await clock.advance(1000)
-  for (const k of live140().keys()) expect(host.count(k)).toBeGreaterThanOrEqual(1)
 })
 
 test('deny unregisters even after an unrelated generation bump', async () => {
@@ -242,19 +239,48 @@ test('deny unregisters even after an unrelated generation bump', async () => {
   expect(s.stats().live).toBe(0)
 })
 
-test('a blit pending past the stall age is aborted so the key can paint again', async () => {
-  const { clock, host, s } = setup('never')
+test('a stalled blit keeps its slot: no second blit until it resolves', async () => {
+  const { clock, host, s } = setup('manual')
   s.sync(new Map([['hero', spec('A')]]))
-  await clock.advance(8000)
-  expect(host.count('hero')).toBeGreaterThanOrEqual(2)
-  expect(s.stats().pending).toBeLessThanOrEqual(1)
+  await clock.advance(10_000)
+  expect(host.count('hero')).toBe(1)
+  expect(s.stats().pending).toBe(1)
+  flush(host)
+  await clock.advance(100)
+  expect(host.count('hero')).toBeGreaterThan(1)
+})
+
+test('burst cap: throughput near the refill rate at 16 ms and in idle at 500 ms', async () => {
+  const { clock, host, s } = setup()
+  s.sync(live140())
+  await clock.advance(10_000)
+  expect(host.count() / 10).toBeGreaterThanOrEqual(0.8 * CADENCE.conservative.totalPerSec * (1 - CADENCE.conservative.urgentReserve))
+  const idle = setup()
+  idle.s.setMotion(false)
+  idle.s.sync(new Map([['hero', spec('A')]]))
+  await idle.clock.advance(10_000)
+  expect(idle.host.count() / 10).toBeGreaterThanOrEqual(1.8)
+})
+
+test('makeSyncClock: sync reads, one prefetch in flight, local source advances', async () => {
+  let wall = 1000, calls = 0, local = 0
+  const c = makeSyncClock(async () => (calls++, wall), () => local)
+  expect(c.now()).toBe(0)
+  const a = c.refresh(), b = c.refresh()
+  await Promise.all([a, b])
+  expect(calls).toBe(1)
+  local = 16
+  expect(c.now()).toBe(1016)
+  wall = 5000
+  await c.refresh()
+  expect(c.now()).toBe(5000)
 })
 
 test('panes() polling: <=1 Hz, only idle or degraded, never while healthy and moving', async () => {
   const clock = fakeClock()
   const host = fakeHost(clock)
   let polls = 0
-  const s = createScheduler({ clock, blit: host.blit, probeLive: async () => (polls++, new Set(['hero'])) })
+  const s = createScheduler({ clock, blit: host.blit, probeLive: async () => (polls++, new Set(['spark'])) })
   s.sync(new Map([['hero', spec('A')], ['spark', spec('B')]]))
   await clock.advance(3000)
   expect(polls).toBe(0)
@@ -262,12 +288,12 @@ test('panes() polling: <=1 Hz, only idle or degraded, never while healthy and mo
   await clock.advance(10_000)
   expect(polls).toBeGreaterThan(0)
   expect(polls).toBeLessThanOrEqual(11)
-  const n = host.count('spark')
-  await clock.advance(2000) // spark is not in the live set: not painted
-  expect(host.count('spark')).toBe(n)
+  const n = host.count('hero')
+  await clock.advance(2000) // hero is not in the live set: not painted
+  expect(host.count('hero')).toBe(n)
   s.setMotion(true) // probing stops: hidden key paints again
   await clock.advance(1000)
-  expect(host.count('spark')).toBeGreaterThan(n)
+  expect(host.count('hero')).toBeGreaterThan(n)
 })
 
 test('urgent repaint uses the reserve and still respects one pending slot', async () => {
