@@ -3,5 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" }
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "node tests/tools.mjs typecheck",
+    "test": "claude plugin test .",
+    "bench": "node --experimental-transform-types --no-warnings tests/bench.ts",
+    "capture": "node tests/tools.mjs capture",
+    "probe": "node tests/tools.mjs probe"
+  }
 }

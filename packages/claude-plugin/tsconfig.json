@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2023",
+    "lib": ["ES2023"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "strict": true,
@@ -9,7 +10,9 @@
     "jsx": "react",
     "jsxFactory": "h",
     "jsxFragmentFactory": "Fragment",
+    "allowImportingTsExtensions": true,
     "types": []
   },
-  "include": ["hooks/**/*", "types/**/*", ".claude/types/**/*.d.ts"]
+  "include": ["hooks/**/*", "types/**/*", "tests/**/*.ts", "tests/**/*.tsx", ".claude/types/**/*.d.ts"],
+  "exclude": ["tests/bench.ts", "tests/pane.test.tsx"]
 }

@@ -1,0 +1,570 @@
+=== live @ 60 cols (mock t=0) ===
+<Box>
+ Raster#hero 60x4 pairs=215 c0=1c1f2a/1a262b
+   |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+   |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+   |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+   |▀▀opus ▸ codex ▸ workers▀▀▀▀▀▀▀▀▀▀●▀online :4317  00:00:00▀▀|
+ <Box>
+  <Box>
+   <Box>
+    <Box>
+     <Text>
+      <Text color=#0b0b0f bold=true>
+       "● AWAITING APPROVAL"
+      <Text color=#6b7280>
+       "  round "
+       "0"
+       " · "
+       "c6ee44bf"
+       " · 0s ago"
+     <Box>
+      <Button#prev label=◂>
+      <Text color=#6b7280>
+       "1"
+       "/"
+       "2"
+      <Button#next label=▸>
+    <Text color=#fafafa bold=true>
+     "Add two independent utility modules to this library: (1) src/strings.js with capitalize(s) and slugify(s); (2) …"
+   <Box>
+    <Box>
+     <Text color=#6b7280>
+      "PROGRESS"
+     <Text color=#22d3ee bold=true>
+      "75%"
+     <Text color=#6b7280>
+      "approve"
+    <Box>
+     <Text color=#6b7280>
+      "TASKS"
+     <Text color=#34d399 bold=true>
+      "3/4"
+     <Text color=#6b7280>
+      "1 moving"
+    <Box>
+     <Text color=#6b7280>
+      "AGENTS"
+     <Text color=#a78bfa bold=true>
+      "1"
+     <Text color=#6b7280>
+      "live now"
+    <Box>
+     <Text color=#6b7280>
+      "SPEND"
+     <Text color=#fbbf24 bold=true>
+      "$2.12"
+     <Text color=#6b7280>
+      "1.6M tok"
+   <Box>
+    <Box>
+     <Text color=#9ca3af bold=true>
+      "LIFECYCLE"
+     <Text color=#6b7280>
+      "3 of 4 tasks"
+    <Text>
+    Raster#pipeline 56x2 pairs=17 c0=dflt/dflt
+      |   ●━━━━━━●━━━━━━●━━━━━━●━━━━━━●━━━━━━●━━━━━━◉━━━━━━○   |
+      | archi  debat  plan   build  integ  valid  appro  merge |
+    <Text>
+    <Box>
+     Raster#progress 50x1 pairs=39 c0=8b5cf6/1f1f26
+       |█████████████████████████████████████▌            |
+     <Text color=#fafafa bold=true>
+      " 75"
+      "%"
+    <Box>
+     <Text color=#6b7280>
+      "activity "
+     Raster#spark 47x1 pairs=1 c0=27272a/dflt
+       |▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁|
+   <Box>
+    <Box>
+     <Text>
+      <Text color=#0b0b0f bold=true>
+       "◆ YOUR CALL"
+      <Text color=#6b7280>
+       "final"
+     <Text color=#6b7280>
+      "apr_1"
+    <Text color=#e5e7eb>
+     "All tasks integrated; integration tests pass. Approve merge?"
+    <Box>
+     <Button#approve-apr_1 label=a · Approve>
+     <Button#changes-apr_1 label=c · Changes>
+     <Button#reject-apr_1 label=r · Reject>
+   <Box>
+    <Box>
+     <Box>
+      <Box>
+       <Button#tab-tasks label=Tasks 3/4>
+      <Box>
+       <Button#tab-events label=Events 12>
+      <Box>
+       <Button#tab-report label=Report>
+     <Box>
+      <Button#new label=n new>
+      <Button#report label=p report>
+      <Button#stop label=x stop>
+    <Text color=#26262e>
+     "────────────────────────────────────────────────────────"
+    <Box>
+     <Box#task-TASK-102>
+      <Box>
+       <Box>
+        <Text>
+         <Text color=#22d3ee>
+          "▎"
+         <Text color=#91e9f7>
+          "⠋"
+         <Text color=#fafafa bold=true>
+          "TASK-102"
+         <Text color=#e5e7eb>
+          "Implement and test string utilities"
+       <Box>
+        <Text>
+         <Text color=#6b7280>
+          " sonnet · it2 · ⇠ TASK-101 "
+         <Text color=#0b0b0f bold=true>
+          "running"
+     <Box#task-TASK-101>
+      <Box>
+       <Box>
+        <Text>
+         <Text color=#34d399>
+          "▎"
+         <Text color=#34d399>
+          "✓"
+         <Text color=#6b7280 bold=true>
+          "TASK-101"
+         <Text color=#6b7280>
+          "Apply the approved test discovery fallback"
+       <Box>
+        <Text>
+         <Text color=#6b7280>
+          " sonnet "
+         <Text color=#34d399>
+          "✓ "
+          "integrated"
+     <Box#task-TASK-103>
+      <Box>
+       <Box>
+        <Text>
+         <Text color=#34d399>
+          "▎"
+         <Text color=#34d399>
+          "✓"
+         <Text color=#6b7280 bold=true>
+          "TASK-103"
+         <Text color=#6b7280>
+          "Implement and test math utilities"
+       <Box>
+        <Text>
+         <Text color=#6b7280>
+          " sonnet · ⇠ TASK-101 "
+         <Text color=#34d399>
+          "✓ "
+          "integrated"
+     <Box#task-TASK-104>
+      <Box>
+       <Box>
+        <Text>
+         <Text color=#34d399>
+          "▎"
+         <Text color=#34d399>
+          "✓"
+         <Text color=#6b7280 bold=true>
+          "TASK-104"
+         <Text color=#6b7280>
+          "Integrate public exports and verify the complete change"
+       <Box>
+        <Text>
+         <Text color=#6b7280>
+          " sonnet · ⇠ TASK-103,TASK-102 "
+         <Text color=#34d399>
+          "✓ "
+          "integrated"
+  <Box>
+   <Box>
+    <Box>
+     <Text color=#9ca3af bold=true>
+      "CREW"
+     <Text color=#6b7280>
+      "1"
+      " on the floor"
+    <Box>
+     Raster#orb-sup 4x2 pairs=3 c0=1e192d/dflt
+       |▄▀▀▄|
+       |▀▀▀▀|
+     <Box>
+      <Text>
+       <Text color=#fafafa bold=true>
+        "opus"
+       <Text color=#6b7280>
+        "supervisor"
+      <Text color=#6b7280>
+       "idle"
+    <Box>
+     Raster#orb-lead 4x2 pairs=3 c0=06262b/dflt
+       |▄▀▀▄|
+       |▀▀▀▀|
+     <Box>
+      <Text>
+       <Text color=#fafafa bold=true>
+        "codex"
+       <Text color=#6b7280>
+        "engineering lead"
+      <Text color=#6b7280>
+       "idle"
+    <Box>
+     Raster#orb-w0 4x2 pairs=4 c0=082118/dflt
+       |▄▀▀▄|
+       |▀▀▀▀|
+     <Box>
+      <Text>
+       <Text color=#fafafa bold=true>
+        "sonnet"
+       <Text color=#6b7280>
+        "worker · 0s"
+      <Text color=#34d399>
+       "⠼ "
+       "on TASK-102"
+   <Box>
+    <Box>
+     <Text color=#9ca3af bold=true>
+      "TESTS"
+     <Text>
+      <Text color=#34d399>
+       "4"
+       " ✓"
+      <Text color=#6b7280>
+       "0"
+       " ✗"
+    <Text>
+     <Text color=#34d399>
+      "✓"
+     <Text color=#e5e7eb>
+      "integration"
+     <Text color=#6b7280>
+      "npm test"
+    <Text>
+     <Text color=#34d399>
+      "✓"
+     <Text color=#e5e7eb>
+      "TASK-104"
+     <Text color=#6b7280>
+      "npm test"
+    <Text>
+     <Text color=#34d399>
+      "✓"
+     <Text color=#e5e7eb>
+      "TASK-102"
+     <Text color=#6b7280>
+      "node --test test/strings.test.js"
+    <Text>
+     <Text color=#34d399>
+      "✓"
+     <Text color=#e5e7eb>
+      "TASK-103"
+     <Text color=#6b7280>
+      "node --test test/math.test.js"
+   <Box>
+    <Box>
+     <Text color=#9ca3af bold=true>
+      "REPOSITORIES"
+    <Text>
+     <Text color=#34d399>
+      "✓"
+     <Text color=#e5e7eb bold=true>
+      "demo-repo"
+     <Text color=#6b7280>
+      "  ⎇ "
+      "integration"
+   <Box>
+    <Box>
+     <Text color=#9ca3af bold=true>
+      "TELEMETRY"
+     <Text color=#fbbf24 bold=true>
+      "$2.12"
+    <Text>
+     <Text color=#fafafa bold=true>
+      "15"
+     <Text color=#6b7280>
+      " calls   "
+     <Text color=#22d3ee>
+      "↓ "
+      "1.6M"
+     <Text color=#6b7280>
+     <Text color=#a78bfa>
+      "↑ "
+      "18.7k"
+    <Text>
+     <Text color=#9ca3af>
+      "codex  "
+     <Text color=#22d3ee>
+      "█"
+     <Text color=#26d1ee>
+      "█"
+     <Text color=#2acfef>
+      "█"
+     <Text color=#2ecdef>
+      "█"
+     <Text color=#32caef>
+      "█"
+     <Text color=#36c8f0>
+      "█"
+     <Text color=#3ac6f0>
+      "█"
+     <Text color=#3ec4f1>
+      "█"
+     <Text color=#42c2f1>
+      "█"
+     <Text color=#46c0f1>
+      "█"
+     <Text color=#4abef2>
+      "█"
+     <Text color=#4ebbf2>
+      "█"
+     <Text color=#51b9f2>
+      "█"
+     <Text color=#55b7f3>
+      "█"
+     <Text color=#59b5f3>
+      "█"
+     <Text color=#5db3f3>
+      "█"
+     <Text color=#61b1f4>
+      "█"
+     <Text color=#65aff4>
+      "█"
+     <Text color=#69acf4>
+      "█"
+     <Text color=#6daaf5>
+      "█"
+     <Text color=#71a8f5>
+      "█"
+     <Text color=#75a6f6>
+      "█"
+     <Text color=#79a4f6>
+      "█"
+     <Text color=#7da2f6>
+      "█"
+     <Text color=#81a0f7>
+      "█"
+     <Text color=#859df7>
+      "█"
+     <Text color=#899bf7>
+      "█"
+     <Text color=#8d99f8>
+      "█"
+     <Text color=#9197f8>
+      "█"
+     <Text color=#9595f8>
+      "█"
+     <Text color=#9993f9>
+      "█"
+     <Text color=#9d91f9>
+      "█"
+     <Text color=#a18ef9>
+      "█"
+     <Text color=#a58cfa>
+      "█"
+     <Text color=#a88bf9>
+      "█"
+     <Text color=#aa8af7>
+      "█"
+     <Text color=#ac89f5>
+      "█"
+     <Text color=#af88f3>
+      "█"
+     <Text color=#b188f1>
+      "█"
+     <Text color=#b387ef>
+      "█"
+     <Text color=#b686ed>
+      "█"
+     <Text color=#b885eb>
+      "█"
+     <Text color=#26262e>
+     <Text color=#6b7280>
+      "7"
+    <Text>
+     <Text color=#9ca3af>
+      "opus   "
+     <Text color=#a78bfa>
+      "█"
+     <Text color=#a98af8>
+      "█"
+     <Text color=#ac8af6>
+      "█"
+     <Text color=#ae89f4>
+      "█"
+     <Text color=#b088f2>
+      "█"
+     <Text color=#b287f0>
+      "█"
+     <Text color=#b587ee>
+      "█"
+     <Text color=#b786ec>
+      "█"
+     <Text color=#b985ea>
+      "█"
+     <Text color=#bc84e8>
+      "█"
+     <Text color=#be84e6>
+      "█"
+     <Text color=#c083e4>
+      "█"
+     <Text color=#c282e2>
+      "█"
+     <Text color=#c581e0>
+      "█"
+     <Text color=#c781de>
+      "█"
+     <Text color=#c980dc>
+      "█"
+     <Text color=#cc7fda>
+      "█"
+     <Text color=#ce7ed8>
+      "█"
+     <Text color=#26262e>
+      "████████████████████████"
+     <Text color=#6b7280>
+      "3"
+    <Text>
+     <Text color=#9ca3af>
+      "sonnet "
+     <Text color=#f472b6>
+      "█"
+     <Text color=#f473b2>
+      "█"
+     <Text color=#f573af>
+      "█"
+     <Text color=#f574ab>
+      "█"
+     <Text color=#f575a8>
+      "█"
+     <Text color=#f676a4>
+      "█"
+     <Text color=#f676a0>
+      "█"
+     <Text color=#f6779d>
+      "█"
+     <Text color=#f77899>
+      "█"
+     <Text color=#f77896>
+      "█"
+     <Text color=#f77992>
+      "█"
+     <Text color=#f87a8e>
+      "█"
+     <Text color=#f87b8b>
+      "█"
+     <Text color=#f87b87>
+      "█"
+     <Text color=#f97c84>
+      "█"
+     <Text color=#f97d80>
+      "█"
+     <Text color=#f97d7c>
+      "█"
+     <Text color=#fa7e79>
+      "█"
+     <Text color=#fa7f75>
+      "█"
+     <Text color=#fa8072>
+      "█"
+     <Text color=#fb806e>
+      "█"
+     <Text color=#fb816a>
+      "█"
+     <Text color=#fb8267>
+      "█"
+     <Text color=#fc8263>
+      "█"
+     <Text color=#fc8360>
+      "█"
+     <Text color=#fc845c>
+      "█"
+     <Text color=#fd8558>
+      "█"
+     <Text color=#fd8555>
+      "█"
+     <Text color=#fd8651>
+      "█"
+     <Text color=#fd874e>
+      "█"
+     <Text color=#26262e>
+      "████████████"
+     <Text color=#6b7280>
+      "5"
+ <Box>
+  <Text>
+   <Text>
+    <Text color=#e5e7eb bold=true>
+     "a"
+    <Text color=#6b7280>
+     "approve"
+   <Text>
+    <Text color=#e5e7eb bold=true>
+     "c"
+    <Text color=#6b7280>
+     "changes"
+   <Text>
+    <Text color=#e5e7eb bold=true>
+     "r"
+    <Text color=#6b7280>
+     "reject"
+   <Text>
+    <Text color=#e5e7eb bold=true>
+     "n"
+    <Text color=#6b7280>
+     "new"
+   <Text>
+    <Text color=#e5e7eb bold=true>
+     "1 2 3"
+    <Text color=#6b7280>
+     "tabs"
+   <Text>
+    <Text color=#e5e7eb bold=true>
+     "j k"
+    <Text color=#6b7280>
+     "missions"
+   <Text>
+    <Text color=#e5e7eb bold=true>
+     "p"
+    <Text color=#6b7280>
+     "report"
+   <Text>
+    <Text color=#e5e7eb bold=true>
+     "x"
+    <Text color=#6b7280>
+     "stop"
+## raster colour pairs (per raster): hero:215 pipeline:17 progress:39 spark:1 orb-sup:3 orb-lead:3 orb-w0:4
+=== offline @ 60 cols (mock t=0) ===
+<Box>
+ Raster#hero 60x4 pairs=225 c0=13213c/0d2c3e
+   |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+   |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+   |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+   |▀▀opus ▸ codex ▸ workers▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀●▀offline  00:00:00▀▀|
+ <Box>
+  <Text color=#e5e7eb bold=true>
+   "The orchestrator is asleep."
+  <Text color=#6b7280>
+   "Wake it and Opus, Codex and the workers report for duty."
+  <Text>
+  <Button#  s · Start orchestrator   label=  s · Start orchestrator  >
+  <Text>
+  <Text color=#6b7280>
+   "1"
+   " past run"
+   " on record"
+ <Box>
+  <Text>
+   <Text>
+    <Text color=#e5e7eb bold=true>
+     "s"
+    <Text color=#6b7280>
+     "start"
+## raster colour pairs (per raster): hero:225

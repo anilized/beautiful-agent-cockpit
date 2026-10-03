@@ -1,0 +1,15 @@
+
+> @cockpit/claude-plugin@0.1.0 bench
+> node --experimental-transform-types --no-warnings tests/bench.ts
+
+bench: 2000 iterations, node v22.14.0, 140 columns
+painter           mean ms   p95 ms   max ms  bytes(b64)
+hero 140x4         0.230    0.294    0.465  8960
+pipeline 136x2     0.014    0.021    0.164  4352
+progress 100x1     0.010    0.014    0.172  1600
+spark 60x1         0.007    0.009    0.111  960
+orb 0 4x2          0.002    0.002    0.107  128
+orb 1 4x2          0.002    0.002    0.110  128
+orb 2 4x2          0.002    0.002    0.147  128
+orb 3 4x2          0.002    0.003    0.105  128
+COMBINED           0.269    0.343    0.590  (budget: mean < 4 ms) PASS
