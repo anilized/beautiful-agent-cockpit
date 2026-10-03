@@ -1,4 +1,5 @@
-// Cell/tree dump of the pane at 60 and 140 columns. Run by `npm run capture` (scratch copy as capture.test.tsx; tests have no fs).
+// HARNESS SNAPSHOT (the tree the mod returns under the test kit at mock t=0), not a terminal paint, of the pane at 60 and 140 columns.
+// Every element's props are dumped as JSON; every Raster keeps its full base64 payload plus each decoded [glyph fg bg] triplet. Run by `npm run capture` (scratch copy as capture.test.tsx; tests have no fs).
 import { test } from 'claude-code/testing'
 
 import { LIVE, OFFLINE } from './fixture'
@@ -24,17 +25,21 @@ function raster(p: Record<string, unknown>) {
   for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i)
   const pairs = new Set<number | string>()
   const lines: string[] = []
+  const trip: string[] = []
   for (let y = 0; y < rows; y++) {
     let s = ''
+    let t = ''
     for (let x = 0; x < cols; x++) {
       const i = (y * cols + x) * 3
       s += String.fromCodePoint(w[i]!)
       pairs.add(`${w[i + 1]}/${w[i + 2]}`)
+      t += `${w[i]!.toString(16)}:${hex(w[i + 1]!)}:${hex(w[i + 2]!)} `
     }
     lines.push(s)
+    trip.push(t.trimEnd())
   }
   const first = 0
-  return { lines, pairs: pairs.size, sample: `${hex(w[first + 1]!)}/${hex(w[first + 2]!)}` }
+  return { lines, trip, pairs: pairs.size, sample: `${hex(w[first + 1]!)}/${hex(w[first + 2]!)}` }
 }
 
 function walk(n: N, d: number, out: string[], pairs: { total: Set<string>; per: string[] }) {
@@ -45,13 +50,18 @@ function walk(n: N, d: number, out: string[], pairs: { total: Set<string>; per: 
   if (n.type === 'Raster') {
     const r = raster(props)
     out.push(`${pad}Raster#${n.key ?? props.key} ${props.columns}x${props.rows} pairs=${r.pairs} c0=${r.sample}`)
-    for (const l of r.lines) out.push(`${pad}  |${l}|`)
+    out.push(`${pad}  props ${JSON.stringify({ ...props, cells: undefined })}`)
+    out.push(`${pad}  cells.base64 ${props.cells}`)
+    r.lines.forEach((l, y) => {
+      out.push(`${pad}  |${l}|`)
+      out.push(`${pad}  row${y} cp:fg:bg ${r.trip[y]}`)
+    })
     pairs.per.push(`${n.key ?? props.key}:${r.pairs}`)
     return
   }
   const tag = [n.type, n.key ?? props.key].filter(Boolean).join('#')
-  const attrs = ['color', 'bold', 'dim', 'label'].filter(k => props[k] !== undefined).map(k => `${k}=${String(props[k])}`).join(' ')
-  out.push(`${pad}<${tag}${attrs ? ' ' + attrs : ''}>`)
+  const { children: _c, ...rest } = props
+  out.push(`${pad}<${tag}${Object.keys(rest).length ? ' ' + JSON.stringify(rest) : ''}>`)
   for (const c of n.children ?? (props.children as unknown[]) ?? []) walk(c as N, d + 1, out, pairs)
 }
 

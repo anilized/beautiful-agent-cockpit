@@ -1,570 +1,604 @@
 === live @ 60 cols (mock t=0) ===
-<Box>
+<Box {"flexDirection":"column"}>
  Raster#hero 60x4 pairs=215 c0=1c1f2a/1a262b
+   props {"key":"hero","columns":60,"rows":4}
+   cells.base64 gCUAACofHAArJhoAgCUAAFIoKwBSLCoAgCUAAO7TIgDu0yIAgCUAAPDGOgBmLTIAgCUAAPK5UQBQKykAgCUAAGYtMgBQKikAgCUAAPeggQD3oIEAgCUAAPmTmQBvLjcAgCUAAPWJrAD1iawAgCUAAGQsMgBkKzIAgCUAAN2AyADdgMgAgCUAANF81gBjKzIAgCUAAMV35ABLJSkAgCUAAGMrMgBKJSkAgCUAAKV19gCldfYAgCUAAGIqMgBuLTcAgCUAAHp++gB6fvoAgCUAAGIqMgBhKTIAgCUAAE6H/QBOh/0AgCUAADyM/wB0LjkAgCUAADiV/gA4lf4AgCUAAGEpMgBGISkAgCUAAC+o/QBgKDIAgCUAACqy/AAqsvwAgCUAACa7+wBgKDIAgCUAAGAoMgAOERYAgCUAAF7FvQBfKDIAgCUAAILIlgCCyJYAgCUAAKbMbwBfKDIAgCUAAEUhKAANERYAgCUAABATFAANERYAgCUAABATFAAOERYAgCUAABETFAAOERYAgCUAABETFAAPEhYAgCUAABETFAAPEhYAgCUAABIUFAAQEhYAgCUAABMUFAARExYAgCUAABMUFAARFBYAgCUAABMVFAASFBYAgCUAABQWFAATFhYAgCUAABUWFAAUFhYAgCUAABYWFAAVFhYAgCUAABYXFAAWFxYAgCUAABcYFQAXGBYAgCUAABgZFQAYGRYAgCUAABoaFQAaGhYAgCUAABoaFQAbGxYAgCUAABsbFQAbGxYAgCUAABwcFQAdHRYAgCUAAB0dFQAeHhYAgCUAAB0dFQAfHxYAgCUAAB4eFQAgIBYAgCUAACAfFQAgIBYAgCUAACAgFQAiIRYAgCUAACEhFQAjIhYAgCUAACEhFQAkIxYAgCUAACIiFQAlJBYAgCUAACMiFQAlJRYAgCUAACQjFQAmJhYAgCUAACQkFgAoJhcAgCUAACwrGQAvLhoAgCUAAFMtKgBULisAgCUAAO7TIgDu0yIAgCUAAFErKgBnLjMAgCUAACclGABSLSoAgCUAAFAqKgBSLCoAgCUAAPeggQD3oIEAgCUAAGUsMwBwLjcAgCUAAPWJrAD1iawAgCUAAGQrMwBlLDMAgCUAAN2AyADdgMgAgCUAAEwmKgBkLDMAgCUAABwcGABNKCoAgCUAAEolKQBNJyoAgCUAAKV19gCldfYAgCUAAI96+ABvLTcAgCUAAG4tNwB6fvoAgCUAAEgjKQBiKjMAgCUAAE6H/QBOh/0AgCUAADyM/wBiKjMAgCUAADiV/gBKJSoAgCUAAEYiKQAYGRkAgCUAAEYiKQBiKjMAgCUAACqy/AAqsvwAgCUAAEUiKQBiKjMAgCUAABAUFwAXGRkAgCUAAEUhKQBJJCoAgCUAAILIlgCCyJYAgCUAAEUhKQBJJCoAgCUAABAUFwAXGRkAgCUAABAUFwAYGRkAgCUAABAUFwAZGhkAgCUAABEUFwAZGhkAgCUAABIUFwAZGxkAgCUAABIVFwAaGxkAgCUAABMVFwAbHBkAgCUAABQWFwAcHRkAgCUAABQXFwAdHRkAgCUAABUYFwAeHxkAgCUAABcZFwAfHxkAgCUAABgaFwAhIRkAgCUAABkaFwAiIRkAgCUAABocFwAjIxkAgCUAABwcGAAkJBkAgCUAAB0dGAAlJRkAgCUAAB4eGAAnJhkAgCUAAB8fGAAoJxkAgCUAACEhGAApKBkAgCUAACIiGAAqKhkAgCUAACMjGAArKhkAgCUAACQkGAAsKxoAgCUAACUkGAAtLBoAgCUAACYlGAAvLRoAgCUAACcnGAAwLxoAgCUAACknGAAxLRsAgCUAACopGQAxLBwAgCUAACsqGQAxKh0AgCUAACsrGQAxKh8AgCUAACwrGQAyKCAAgCUAAC0rGgAyJyEAgCUAADQtHwAzIyUAgCUAAFcvLQAzJCMAgCUAAO7TIgBXKi8AgCUAAPDGOgBXKy4AgCUAAPK5UQBWLC4AgCUAAGgvNAAyKR8AgCUAAPeggQBWLS0AgCUAAPmTmQBWLSwAgCUAAPWJrABWLiwAgCUAAGcuMwAxLRsAgCUAAN2AyABVLysAgCUAANF81gBVLysAgCUAAMV35ABULisAgCUAAGYtMwAtLBoAgCUAAKV19gBULSsAgCUAAGUtMwAsKxoAgCUAAHp++gBTLSoAgCUAAGUtMwArKhkAgCUAAE6H/QBSLSoAgCUAAE8pKwAqKhkAgCUAACMjGwAqKRkAgCUAAE8pKwAqKRkAgCUAAC+o/QBSLCoAgCUAACqy/ABSLCoAgCUAACa7+wBSLCoAgCUAAE4pKwApKBkAgCUAAE4pKwApKBkAgCUAAILIlgBSLCoAgCUAAE8pKwAqKRkAgCUAACMjGwAqKRkAgCUAACMjGwAqKRkAgCUAACQjGwAqKhkAgCUAACQkGwAqKhkAgCUAACUlGwArKhkAgCUAACUlGwArKhkAgCUAACcmGwAsKxoAgCUAACcnGwAtKxoAgCUAACgnGwAtLBoAgCUAACkpGwAuLRoAgCUAACopGwAvLhoAgCUAACsqGwAwLxoAgCUAACwrGwAwLRsAgCUAAC0sGwAxLRwAgCUAAC4tGwAxKx0AgCUAAC8uHAAxKh0AgCUAADAvHAAxKh8AgCUAADIwHAAyKB8AgCUAADMyHAAyJyEAgCUAADQwHQAzJiEAgCUAADQvHgAzJSMAgCUAADQtHwAzIyMAgCUAADQsIQAzIiUAgCUAADUqIgA0ISUAgCUAADUpIwA0ICYAgCUAADYoJAA0HycAgCUAADYmJQA0HSgAgCUAADYlJgA1HCkAgCUAADcjJwA1GyoAgCUAADciKAA0GykAgCUAADchKQAzGygAgCUAAC4ZJQAiFR8AgCUAADAaJQAjFh8AbwAAAP21xAArGCMAcAAAAP21xAAsGCQAdQAAAP21xAAsGSMAcwAAAP21xAAtGiMAIAAAAP21xAAuGiMAuCUAAP21xAAuGyQAIAAAAP21xAAuHCMAYwAAAP21xAAvHSMAbwAAAP21xAAwHiMAZAAAAP21xAAwHyIAZQAAAP21xAAvICEAeAAAAP21xAAvICAAIAAAAP21xAAvIR8AuCUAAP21xAAuIh8AIAAAAP21xAAuIx4AdwAAAP21xAAuJB4AbwAAAP21xAAuJR4AcgAAAP21xAAuJR4AawAAAP21xAAuJh0AZQAAAP21xAAuJxwAcgAAAP21xAAtJxwAcwAAAP21xAAtJxwAgCUAAC0rGgAsIxwAgCUAAC0rGgAsIxwAgCUAAC0rGgAsIxsAgCUAAC0rGgAsJBsAgCUAAC0rGgAsJBsAgCUAAC0rGgAsJBsAgCUAAC0rGgAsJBsAgCUAAC4rGgAsJBsAgCUAAC4rGgAsJBsAgCUAAC4rGwAsJBsAzyUAAHCZHQAtJxsAgCUAAC4pHAAsIxwAbwAAAOvn5QAtJhwAbgAAAOvn5QAtJh0AbAAAAOvn5QAtJR0AaQAAAOvn5QAuJR0AbgAAAOvn5QAuIx0AZQAAAOvn5QAuIx4AIAAAAOvn5QAuIh8AOgAAAOvn5QAvIh8ANAAAAOvn5QAvIiAAMwAAAOvn5QAvISEAMQAAAOvn5QAvICEANwAAAOvn5QAvHyIAIAAAAOvn5QAwHiIAIAAAAOvn5QAwHSMAMAAAAOvn5QAwHCMAMAAAAOvn5QAwHCQAOgAAAOvn5QAwHCQAMAAAAOvn5QAwGyUAMAAAAOvn5QAwGiUAOgAAAOvn5QAwGiUAMAAAAOvn5QAwGiYAMAAAAOvn5QAvGSUAgCUAAC4ZJQAuGCUAgCUAAC4ZJQAuGCQA
    |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+   row0 cp:fg:bg 2580:1c1f2a:1a262b 2580:2b2852:2a2c52 2580:22d3ee:22d3ee 2580:3ac6f0:322d66 2580:51b9f2:292b50 2580:322d66:292a50 2580:81a0f7:81a0f7 2580:9993f9:372e6f 2580:ac89f5:ac89f5 2580:322c64:322b64 2580:c880dd:c880dd 2580:d67cd1:322b63 2580:e477c5:29254b 2580:322b63:29254a 2580:f675a5:f675a5 2580:322a62:372d6e 2580:fa7e7a:fa7e7a 2580:322a62:322961 2580:fd874e:fd874e 2580:ff8c3c:392e74 2580:fe9538:fe9538 2580:322961:292146 2580:fda82f:322860 2580:fcb22a:fcb22a 2580:fbbb26:322860 2580:322860:16110e 2580:bdc55e:32285f 2580:96c882:96c882 2580:6fcca6:32285f 2580:282145:16110d 2580:141310:16110d 2580:141310:16110e 2580:141311:16110e 2580:141311:16120f 2580:141311:16120f 2580:141412:161210 2580:141413:161311 2580:141413:161411 2580:141513:161412 2580:141614:161613 2580:141615:161614 2580:141616:161615 2580:141716:161716 2580:151817:161817 2580:151918:161918 2580:151a1a:161a1a 2580:151a1a:161b1b 2580:151b1b:161b1b 2580:151c1c:161d1d 2580:151d1d:161e1e 2580:151d1d:161f1f 2580:151e1e:162020 2580:151f20:162020 2580:152020:162122 2580:152121:162223 2580:152121:162324 2580:152222:162425 2580:152223:162525 2580:152324:162626 2580:162424:172628
    |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+   row1 cp:fg:bg 2580:192b2c:1a2e2f 2580:2a2d53:2b2e54 2580:22d3ee:22d3ee 2580:2a2b51:332e67 2580:182527:2a2d52 2580:2a2a50:2a2c52 2580:81a0f7:81a0f7 2580:332c65:372e70 2580:ac89f5:ac89f5 2580:332b64:332c65 2580:c880dd:c880dd 2580:2a264c:332c64 2580:181c1c:2a284d 2580:29254a:2a274d 2580:f675a5:f675a5 2580:f87a8f:372d6f 2580:372d6e:fa7e7a 2580:292348:332a62 2580:fd874e:fd874e 2580:ff8c3c:332a62 2580:fe9538:2a254a 2580:292246:191918 2580:292246:332a62 2580:fcb22a:fcb22a 2580:292245:332a62 2580:171410:191917 2580:292145:2a2449 2580:96c882:96c882 2580:292145:2a2449 2580:171410:191917 2580:171410:191918 2580:171410:191a19 2580:171411:191a19 2580:171412:191b19 2580:171512:191b1a 2580:171513:191c1b 2580:171614:191d1c 2580:171714:191d1d 2580:171815:191f1e 2580:171917:191f1f 2580:171a18:192121 2580:171a19:192122 2580:171c1a:192323 2580:181c1c:192424 2580:181d1d:192525 2580:181e1e:192627 2580:181f1f:192728 2580:182121:192829 2580:182222:192a2a 2580:182323:192a2b 2580:182424:1a2b2c 2580:182425:1a2c2d 2580:182526:1a2d2f 2580:182727:1a2f30 2580:182729:1b2d31 2580:19292a:1c2c31 2580:192a2b:1d2a31 2580:192b2b:1f2a31 2580:192b2c:202832 2580:1a2b2d:212732
    |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+   row2 cp:fg:bg 2580:1f2d34:252333 2580:2d2f57:232433 2580:22d3ee:2f2a57 2580:3ac6f0:2e2b57 2580:51b9f2:2e2c56 2580:342f68:1f2932 2580:81a0f7:2d2d56 2580:9993f9:2c2d56 2580:ac89f5:2c2e56 2580:332e67:1b2d31 2580:c880dd:2b2f55 2580:d67cd1:2b2f55 2580:e477c5:2b2e54 2580:332d66:1a2c2d 2580:f675a5:2b2d54 2580:332d65:1a2b2c 2580:fa7e7a:2a2d53 2580:332d65:192a2b 2580:fd874e:2a2d52 2580:2b294f:192a2a 2580:1b2323:19292a 2580:2b294f:19292a 2580:fda82f:2a2c52 2580:fcb22a:2a2c52 2580:fbbb26:2a2c52 2580:2b294e:192829 2580:2b294e:192829 2580:96c882:2a2c52 2580:2b294f:19292a 2580:1b2323:19292a 2580:1b2323:19292a 2580:1b2324:192a2a 2580:1b2424:192a2a 2580:1b2525:192a2b 2580:1b2525:192a2b 2580:1b2627:1a2b2c 2580:1b2727:1a2b2d 2580:1b2728:1a2c2d 2580:1b2929:1a2d2e 2580:1b292a:1a2e2f 2580:1b2a2b:1a2f30 2580:1b2b2c:1b2d30 2580:1b2c2d:1c2d31 2580:1b2d2e:1d2b31 2580:1c2e2f:1d2a31 2580:1c2f30:1f2a31 2580:1c3032:1f2832 2580:1c3233:212732 2580:1d3034:212633 2580:1e2f34:232533 2580:1f2d34:232333 2580:212c34:252233 2580:222a35:252134 2580:232935:262034 2580:242836:271f34 2580:252636:281d34 2580:262536:291c35 2580:272337:2a1b35 2580:282237:291b34 2580:292137:281b33
    |▀▀opus ▸ codex ▸ workers▀▀▀▀▀▀▀▀▀▀●▀online :4317  00:00:00▀▀|
- <Box>
-  <Box>
-   <Box>
-    <Box>
+   row3 cp:fg:bg 2580:25192e:1f1522 2580:251a30:1f1623 6f:c4b5fd:23182b 70:c4b5fd:24182c 75:c4b5fd:23192c 73:c4b5fd:231a2d 20:c4b5fd:231a2e 25b8:c4b5fd:241b2e 20:c4b5fd:231c2e 63:c4b5fd:231d2f 6f:c4b5fd:231e30 64:c4b5fd:221f30 65:c4b5fd:21202f 78:c4b5fd:20202f 20:c4b5fd:1f212f 25b8:c4b5fd:1f222e 20:c4b5fd:1e232e 77:c4b5fd:1e242e 6f:c4b5fd:1e252e 72:c4b5fd:1e252e 6b:c4b5fd:1d262e 65:c4b5fd:1c272e 72:c4b5fd:1c272d 73:c4b5fd:1c272d 2580:1a2b2d:1c232c 2580:1a2b2d:1c232c 2580:1a2b2d:1b232c 2580:1a2b2d:1b242c 2580:1a2b2d:1b242c 2580:1a2b2d:1b242c 2580:1a2b2d:1b242c 2580:1a2b2e:1b242c 2580:1a2b2e:1b242c 2580:1b2b2e:1b242c 25cf:1d9970:1b272d 2580:1c292e:1c232c 6f:e5e7eb:1c262d 6e:e5e7eb:1d262d 6c:e5e7eb:1d252d 69:e5e7eb:1d252e 6e:e5e7eb:1d232e 65:e5e7eb:1e232e 20:e5e7eb:1f222e 3a:e5e7eb:1f222f 34:e5e7eb:20222f 33:e5e7eb:21212f 31:e5e7eb:21202f 37:e5e7eb:221f2f 20:e5e7eb:221e30 20:e5e7eb:231d30 30:e5e7eb:231c30 30:e5e7eb:241c30 3a:e5e7eb:241c30 30:e5e7eb:251b30 30:e5e7eb:251a30 3a:e5e7eb:251a30 30:e5e7eb:261a30 30:e5e7eb:25192f 2580:25192e:25182e 2580:25192e:24182e
+ <Box {"flexDirection":"column"}>
+  <Box {"flexDirection":"column","flexGrow":1}>
+   <Box {"flexDirection":"column","paddingX":1}>
+    <Box {"justifyContent":"space-between"}>
      <Text>
-      <Text color=#0b0b0f bold=true>
+      <Text {"backgroundColor":"#fbbf24","color":"#0b0b0f","bold":true}>
        "● AWAITING APPROVAL"
-      <Text color=#6b7280>
+      <Text {"color":"#6b7280"}>
        "  round "
        "0"
        " · "
        "c6ee44bf"
        " · 0s ago"
      <Box>
-      <Button#prev label=◂>
-      <Text color=#6b7280>
+      <Button#prev {"key":"prev","label":"◂","hotkey":"k","plain":true,"dimColor":true}>
+      <Text {"color":"#6b7280"}>
        "1"
        "/"
        "2"
-      <Button#next label=▸>
-    <Text color=#fafafa bold=true>
+      <Button#next {"key":"next","label":"▸","hotkey":"j","plain":true,"dimColor":true}>
+    <Text {"color":"#fafafa","bold":true,"wrap":"wrap"}>
      "Add two independent utility modules to this library: (1) src/strings.js with capitalize(s) and slugify(s); (2) …"
-   <Box>
-    <Box>
-     <Text color=#6b7280>
+   <Box {"gap":1,"flexWrap":"wrap"}>
+    <Box {"flexDirection":"column","borderStyle":"round","borderColor":"#26262e","paddingX":1,"flexGrow":1}>
+     <Text {"color":"#6b7280"}>
       "PROGRESS"
-     <Text color=#22d3ee bold=true>
+     <Text {"color":"#22d3ee","bold":true}>
       "75%"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280","wrap":"truncate-end"}>
       "approve"
-    <Box>
-     <Text color=#6b7280>
+    <Box {"flexDirection":"column","borderStyle":"round","borderColor":"#26262e","paddingX":1,"flexGrow":1}>
+     <Text {"color":"#6b7280"}>
       "TASKS"
-     <Text color=#34d399 bold=true>
+     <Text {"color":"#34d399","bold":true}>
       "3/4"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280","wrap":"truncate-end"}>
       "1 moving"
-    <Box>
-     <Text color=#6b7280>
+    <Box {"flexDirection":"column","borderStyle":"round","borderColor":"#26262e","paddingX":1,"flexGrow":1}>
+     <Text {"color":"#6b7280"}>
       "AGENTS"
-     <Text color=#a78bfa bold=true>
+     <Text {"color":"#a78bfa","bold":true}>
       "1"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280","wrap":"truncate-end"}>
       "live now"
-    <Box>
-     <Text color=#6b7280>
+    <Box {"flexDirection":"column","borderStyle":"round","borderColor":"#26262e","paddingX":1,"flexGrow":1}>
+     <Text {"color":"#6b7280"}>
       "SPEND"
-     <Text color=#fbbf24 bold=true>
+     <Text {"color":"#fbbf24","bold":true}>
       "$2.12"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280","wrap":"truncate-end"}>
       "1.6M tok"
-   <Box>
-    <Box>
-     <Text color=#9ca3af bold=true>
+   <Box {"flexDirection":"column","borderStyle":"round","borderColor":"#9b7517","paddingX":1,"flexGrow":0}>
+    <Box {"justifyContent":"space-between"}>
+     <Text {"color":"#9ca3af","bold":true}>
       "LIFECYCLE"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280"}>
       "3 of 4 tasks"
     <Text>
     Raster#pipeline 56x2 pairs=17 c0=dflt/dflt
+      props {"key":"pipeline","columns":56,"rows":2}
+      cells.base64 IAAAAAAAAAEAAAABIAAAAAAAAAEAAAABIAAAAAAAAAEAAAABzyUAAJnTNAAAAAABASUAAHSDFAAAAAABASUAAHqRGgAAAAABASUAAICeHwAAAAABASUAAIerJAAAAAABASUAAI24KQAAAAABASUAAJPGLwAAAAABzyUAAJnTNAAAAAABASUAAHSDFAAAAAABASUAAHqRGgAAAAABASUAAICeHwAAAAABASUAAIerJAAAAAABASUAAI24KQAAAAABASUAAJPGLwAAAAABzyUAAJnTNAAAAAABASUAAHSDFAAAAAABASUAAHqRGgAAAAABASUAAICeHwAAAAABASUAAIerJAAAAAABASUAAI24KQAAAAABASUAAJPGLwAAAAABzyUAAJnTNAAAAAABASUAAHSDFAAAAAABASUAAHqRGgAAAAABASUAAICeHwAAAAABASUAAIerJAAAAAABASUAAI24KQAAAAABASUAAJPGLwAAAAABzyUAAJnTNAAAAAABASUAAHSDFAAAAAABASUAAHqRGgAAAAABASUAAICeHwAAAAABASUAAIerJAAAAAABASUAAI24KQAAAAABASUAAJPGLwAAAAABzyUAAJnTNAAAAAABASUAAHSDFAAAAAABASUAAHqRGgAAAAABASUAAICeHwAAAAABASUAAIerJAAAAAABASUAAI24KQAAAAABASUAAJPGLwAAAAABySUAAGbS/AAAAAABASUAAEY/PwAAAAABASUAAEY/PwAAAAABASUAAEY/PwAAAAABASUAAD5fbgAAAAABASUAADV/nQAAAAABASUAAC2fzAAAAAAByyUAAFtSUgAAAAABIAAAAAAAAAEAAAABIAAAAAAAAAEAAAABIAAAAAAAAAEAAAABIAAAAAAAAAEAAAABYQAAALfnbgAAAAABcgAAALfnbgAAAAABYwAAALfnbgAAAAABaAAAALfnbgAAAAABaQAAALfnbgAAAAABIAAAAAAAAAEAAAABIAAAAAAAAAEAAAABZAAAALfnbgAAAAABZQAAALfnbgAAAAABYgAAALfnbgAAAAABYQAAALfnbgAAAAABdAAAALfnbgAAAAABIAAAAAAAAAEAAAABIAAAAAAAAAEAAAABcAAAALfnbgAAAAABbAAAALfnbgAAAAABYQAAALfnbgAAAAABbgAAALfnbgAAAAABIAAAAAAAAAEAAAABIAAAAAAAAAEAAAABIAAAAAAAAAEAAAABYgAAALfnbgAAAAABdQAAALfnbgAAAAABaQAAALfnbgAAAAABbAAAALfnbgAAAAABZAAAALfnbgAAAAABIAAAAAAAAAEAAAABIAAAAAAAAAEAAAABaQAAALfnbgAAAAABbgAAALfnbgAAAAABdAAAALfnbgAAAAABZQAAALfnbgAAAAABZwAAALfnbgAAAAABIAAAAAAAAAEAAAABIAAAAAAAAAEAAAABdgAAALfnbgAAAAABYQAAALfnbgAAAAABbAAAALfnbgAAAAABaQAAALfnbgAAAAABZAAAALfnbgAAAAABIAAAAAAAAAEAAAABIAAAAAAAAAEAAAABYQAAAP///wAAAAABcAAAAP///wAAAAABcAAAAP///wAAAAABcgAAAP///wAAAAABbwAAAP///wAAAAABIAAAAAAAAAEAAAABIAAAAAAAAAEAAAABbQAAAHpxcQAAAAABZQAAAHpxcQAAAAABcgAAAHpxcQAAAAABZwAAAHpxcQAAAAABZQAAAHpxcQAAAAABIAAAAAAAAAEAAAAB
       |   ●━━━━━━●━━━━━━●━━━━━━●━━━━━━●━━━━━━●━━━━━━◉━━━━━━○   |
+      row0 cp:fg:bg 20:dflt:dflt 20:dflt:dflt 20:dflt:dflt 25cf:34d399:dflt 2501:148374:dflt 2501:1a917a:dflt 2501:1f9e80:dflt 2501:24ab87:dflt 2501:29b88d:dflt 2501:2fc693:dflt 25cf:34d399:dflt 2501:148374:dflt 2501:1a917a:dflt 2501:1f9e80:dflt 2501:24ab87:dflt 2501:29b88d:dflt 2501:2fc693:dflt 25cf:34d399:dflt 2501:148374:dflt 2501:1a917a:dflt 2501:1f9e80:dflt 2501:24ab87:dflt 2501:29b88d:dflt 2501:2fc693:dflt 25cf:34d399:dflt 2501:148374:dflt 2501:1a917a:dflt 2501:1f9e80:dflt 2501:24ab87:dflt 2501:29b88d:dflt 2501:2fc693:dflt 25cf:34d399:dflt 2501:148374:dflt 2501:1a917a:dflt 2501:1f9e80:dflt 2501:24ab87:dflt 2501:29b88d:dflt 2501:2fc693:dflt 25cf:34d399:dflt 2501:148374:dflt 2501:1a917a:dflt 2501:1f9e80:dflt 2501:24ab87:dflt 2501:29b88d:dflt 2501:2fc693:dflt 25c9:fcd266:dflt 2501:3f3f46:dflt 2501:3f3f46:dflt 2501:3f3f46:dflt 2501:6e5f3e:dflt 2501:9d7f35:dflt 2501:cc9f2d:dflt 25cb:52525b:dflt 20:dflt:dflt 20:dflt:dflt 20:dflt:dflt
       | archi  debat  plan   build  integ  valid  appro  merge |
+      row1 cp:fg:bg 20:dflt:dflt 61:6ee7b7:dflt 72:6ee7b7:dflt 63:6ee7b7:dflt 68:6ee7b7:dflt 69:6ee7b7:dflt 20:dflt:dflt 20:dflt:dflt 64:6ee7b7:dflt 65:6ee7b7:dflt 62:6ee7b7:dflt 61:6ee7b7:dflt 74:6ee7b7:dflt 20:dflt:dflt 20:dflt:dflt 70:6ee7b7:dflt 6c:6ee7b7:dflt 61:6ee7b7:dflt 6e:6ee7b7:dflt 20:dflt:dflt 20:dflt:dflt 20:dflt:dflt 62:6ee7b7:dflt 75:6ee7b7:dflt 69:6ee7b7:dflt 6c:6ee7b7:dflt 64:6ee7b7:dflt 20:dflt:dflt 20:dflt:dflt 69:6ee7b7:dflt 6e:6ee7b7:dflt 74:6ee7b7:dflt 65:6ee7b7:dflt 67:6ee7b7:dflt 20:dflt:dflt 20:dflt:dflt 76:6ee7b7:dflt 61:6ee7b7:dflt 6c:6ee7b7:dflt 69:6ee7b7:dflt 64:6ee7b7:dflt 20:dflt:dflt 20:dflt:dflt 61:ffffff:dflt 70:ffffff:dflt 70:ffffff:dflt 72:ffffff:dflt 6f:ffffff:dflt 20:dflt:dflt 20:dflt:dflt 6d:71717a:dflt 65:71717a:dflt 72:71717a:dflt 67:71717a:dflt 65:71717a:dflt 20:dflt:dflt
     <Text>
     <Box>
      Raster#progress 50x1 pairs=39 c0=8b5cf6/1f1f26
+       props {"key":"progress","columns":50,"rows":1}
+       cells.base64 iCUAAPZciwAmHx8AiCUAAPZhhwAmHx8AiCUAAPVmggAmHx8AiCUAAPVrfgAmHx8AiCUAAPVvegAmHx8AiCUAAPR0dgAmHx8AiCUAAPR5cQAmHx8AiCUAAPR+bQAmHx8AiCUAAPODaQAmHx8AiCUAAPOIZAAmHx8AiCUAAPONYAAmHx8AiCUAAPKRXAAmHx8AiCUAAPKWWAAmHx8AiCUAAPKbUwAmHx8AiCUAAPGgTwAmHx8AiCUAAPGlSwAmHx8AiCUAAPGqRgAmHx8AiCUAAPCuQgAmHx8AiCUAAPCzPgAmHx8AiCUAAPC4OgAmHx8AiCUAAO+9NQAmHx8AiCUAAO/CMQAmHx8AiCUAAO/HLQAmHx8AiCUAAO7MKQAmHx8AiCUAAO7QJAAmHx8AiCUAAOzTIgAmHx8AiCUAAOnTIwAmHx8AiCUAAOXTJAAmHx8AiCUAAOLTJQAmHx8AiCUAAN7TJQAmHx8AiCUAANvTJgAmHx8AiCUAANjTJwAmHx8AiCUAANTTJwAmHx8AiCUAANHTKAAmHx8AiCUAAM3TKQAmHx8AiCUAAMrTKgAmHx8AiCUAAMbTKgAmHx8AjCUAAMPTKwAmHx8AIAAAAAAAAAEmHx8AIAAAAAAAAAEmHx8AIAAAAAAAAAEmHx8AIAAAAAAAAAEmHx8AIAAAAAAAAAEmHx8AIAAAAAAAAAEmHx8AIAAAAAAAAAEmHx8AIAAAAAAAAAEmHx8AIAAAAAAAAAEmHx8AIAAAAAAAAAEmHx8AIAAAAAAAAAEmHx8AIAAAAAAAAAEmHx8A
        |█████████████████████████████████████▌            |
-     <Text color=#fafafa bold=true>
+       row0 cp:fg:bg 2588:8b5cf6:1f1f26 2588:8761f6:1f1f26 2588:8266f5:1f1f26 2588:7e6bf5:1f1f26 2588:7a6ff5:1f1f26 2588:7674f4:1f1f26 2588:7179f4:1f1f26 2588:6d7ef4:1f1f26 2588:6983f3:1f1f26 2588:6488f3:1f1f26 2588:608df3:1f1f26 2588:5c91f2:1f1f26 2588:5896f2:1f1f26 2588:539bf2:1f1f26 2588:4fa0f1:1f1f26 2588:4ba5f1:1f1f26 2588:46aaf1:1f1f26 2588:42aef0:1f1f26 2588:3eb3f0:1f1f26 2588:3ab8f0:1f1f26 2588:35bdef:1f1f26 2588:31c2ef:1f1f26 2588:2dc7ef:1f1f26 2588:29ccee:1f1f26 2588:24d0ee:1f1f26 2588:22d3ec:1f1f26 2588:23d3e9:1f1f26 2588:24d3e5:1f1f26 2588:25d3e2:1f1f26 2588:25d3de:1f1f26 2588:26d3db:1f1f26 2588:27d3d8:1f1f26 2588:27d3d4:1f1f26 2588:28d3d1:1f1f26 2588:29d3cd:1f1f26 2588:2ad3ca:1f1f26 2588:2ad3c6:1f1f26 258c:2bd3c3:1f1f26 20:dflt:1f1f26 20:dflt:1f1f26 20:dflt:1f1f26 20:dflt:1f1f26 20:dflt:1f1f26 20:dflt:1f1f26 20:dflt:1f1f26 20:dflt:1f1f26 20:dflt:1f1f26 20:dflt:1f1f26 20:dflt:1f1f26 20:dflt:1f1f26
+     <Text {"color":"#fafafa","bold":true}>
       " 75"
       "%"
     <Box>
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280"}>
       "activity "
      Raster#spark 47x1 pairs=1 c0=27272a/dflt
+       props {"key":"spark","columns":47,"rows":1}
+       cells.base64 gSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAABgSUAAConJwAAAAAB
        |▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁|
-   <Box>
-    <Box>
+       row0 cp:fg:bg 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt 2581:27272a:dflt
+   <Box {"flexDirection":"column","borderStyle":"double","borderColor":"#fda531","paddingX":1}>
+    <Box {"justifyContent":"space-between"}>
      <Text>
-      <Text color=#0b0b0f bold=true>
+      <Text {"backgroundColor":"#fbbf24","color":"#0b0b0f","bold":true}>
        "◆ YOUR CALL"
-      <Text color=#6b7280>
+      <Text {"color":"#6b7280"}>
        "final"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280"}>
       "apr_1"
-    <Text color=#e5e7eb>
+    <Text {"color":"#e5e7eb","wrap":"wrap"}>
      "All tasks integrated; integration tests pass. Approve merge?"
-    <Box>
-     <Button#approve-apr_1 label=a · Approve>
-     <Button#changes-apr_1 label=c · Changes>
-     <Button#reject-apr_1 label=r · Reject>
-   <Box>
-    <Box>
+    <Box {"gap":1}>
+     <Button#approve-apr_1 {"key":"approve-apr_1","label":"a · Approve","hotkey":"a","variant":"primary","autoFocus":true}>
+     <Button#changes-apr_1 {"key":"changes-apr_1","label":"c · Changes","hotkey":"c"}>
+     <Button#reject-apr_1 {"key":"reject-apr_1","label":"r · Reject","hotkey":"r"}>
+   <Box {"flexDirection":"column","borderStyle":"round","borderColor":"#2e2e36","paddingX":1,"flexGrow":1}>
+    <Box {"justifyContent":"space-between"}>
      <Box>
-      <Box>
-       <Button#tab-tasks label=Tasks 3/4>
-      <Box>
-       <Button#tab-events label=Events 12>
-      <Box>
-       <Button#tab-report label=Report>
-     <Box>
-      <Button#new label=n new>
-      <Button#report label=p report>
-      <Button#stop label=x stop>
-    <Text color=#26262e>
+      <Box {"backgroundColor":"#3a2412","paddingX":1}>
+       <Button#tab-tasks {"key":"tab-tasks","label":"Tasks 3/4","hotkey":"1","plain":true,"dimColor":false}>
+      <Box {"paddingX":1}>
+       <Button#tab-events {"key":"tab-events","label":"Events 12","hotkey":"2","plain":true,"dimColor":true}>
+      <Box {"paddingX":1}>
+       <Button#tab-report {"key":"tab-report","label":"Report","hotkey":"3","plain":true,"dimColor":true}>
+     <Box {"gap":1}>
+      <Button#new {"key":"new","label":"n new","hotkey":"n","plain":true,"dimColor":true}>
+      <Button#report {"key":"report","label":"p report","hotkey":"p","plain":true,"dimColor":true}>
+      <Button#stop {"key":"stop","label":"x stop","hotkey":"x","plain":true,"dimColor":true}>
+    <Text {"color":"#26262e"}>
      "────────────────────────────────────────────────────────"
-    <Box>
-     <Box#task-TASK-102>
-      <Box>
-       <Box>
-        <Text>
-         <Text color=#22d3ee>
+    <Box {"flexDirection":"column"}>
+     <Box#task-TASK-102 {"key":"task-TASK-102","flexDirection":"column"}>
+      <Box {"justifyContent":"space-between"}>
+       <Box {"flexShrink":1}>
+        <Text {"wrap":"truncate-end"}>
+         <Text {"color":"#22d3ee"}>
           "▎"
-         <Text color=#91e9f7>
+         <Text {"color":"#91e9f7"}>
           "⠋"
-         <Text color=#fafafa bold=true>
+         <Text {"color":"#fafafa","bold":true}>
           "TASK-102"
-         <Text color=#e5e7eb>
+         <Text {"color":"#e5e7eb"}>
           "Implement and test string utilities"
-       <Box>
+       <Box {"flexShrink":0}>
         <Text>
-         <Text color=#6b7280>
+         <Text {"color":"#6b7280"}>
           " sonnet · it2 · ⇠ TASK-101 "
-         <Text color=#0b0b0f bold=true>
+         <Text {"backgroundColor":"#91e9f7","color":"#0b0b0f","bold":true}>
           "running"
-     <Box#task-TASK-101>
-      <Box>
-       <Box>
-        <Text>
-         <Text color=#34d399>
+     <Box#task-TASK-101 {"key":"task-TASK-101","flexDirection":"column"}>
+      <Box {"justifyContent":"space-between"}>
+       <Box {"flexShrink":1}>
+        <Text {"wrap":"truncate-end"}>
+         <Text {"color":"#34d399"}>
           "▎"
-         <Text color=#34d399>
+         <Text {"color":"#34d399"}>
           "✓"
-         <Text color=#6b7280 bold=true>
+         <Text {"color":"#6b7280","bold":true}>
           "TASK-101"
-         <Text color=#6b7280>
+         <Text {"color":"#6b7280"}>
           "Apply the approved test discovery fallback"
-       <Box>
+       <Box {"flexShrink":0}>
         <Text>
-         <Text color=#6b7280>
+         <Text {"color":"#6b7280"}>
           " sonnet "
-         <Text color=#34d399>
+         <Text {"color":"#34d399"}>
           "✓ "
           "integrated"
-     <Box#task-TASK-103>
-      <Box>
-       <Box>
-        <Text>
-         <Text color=#34d399>
+     <Box#task-TASK-103 {"key":"task-TASK-103","flexDirection":"column"}>
+      <Box {"justifyContent":"space-between"}>
+       <Box {"flexShrink":1}>
+        <Text {"wrap":"truncate-end"}>
+         <Text {"color":"#34d399"}>
           "▎"
-         <Text color=#34d399>
+         <Text {"color":"#34d399"}>
           "✓"
-         <Text color=#6b7280 bold=true>
+         <Text {"color":"#6b7280","bold":true}>
           "TASK-103"
-         <Text color=#6b7280>
+         <Text {"color":"#6b7280"}>
           "Implement and test math utilities"
-       <Box>
+       <Box {"flexShrink":0}>
         <Text>
-         <Text color=#6b7280>
+         <Text {"color":"#6b7280"}>
           " sonnet · ⇠ TASK-101 "
-         <Text color=#34d399>
+         <Text {"color":"#34d399"}>
           "✓ "
           "integrated"
-     <Box#task-TASK-104>
-      <Box>
-       <Box>
-        <Text>
-         <Text color=#34d399>
+     <Box#task-TASK-104 {"key":"task-TASK-104","flexDirection":"column"}>
+      <Box {"justifyContent":"space-between"}>
+       <Box {"flexShrink":1}>
+        <Text {"wrap":"truncate-end"}>
+         <Text {"color":"#34d399"}>
           "▎"
-         <Text color=#34d399>
+         <Text {"color":"#34d399"}>
           "✓"
-         <Text color=#6b7280 bold=true>
+         <Text {"color":"#6b7280","bold":true}>
           "TASK-104"
-         <Text color=#6b7280>
+         <Text {"color":"#6b7280"}>
           "Integrate public exports and verify the complete change"
-       <Box>
+       <Box {"flexShrink":0}>
         <Text>
-         <Text color=#6b7280>
+         <Text {"color":"#6b7280"}>
           " sonnet · ⇠ TASK-103,TASK-102 "
-         <Text color=#34d399>
+         <Text {"color":"#34d399"}>
           "✓ "
           "integrated"
-  <Box>
-   <Box>
-    <Box>
-     <Text color=#9ca3af bold=true>
+  <Box {"flexWrap":"wrap"}>
+   <Box {"flexDirection":"column","borderStyle":"round","borderColor":"#2e2e36","paddingX":1,"width":60,"flexGrow":0}>
+    <Box {"justifyContent":"space-between"}>
+     <Text {"color":"#9ca3af","bold":true}>
       "CREW"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280"}>
       "1"
       " on the floor"
-    <Box>
+    <Box {"gap":1}>
      Raster#orb-sup 4x2 pairs=3 c0=1e192d/dflt
+       props {"key":"orb-sup","columns":4,"rows":2}
+       cells.base64 hCUAAC0ZHgAAAAABgCUAAC0ZHgCZVWYAgCUAAC0ZHgCZVWYAhCUAAC0ZHgAAAAABgCUAAC0ZHgAAAAABgCUAAJlVZgAtGR4AgCUAAJlVZgAtGR4AgCUAAC0ZHgAAAAAB
        |▄▀▀▄|
+       row0 cp:fg:bg 2584:1e192d:dflt 2580:1e192d:665599 2580:1e192d:665599 2584:1e192d:dflt
        |▀▀▀▀|
-     <Box>
-      <Text>
-       <Text color=#fafafa bold=true>
+       row1 cp:fg:bg 2580:1e192d:dflt 2580:665599:1e192d 2580:665599:1e192d 2580:1e192d:dflt
+     <Box {"flexDirection":"column","flexShrink":1}>
+      <Text {"wrap":"truncate-end"}>
+       <Text {"color":"#fafafa","bold":true}>
         "opus"
-       <Text color=#6b7280>
+       <Text {"color":"#6b7280"}>
         "supervisor"
-      <Text color=#6b7280>
+      <Text {"color":"#6b7280","wrap":"truncate-end"}>
        "idle"
-    <Box>
+    <Box {"gap":1}>
      Raster#orb-lead 4x2 pairs=3 c0=06262b/dflt
+       props {"key":"orb-lead","columns":4,"rows":2}
+       cells.base64 hCUAACsmBgAAAAABgCUAACsmBgCRgBUAgCUAACsmBgCRgBUAhCUAACsmBgAAAAABgCUAACsmBgAAAAABgCUAAJGAFQArJgYAgCUAAJGAFQArJgYAgCUAACsmBgAAAAAB
        |▄▀▀▄|
+       row0 cp:fg:bg 2584:06262b:dflt 2580:06262b:158091 2580:06262b:158091 2584:06262b:dflt
        |▀▀▀▀|
-     <Box>
-      <Text>
-       <Text color=#fafafa bold=true>
+       row1 cp:fg:bg 2580:06262b:dflt 2580:158091:06262b 2580:158091:06262b 2580:06262b:dflt
+     <Box {"flexDirection":"column","flexShrink":1}>
+      <Text {"wrap":"truncate-end"}>
+       <Text {"color":"#fafafa","bold":true}>
         "codex"
-       <Text color=#6b7280>
+       <Text {"color":"#6b7280"}>
         "engineering lead"
-      <Text color=#6b7280>
+      <Text {"color":"#6b7280","wrap":"truncate-end"}>
        "idle"
-    <Box>
+    <Box {"gap":1}>
      Raster#orb-w0 4x2 pairs=4 c0=082118/dflt
+       props {"key":"orb-w0","columns":4,"rows":2}
+       cells.base64 hCUAABghCAAAAAABgCUAABghCAC5xaQAgCUAABghCABQbxsAhCUAABghCAAAAAABgCUAABghCAAAAAABgCUAAFBvGwAYIQgAgCUAAFBvGwAYIQgAgCUAABghCAAAAAAB
        |▄▀▀▄|
+       row0 cp:fg:bg 2584:082118:dflt 2580:082118:a4c5b9 2580:082118:1b6f50 2584:082118:dflt
        |▀▀▀▀|
-     <Box>
-      <Text>
-       <Text color=#fafafa bold=true>
+       row1 cp:fg:bg 2580:082118:dflt 2580:1b6f50:082118 2580:1b6f50:082118 2580:082118:dflt
+     <Box {"flexDirection":"column","flexShrink":1}>
+      <Text {"wrap":"truncate-end"}>
+       <Text {"color":"#fafafa","bold":true}>
         "sonnet"
-       <Text color=#6b7280>
+       <Text {"color":"#6b7280"}>
         "worker · 0s"
-      <Text color=#34d399>
+      <Text {"color":"#34d399","wrap":"truncate-end"}>
        "⠼ "
        "on TASK-102"
-   <Box>
-    <Box>
-     <Text color=#9ca3af bold=true>
+   <Box {"flexDirection":"column","borderStyle":"round","borderColor":"#2e2e36","paddingX":1,"width":60,"flexGrow":0}>
+    <Box {"justifyContent":"space-between"}>
+     <Text {"color":"#9ca3af","bold":true}>
       "TESTS"
      <Text>
-      <Text color=#34d399>
+      <Text {"color":"#34d399"}>
        "4"
        " ✓"
-      <Text color=#6b7280>
+      <Text {"color":"#6b7280"}>
        "0"
        " ✗"
-    <Text>
-     <Text color=#34d399>
+    <Text {"wrap":"truncate-end"}>
+     <Text {"color":"#34d399"}>
       "✓"
-     <Text color=#e5e7eb>
+     <Text {"color":"#e5e7eb"}>
       "integration"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280"}>
       "npm test"
-    <Text>
-     <Text color=#34d399>
+    <Text {"wrap":"truncate-end"}>
+     <Text {"color":"#34d399"}>
       "✓"
-     <Text color=#e5e7eb>
+     <Text {"color":"#e5e7eb"}>
       "TASK-104"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280"}>
       "npm test"
-    <Text>
-     <Text color=#34d399>
+    <Text {"wrap":"truncate-end"}>
+     <Text {"color":"#34d399"}>
       "✓"
-     <Text color=#e5e7eb>
+     <Text {"color":"#e5e7eb"}>
       "TASK-102"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280"}>
       "node --test test/strings.test.js"
-    <Text>
-     <Text color=#34d399>
+    <Text {"wrap":"truncate-end"}>
+     <Text {"color":"#34d399"}>
       "✓"
-     <Text color=#e5e7eb>
+     <Text {"color":"#e5e7eb"}>
       "TASK-103"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280"}>
       "node --test test/math.test.js"
-   <Box>
-    <Box>
-     <Text color=#9ca3af bold=true>
+   <Box {"flexDirection":"column","borderStyle":"round","borderColor":"#2e2e36","paddingX":1,"width":60,"flexGrow":0}>
+    <Box {"justifyContent":"space-between"}>
+     <Text {"color":"#9ca3af","bold":true}>
       "REPOSITORIES"
-    <Text>
-     <Text color=#34d399>
+    <Text {"wrap":"truncate-end"}>
+     <Text {"color":"#34d399"}>
       "✓"
-     <Text color=#e5e7eb bold=true>
+     <Text {"color":"#e5e7eb","bold":true}>
       "demo-repo"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280"}>
       "  ⎇ "
       "integration"
-   <Box>
-    <Box>
-     <Text color=#9ca3af bold=true>
+   <Box {"flexDirection":"column","borderStyle":"round","borderColor":"#2e2e36","paddingX":1,"width":60,"flexGrow":0}>
+    <Box {"justifyContent":"space-between"}>
+     <Text {"color":"#9ca3af","bold":true}>
       "TELEMETRY"
-     <Text color=#fbbf24 bold=true>
+     <Text {"color":"#fbbf24","bold":true}>
       "$2.12"
     <Text>
-     <Text color=#fafafa bold=true>
+     <Text {"color":"#fafafa","bold":true}>
       "15"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280"}>
       " calls   "
-     <Text color=#22d3ee>
+     <Text {"color":"#22d3ee"}>
       "↓ "
       "1.6M"
-     <Text color=#6b7280>
-     <Text color=#a78bfa>
+     <Text {"color":"#6b7280"}>
+     <Text {"color":"#a78bfa"}>
       "↑ "
       "18.7k"
-    <Text>
-     <Text color=#9ca3af>
+    <Text {"wrap":"truncate-end"}>
+     <Text {"color":"#9ca3af"}>
       "codex  "
-     <Text color=#22d3ee>
+     <Text {"color":"#22d3ee"}>
       "█"
-     <Text color=#26d1ee>
+     <Text {"color":"#26d1ee"}>
       "█"
-     <Text color=#2acfef>
+     <Text {"color":"#2acfef"}>
       "█"
-     <Text color=#2ecdef>
+     <Text {"color":"#2ecdef"}>
       "█"
-     <Text color=#32caef>
+     <Text {"color":"#32caef"}>
       "█"
-     <Text color=#36c8f0>
+     <Text {"color":"#36c8f0"}>
       "█"
-     <Text color=#3ac6f0>
+     <Text {"color":"#3ac6f0"}>
       "█"
-     <Text color=#3ec4f1>
+     <Text {"color":"#3ec4f1"}>
       "█"
-     <Text color=#42c2f1>
+     <Text {"color":"#42c2f1"}>
       "█"
-     <Text color=#46c0f1>
+     <Text {"color":"#46c0f1"}>
       "█"
-     <Text color=#4abef2>
+     <Text {"color":"#4abef2"}>
       "█"
-     <Text color=#4ebbf2>
+     <Text {"color":"#4ebbf2"}>
       "█"
-     <Text color=#51b9f2>
+     <Text {"color":"#51b9f2"}>
       "█"
-     <Text color=#55b7f3>
+     <Text {"color":"#55b7f3"}>
       "█"
-     <Text color=#59b5f3>
+     <Text {"color":"#59b5f3"}>
       "█"
-     <Text color=#5db3f3>
+     <Text {"color":"#5db3f3"}>
       "█"
-     <Text color=#61b1f4>
+     <Text {"color":"#61b1f4"}>
       "█"
-     <Text color=#65aff4>
+     <Text {"color":"#65aff4"}>
       "█"
-     <Text color=#69acf4>
+     <Text {"color":"#69acf4"}>
       "█"
-     <Text color=#6daaf5>
+     <Text {"color":"#6daaf5"}>
       "█"
-     <Text color=#71a8f5>
+     <Text {"color":"#71a8f5"}>
       "█"
-     <Text color=#75a6f6>
+     <Text {"color":"#75a6f6"}>
       "█"
-     <Text color=#79a4f6>
+     <Text {"color":"#79a4f6"}>
       "█"
-     <Text color=#7da2f6>
+     <Text {"color":"#7da2f6"}>
       "█"
-     <Text color=#81a0f7>
+     <Text {"color":"#81a0f7"}>
       "█"
-     <Text color=#859df7>
+     <Text {"color":"#859df7"}>
       "█"
-     <Text color=#899bf7>
+     <Text {"color":"#899bf7"}>
       "█"
-     <Text color=#8d99f8>
+     <Text {"color":"#8d99f8"}>
       "█"
-     <Text color=#9197f8>
+     <Text {"color":"#9197f8"}>
       "█"
-     <Text color=#9595f8>
+     <Text {"color":"#9595f8"}>
       "█"
-     <Text color=#9993f9>
+     <Text {"color":"#9993f9"}>
       "█"
-     <Text color=#9d91f9>
+     <Text {"color":"#9d91f9"}>
       "█"
-     <Text color=#a18ef9>
+     <Text {"color":"#a18ef9"}>
       "█"
-     <Text color=#a58cfa>
+     <Text {"color":"#a58cfa"}>
       "█"
-     <Text color=#a88bf9>
+     <Text {"color":"#a88bf9"}>
       "█"
-     <Text color=#aa8af7>
+     <Text {"color":"#aa8af7"}>
       "█"
-     <Text color=#ac89f5>
+     <Text {"color":"#ac89f5"}>
       "█"
-     <Text color=#af88f3>
+     <Text {"color":"#af88f3"}>
       "█"
-     <Text color=#b188f1>
+     <Text {"color":"#b188f1"}>
       "█"
-     <Text color=#b387ef>
+     <Text {"color":"#b387ef"}>
       "█"
-     <Text color=#b686ed>
+     <Text {"color":"#b686ed"}>
       "█"
-     <Text color=#b885eb>
+     <Text {"color":"#b885eb"}>
       "█"
-     <Text color=#26262e>
-     <Text color=#6b7280>
+     <Text {"color":"#26262e"}>
+     <Text {"color":"#6b7280"}>
       "7"
-    <Text>
-     <Text color=#9ca3af>
+    <Text {"wrap":"truncate-end"}>
+     <Text {"color":"#9ca3af"}>
       "opus   "
-     <Text color=#a78bfa>
+     <Text {"color":"#a78bfa"}>
       "█"
-     <Text color=#a98af8>
+     <Text {"color":"#a98af8"}>
       "█"
-     <Text color=#ac8af6>
+     <Text {"color":"#ac8af6"}>
       "█"
-     <Text color=#ae89f4>
+     <Text {"color":"#ae89f4"}>
       "█"
-     <Text color=#b088f2>
+     <Text {"color":"#b088f2"}>
       "█"
-     <Text color=#b287f0>
+     <Text {"color":"#b287f0"}>
       "█"
-     <Text color=#b587ee>
+     <Text {"color":"#b587ee"}>
       "█"
-     <Text color=#b786ec>
+     <Text {"color":"#b786ec"}>
       "█"
-     <Text color=#b985ea>
+     <Text {"color":"#b985ea"}>
       "█"
-     <Text color=#bc84e8>
+     <Text {"color":"#bc84e8"}>
       "█"
-     <Text color=#be84e6>
+     <Text {"color":"#be84e6"}>
       "█"
-     <Text color=#c083e4>
+     <Text {"color":"#c083e4"}>
       "█"
-     <Text color=#c282e2>
+     <Text {"color":"#c282e2"}>
       "█"
-     <Text color=#c581e0>
+     <Text {"color":"#c581e0"}>
       "█"
-     <Text color=#c781de>
+     <Text {"color":"#c781de"}>
       "█"
-     <Text color=#c980dc>
+     <Text {"color":"#c980dc"}>
       "█"
-     <Text color=#cc7fda>
+     <Text {"color":"#cc7fda"}>
       "█"
-     <Text color=#ce7ed8>
+     <Text {"color":"#ce7ed8"}>
       "█"
-     <Text color=#26262e>
+     <Text {"color":"#26262e"}>
       "████████████████████████"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280"}>
       "3"
-    <Text>
-     <Text color=#9ca3af>
+    <Text {"wrap":"truncate-end"}>
+     <Text {"color":"#9ca3af"}>
       "sonnet "
-     <Text color=#f472b6>
+     <Text {"color":"#f472b6"}>
       "█"
-     <Text color=#f473b2>
+     <Text {"color":"#f473b2"}>
       "█"
-     <Text color=#f573af>
+     <Text {"color":"#f573af"}>
       "█"
-     <Text color=#f574ab>
+     <Text {"color":"#f574ab"}>
       "█"
-     <Text color=#f575a8>
+     <Text {"color":"#f575a8"}>
       "█"
-     <Text color=#f676a4>
+     <Text {"color":"#f676a4"}>
       "█"
-     <Text color=#f676a0>
+     <Text {"color":"#f676a0"}>
       "█"
-     <Text color=#f6779d>
+     <Text {"color":"#f6779d"}>
       "█"
-     <Text color=#f77899>
+     <Text {"color":"#f77899"}>
       "█"
-     <Text color=#f77896>
+     <Text {"color":"#f77896"}>
       "█"
-     <Text color=#f77992>
+     <Text {"color":"#f77992"}>
       "█"
-     <Text color=#f87a8e>
+     <Text {"color":"#f87a8e"}>
       "█"
-     <Text color=#f87b8b>
+     <Text {"color":"#f87b8b"}>
       "█"
-     <Text color=#f87b87>
+     <Text {"color":"#f87b87"}>
       "█"
-     <Text color=#f97c84>
+     <Text {"color":"#f97c84"}>
       "█"
-     <Text color=#f97d80>
+     <Text {"color":"#f97d80"}>
       "█"
-     <Text color=#f97d7c>
+     <Text {"color":"#f97d7c"}>
       "█"
-     <Text color=#fa7e79>
+     <Text {"color":"#fa7e79"}>
       "█"
-     <Text color=#fa7f75>
+     <Text {"color":"#fa7f75"}>
       "█"
-     <Text color=#fa8072>
+     <Text {"color":"#fa8072"}>
       "█"
-     <Text color=#fb806e>
+     <Text {"color":"#fb806e"}>
       "█"
-     <Text color=#fb816a>
+     <Text {"color":"#fb816a"}>
       "█"
-     <Text color=#fb8267>
+     <Text {"color":"#fb8267"}>
       "█"
-     <Text color=#fc8263>
+     <Text {"color":"#fc8263"}>
       "█"
-     <Text color=#fc8360>
+     <Text {"color":"#fc8360"}>
       "█"
-     <Text color=#fc845c>
+     <Text {"color":"#fc845c"}>
       "█"
-     <Text color=#fd8558>
+     <Text {"color":"#fd8558"}>
       "█"
-     <Text color=#fd8555>
+     <Text {"color":"#fd8555"}>
       "█"
-     <Text color=#fd8651>
+     <Text {"color":"#fd8651"}>
       "█"
-     <Text color=#fd874e>
+     <Text {"color":"#fd874e"}>
       "█"
-     <Text color=#26262e>
+     <Text {"color":"#26262e"}>
       "████████████"
-     <Text color=#6b7280>
+     <Text {"color":"#6b7280"}>
       "5"
- <Box>
-  <Text>
+ <Box {"flexDirection":"column","paddingX":1}>
+  <Text {"wrap":"truncate-end"}>
    <Text>
-    <Text color=#e5e7eb bold=true>
+    <Text {"backgroundColor":"#2a2a33","color":"#e5e7eb","bold":true}>
      "a"
-    <Text color=#6b7280>
+    <Text {"color":"#6b7280"}>
      "approve"
    <Text>
-    <Text color=#e5e7eb bold=true>
+    <Text {"backgroundColor":"#2a2a33","color":"#e5e7eb","bold":true}>
      "c"
-    <Text color=#6b7280>
+    <Text {"color":"#6b7280"}>
      "changes"
    <Text>
-    <Text color=#e5e7eb bold=true>
+    <Text {"backgroundColor":"#2a2a33","color":"#e5e7eb","bold":true}>
      "r"
-    <Text color=#6b7280>
+    <Text {"color":"#6b7280"}>
      "reject"
    <Text>
-    <Text color=#e5e7eb bold=true>
+    <Text {"backgroundColor":"#2a2a33","color":"#e5e7eb","bold":true}>
      "n"
-    <Text color=#6b7280>
+    <Text {"color":"#6b7280"}>
      "new"
    <Text>
-    <Text color=#e5e7eb bold=true>
+    <Text {"backgroundColor":"#2a2a33","color":"#e5e7eb","bold":true}>
      "1 2 3"
-    <Text color=#6b7280>
+    <Text {"color":"#6b7280"}>
      "tabs"
    <Text>
-    <Text color=#e5e7eb bold=true>
+    <Text {"backgroundColor":"#2a2a33","color":"#e5e7eb","bold":true}>
      "j k"
-    <Text color=#6b7280>
+    <Text {"color":"#6b7280"}>
      "missions"
    <Text>
-    <Text color=#e5e7eb bold=true>
+    <Text {"backgroundColor":"#2a2a33","color":"#e5e7eb","bold":true}>
      "p"
-    <Text color=#6b7280>
+    <Text {"color":"#6b7280"}>
      "report"
    <Text>
-    <Text color=#e5e7eb bold=true>
+    <Text {"backgroundColor":"#2a2a33","color":"#e5e7eb","bold":true}>
      "x"
-    <Text color=#6b7280>
+    <Text {"color":"#6b7280"}>
      "stop"
 ## raster colour pairs (per raster): hero:215 pipeline:17 progress:39 spark:1 orb-sup:3 orb-lead:3 orb-w0:4
 === offline @ 60 cols (mock t=0) ===
-<Box>
+<Box {"flexDirection":"column"}>
  Raster#hero 60x4 pairs=225 c0=13213c/0d2c3e
+   props {"key":"hero","columns":60,"rows":4}
+   cells.base64 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gCUAADIkCgA8LQoAgCUAADMkCgA8LgoAgCUAADMlCgA9LwoAgCUAADQmCgA+LwoAgCUAADUnCgA/MAoAgCUAADcoCwBAMQsAgCUAADgpCwBBMgsAgCUAADkqCwBCMwsAgCUAADosCwBDNAsAgCUAADwtCwBFNgsAgCUAAD4uCwBGNwsAgCUAAD8wCwBGNQwAgCUAAEEyCwBHNA4AgCUAAEMzCwBHMg8AgCUAAEQ1DABIMBAAgCUAAEY2DABILhIAgCUAAEg4DABJLBMAgCUAAEo6DABJKhUAgCUAAEs4DgBKKRYAgCUAAEs2DwBKJxgAgCUAAEwzEQBLJRkAgCUAAEwxEwBLIxoAgCUAAE0vFQBMIhsAgCUAAE0tFgBMIB0AgCUAAE4rGABMHh4AgCUAAE8oGgBMHCAAgCUAAE8mGwBNGiEAgCUAAFAkHQBNGSIAgCUAAFAiHgBMGSEAgCUAAFEgIABKGSAAgCUAAEMWHQAwERUAgCUAAEUXHgAyERYAbwAAAP21xAA+FRsAcAAAAP21xABAFRwAdQAAAP21xABBFxwAcwAAAP21xABBGBwAIAAAAP21xABCGRwAuCUAAP21xABDGhsAIAAAAP21xABDHBsAYwAAAP21xABFHRsAbwAAAP21xABFHRoAZAAAAP21xABFHxkAZQAAAP21xABEIRgAeAAAAP21xABEIhcAIAAAAP21xABEIxYAuCUAAP21xABDJRUAIAAAAP21xABDJhQAdwAAAP21xABDJxMAbwAAAP21xABDKBIAcgAAAP21xABCKRIAawAAAP21xABCKhEAZQAAAP21xABCKxAAcgAAAP21xABCLA8AcwAAAP21xABBLA8AgCUAAEIzDABAJhEAgCUAAEIzDABAJxEAgCUAAEIzDABAJxEAgCUAAEIzDABAKBEAgCUAAEIzDABAKBEAgCUAAEIzDABAKBEAgCUAAEIyDABAKBEAgCUAAEMyDABAKBEAgCUAAEMxDABAKBEAgCUAAEMxDQBAKBEAgCUAAEMwDQBAJxEAgCUAAEMvDgBAJxEAgCUAAEMuDwBAJhEAgCUAAEMtDwBAJhIAgCUAAEMsEABAJRIAzyUAAEdHogBCKBIAgCUAAEQqEgBBJBMAbwAAAOvn5QBDJhQAZgAAAOvn5QBDJhUAZgAAAOvn5QBEJBUAbAAAAOvn5QBEIxYAaQAAAOvn5QBEIhcAbgAAAOvn5QBEIRgAZQAAAOvn5QBFIBkAIAAAAOvn5QBFHxoAIAAAAOvn5QBFHRoAMAAAAOvn5QBGHBsAMAAAAOvn5QBGHBwAOgAAAOvn5QBGGx0AMAAAAOvn5QBGGR4AMAAAAOvn5QBGGB4AOgAAAOvn5QBGGB4AMAAAAOvn5QBFFx8AMAAAAOvn5QBEFx4AgCUAAEMWHQBDFh4AgCUAAEMWHQBDFh0A
    |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+   row0 cp:fg:bg 2580:13213c:0d2c3e 2580:262a5b:232f5c 2580:22d3ee:22d3ee 2580:3ac6f0:2f2f6a 2580:51b9f2:222d59 2580:2f2f6a:222c58 2580:81a0f7:81a0f7 2580:9993f9:352e71 2580:ac89f5:ac89f5 2580:2f2d68:2f2c67 2580:c880dd:c880dd 2580:d67cd1:2f2b66 2580:e477c5:222551 2580:2f2b66:222550 2580:f675a5:f675a5 2580:2f2a65:352c6f 2580:fa7e7a:fa7e7a 2580:2f2964:2e2863 2580:fd874e:fd874e 2580:ff8c3c:382e74 2580:fe9538:fe9538 2580:2e2863:211f48 2580:fda82f:2e2761 2580:fcb22a:fcb22a 2580:fbbb26:2e2761 2580:2e2862:070c12 2580:bdc55e:2e2760 2580:96c882:96c882 2580:6fcca6:2e2660 2580:211f48:070b11 2580:060f16:070c11 2580:060f16:070c12 2580:060f16:070c12 2580:061016:070c13 2580:061017:070d14 2580:071018:070d15 2580:071019:070e16 2580:07111a:070f17 2580:07121a:071018 2580:07131c:07111a 2580:07141d:07121b 2580:07151e:07131c 2580:07161f:07151e 2580:081721:071620 2580:081822:071722 2580:081924:081924 2580:081a25:081b25 2580:081b27:081b27 2580:081d28:081d29 2580:081d29:081f2a 2580:081f2a:08202c 2580:09202b:09212e 2580:09212d:09232f 2580:09222e:092430 2580:09242f:092532 2580:092430:092734 2580:092632:092835 2580:092732:092a36 2580:092834:092b38 2580:092935:0a2c39
    |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+   row1 cp:fg:bg 2580:0b3341:0b3645 2580:23305c:23325f 2580:22d3ee:22d3ee 2580:232e5a:2f306b 2580:0a2a38:232f5b 2580:232c58:232e5b 2580:81a0f7:81a0f7 2580:2f2d68:352f72 2580:ac89f5:ac89f5 2580:2f2c67:2f2d69 2580:c880dd:c880dd 2580:222652:2f2c68 2580:091b26:222854 2580:22244f:222753 2580:f675a5:f675a5 2580:f87a8f:352d70 2580:352c6f:fa7e7a 2580:22224b:2f2a65 2580:fd874e:fd874e 2580:ff8c3c:2f2a64 2580:fe9538:22234e 2580:211f49:081620 2580:211f48:2f2964 2580:fcb22a:fcb22a 2580:211e47:2f2963 2580:070d14:08151e 2580:211e47:22224c 2580:96c882:96c882 2580:211e47:22224d 2580:070d14:08161f 2580:070d14:081620 2580:070e15:081721 2580:070e16:081822 2580:070f17:081923 2580:071018:081924 2580:071119:081a26 2580:07121b:081b28 2580:08131c:091c29 2580:08141d:091e2a 2580:08151f:091f2c 2580:081721:09212e 2580:081823:092230 2580:081a24:092431 2580:091c27:092633 2580:091c29:0a2735 2580:091e2b:0a2937 2580:09202c:0a2a39 2580:09222e:0a2c3b 2580:092430:0a2e3c 2580:0a2432:0a2f3e 2580:0a2633:0b3140 2580:0a2835:0b3342 2580:0a2a37:0b3544 2580:0a2b39:0b3746 2580:0a2c3b:0d3547 2580:0b2e3c:0e3347 2580:0b303e:103048 2580:0b323f:122e48 2580:0b3341:142c49 2580:0c3342:152a49
    |▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀|
+   row2 cp:fg:bg 2580:11334c:1a244b 2580:253363:19264b 2580:22d3ee:292c62 2580:3ac6f0:292d62 2580:51b9f2:282d62 2580:30316d:132d49 2580:81a0f7:262f61 2580:9993f9:263061 2580:ac89f5:253161 2580:2f2f6c:0d3547 2580:c880dd:233360 2580:d67cd1:233360 2580:e477c5:23325f 2580:2f2e6a:0b3342 2580:f675a5:23315e 2580:2f2e69:0b3140 2580:fa7e7a:23305d 2580:2f2d69:0a303e 2580:fd874e:232f5c 2580:232a56:0a2e3c 2580:0a2332:0a2d3c 2580:232956:0a2d3b 2580:fda82f:232e5b 2580:fcb22a:232e5b 2580:fbbb26:232e5b 2580:232955:0a2c3b 2580:232955:0a2c3b 2580:96c882:232e5b 2580:232956:0a2d3b 2580:0a2331:0a2d3b 2580:0a2432:0a2d3c 2580:0a2433:0a2e3c 2580:0a2533:0a2f3d 2580:0a2634:0a2f3e 2580:0a2735:0a303f 2580:0b2837:0b3140 2580:0b2938:0b3241 2580:0b2a39:0b3342 2580:0b2c3a:0b3443 2580:0b2d3c:0b3645 2580:0b2e3e:0b3746 2580:0b303f:0c3546 2580:0b3241:0e3447 2580:0b3343:0f3247 2580:0c3544:103048 2580:0c3646:122e48 2580:0c3848:132c49 2580:0c3a4a:152a49 2580:0e384b:16294a 2580:0f364b:18274a 2580:11334c:19254b 2580:13314c:1a234b 2580:152f4d:1b224c 2580:162d4d:1d204c 2580:182b4e:1e1e4c 2580:1a284f:201c4c 2580:1b264f:211a4d 2580:1d2450:22194d 2580:1e2250:21194c 2580:202051:20194a
    |▀▀opus ▸ codex ▸ workers▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀●▀offline  00:00:00▀▀|
- <Box>
-  <Text color=#e5e7eb bold=true>
+   row3 cp:fg:bg 2580:1d1643:151130 2580:1e1745:161132 6f:c4b5fd:1b153e 70:c4b5fd:1c1540 75:c4b5fd:1c1741 73:c4b5fd:1c1841 20:c4b5fd:1c1942 25b8:c4b5fd:1b1a43 20:c4b5fd:1b1c43 63:c4b5fd:1b1d45 6f:c4b5fd:1a1d45 64:c4b5fd:191f45 65:c4b5fd:182144 78:c4b5fd:172244 20:c4b5fd:162344 25b8:c4b5fd:152543 20:c4b5fd:142643 77:c4b5fd:132743 6f:c4b5fd:122843 72:c4b5fd:122942 6b:c4b5fd:112a42 65:c4b5fd:102b42 72:c4b5fd:0f2c42 73:c4b5fd:0f2c41 2580:0c3342:112640 2580:0c3342:112740 2580:0c3342:112740 2580:0c3342:112840 2580:0c3342:112840 2580:0c3342:112840 2580:0c3242:112840 2580:0c3243:112840 2580:0c3143:112840 2580:0d3143:112840 2580:0d3043:112740 2580:0e2f43:112740 2580:0f2e43:112640 2580:0f2d43:122640 2580:102c43:122540 25cf:a24747:122842 2580:122a44:132441 6f:e5e7eb:142643 66:e5e7eb:152643 66:e5e7eb:152444 6c:e5e7eb:162344 69:e5e7eb:172244 6e:e5e7eb:182144 65:e5e7eb:192045 20:e5e7eb:1a1f45 20:e5e7eb:1a1d45 30:e5e7eb:1b1c46 30:e5e7eb:1c1c46 3a:e5e7eb:1d1b46 30:e5e7eb:1e1946 30:e5e7eb:1e1846 3a:e5e7eb:1e1846 30:e5e7eb:1f1745 30:e5e7eb:1e1744 2580:1d1643:1e1643 2580:1d1643:1d1643
+ <Box {"flexDirection":"column","alignItems":"center","paddingY":1}>
+  <Text {"color":"#e5e7eb","bold":true}>
    "The orchestrator is asleep."
-  <Text color=#6b7280>
+  <Text {"color":"#6b7280"}>
    "Wake it and Opus, Codex and the workers report for duty."
   <Text>
-  <Button#  s · Start orchestrator   label=  s · Start orchestrator  >
+  <Button#  s · Start orchestrator   {"key":"  s · Start orchestrator  ","label":"  s · Start orchestrator  ","hotkey":"s","variant":"primary","autoFocus":true}>
   <Text>
-  <Text color=#6b7280>
+  <Text {"color":"#6b7280"}>
    "1"
    " past run"
    " on record"
- <Box>
-  <Text>
+ <Box {"flexDirection":"column","paddingX":1}>
+  <Text {"wrap":"truncate-end"}>
    <Text>
-    <Text color=#e5e7eb bold=true>
+    <Text {"backgroundColor":"#2a2a33","color":"#e5e7eb","bold":true}>
      "s"
-    <Text color=#6b7280>
+    <Text {"color":"#6b7280"}>
      "start"
 ## raster colour pairs (per raster): hero:225

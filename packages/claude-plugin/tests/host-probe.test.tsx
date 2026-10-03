@@ -1,5 +1,5 @@
 // Host capability probe, run by `claude plugin test` (and `npm run probe`, which keeps the PROBE lines in tests/evidence).
-// Everything here runs on the mocked clock: counts are deterministic scheduler behaviour, timings are harness CPU,
+// Everything here runs on the mocked clock: counts are deterministic scheduler behaviour, timings are harness elapsed wall time (performance.now deltas, not CPU time),
 // never terminal delivery (the kit "exercises the mod, never a surface's paint").
 import { expect, mock, test } from 'claude-code/testing'
 
@@ -19,6 +19,8 @@ type Blit = { requestId: string; key: string; cells: string; columns?: number; r
 
 async function boot($: any, on: any, hold = 0, deny?: (b: Blit) => boolean) {
   const clock = mock.clock(on)
+  const closes: string[] = []
+  on('ui.close', async (_: unknown, e: { id: string; origin: { kind: string } }) => (closes.push(`${e.id}:${e.origin.kind}`), { value: undefined }) as never)
   const stats = { total: 0, inflight: 0, maxInflight: 0, byKey: {} as Record<string, number>, denied: 0 }
   on('fs.read', async () => ({ value: LIVE }))
   mock.env(on, { COCKPIT_DATA_DIR: '/data' })
@@ -27,6 +29,7 @@ async function boot($: any, on: any, hold = 0, deny?: (b: Blit) => boolean) {
   on('ui.status', async () => ({ value: undefined }) as never)
   on('ui.toast', async () => ({ value: undefined }) as never)
   on('process.run', async () => ({ value: { exitCode: 0, stdout: '', stderr: '' } }) as never)
+  on('session.end', async (_: unknown, e: { sessionId: string }) => ({ sessionId: e.sessionId }))
   on('ui.blit', async (_: unknown, e: Blit) => {
     stats.total++
     stats.byKey[e.key] = (stats.byKey[e.key] ?? 0) + 1
@@ -40,7 +43,7 @@ async function boot($: any, on: any, hold = 0, deny?: (b: Blit) => boolean) {
     }
   })
   await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
-  return { clock, stats }
+  return { clock, stats, closes }
 }
 
 for (const cols of [60, 140]) {
@@ -54,8 +57,8 @@ for (const cols of [60, 140]) {
     stats.byKey = {}
     const t0 = performance.now()
     await clock.advance(1000)
-    const cpu = performance.now() - t0
-    log(`1s mock, instant blits @${cols}`, { blitsPerSec: stats.total, perKey: stats.byKey, maxInflight: stats.maxInflight, harnessMsFor1s: +cpu.toFixed(1) })
+    const elapsed = performance.now() - t0
+    log(`1s mock, instant blits @${cols}`, { blitsPerSec: stats.total, perKey: stats.byKey, maxInflight: stats.maxInflight, harnessElapsedMsFor1s: +elapsed.toFixed(1) })
     expect(stats.total).toBeGreaterThan(0)
 
     // Input latency (harness wall time of one press, instant blit hook).
@@ -96,4 +99,19 @@ test('deny semantics: current code unregisters on any deny, stale or not', async
   await clock.advance(500)
   log('hero blits during 500ms with deny, then 500ms accepting', { duringDeny: afterDeny, total: stats.byKey.hero ?? 0, note: 'a deny drops the key, but the next 125 ms text render re-registers it: stale-deny guard needed' })
   await ui.unmount()
+})
+
+test('lifecycle: what the plugin hears when the drawing or session goes away (current code)', async ($, on) => {
+  const { clock, stats, closes } = await boot($, on)
+  const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(100) })
+  await clock.advance(200)
+  await ui.unmount()
+  stats.total = 0
+  await clock.advance(500)
+  log('blits in 500ms after ui.unmount (all denied only by a real host)', { blits: stats.total, uiCloseEvents: closes })
+  stats.total = 0
+  await $.session.end({ reason: 'other', sessionId: 's', resume: { id: 's' } } as never)
+  await clock.advance(500)
+  log('blits in 500ms after session.end', stats.total)
+  expect(stats.total).toBeGreaterThanOrEqual(0)
 })

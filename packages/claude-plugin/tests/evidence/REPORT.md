@@ -4,7 +4,7 @@ Engine: Claude Code 2.1.286. Declarations: `claude-code.d.ts` written by the plu
 Each fact is tagged **[doc]** (declared), **[measured]** (probe in this repo, mock clock) or **[open]**.
 
 ## 1. Tooling (verified)
-- `plugin-authoring` loaded via Skill. `run` skill not loaded: capture needs no running app (see below). Hot reload is off in this session (non-interactive); irrelevant to tests.
+- `plugin-authoring` loaded via Skill. `run` skill loaded via Skill: no project skill under `.claude/skills` covers launching this app; its TUI recipe needs `tmux`, which is not installed (Windows), and the session is non-interactive, so the mod cannot be launched in a real terminal. **Live-terminal validation is incomplete and escalated (section 4).** The captures below are harness snapshots, NOT an equivalent of a live capture. Hot reload is off in this session (non-interactive); irrelevant to tests.
 - Host test runner: `claude plugin test .` (`claude plugin test --help`: runs every `*.test.ts(x)` under dir, one child per file). Discovers unchanged `pane.test.tsx` (3 pass) plus new files.
 - Typecheck: `tsc` is not installed in the worktree (no node_modules). `tests/tools.mjs` finds it by walking up and via `git rev-parse --git-common-dir`, or `TSC=`. Engine types go in `.claude/types/claude-code.d.ts` (gitignored); if absent set `CLAUDE_CODE_DTS` to the skill's `types/claude-code.d.ts`, or run `/plugin-types`.
 - `pane.test.tsx` has a pre-existing type error against this build (`on('process.run')` returns a bare result, the type wants `{ value }`). It must stay unchanged, so `tsconfig.json` excludes it. `hooks/` and the new tests typecheck clean.
@@ -28,13 +28,13 @@ Raster keys: hero, pipeline, progress, spark, orb-sup, orb-lead, orb-w0 (7). Siz
 - Cadence: 16 blits/s/key = 112/s total, all unconditionally, even if idle-looking. Close to the 120/s ceiling; leaves no room for any other blit.
 - Backpressure: with a host that takes 500 ms per blit, 112 blits started in 1 s, **63 concurrent in flight**, 56 pending at end (unbounded queue).
 - Deny: the first deny drops the key, but the next text re-render (125 ms tick while moving) re-registers it, so a late deny from a previous size/run can drop a fresh registration (no generation guard).
-- Input latency: harness wall time per `ui.press` 4.5 ms p50 / 6.5 ms p95 (7.4-11.6 ms with 56 blits pending). This is mod+harness CPU, not terminal key-to-photon latency.
-- CPU: 1 s of animation at 112 blits cost ~92-106 ms of harness time (mod paint + encode + mocks).
+- Harness press time: `performance.now()` elapsed around `ui.press` 4.5 ms p50 / 6.5 ms p95 (7.4-11.6 ms with 56 blits pending). Elapsed wall time inside the test harness, not terminal input latency.
+- Harness elapsed time for 1 s of mock animation (112 blits): ~92-106 ms. This is wall time of `clock.advance(1000)` including scheduling, mocks and awaits; it is NOT CPU consumption. CPU measurement is unavailable (tests have no `process.cpuUsage`/fs; no verified host tooling) and is escalated.
 - Paint cost (`before-bench.txt`): combined mean 0.27 ms, p95 0.34 ms at 140 cols (hero 0.23 ms). Budget is 4 ms, so there is large headroom; the real constraints are blit rate and pair count.
-- Cell/tree dumps: `before-60.txt`, `before-140.txt` (live and offline, mock t=0).
+- Harness snapshots (`before-60.txt`, `before-140.txt`; live and offline fixtures, mock t=0, terminal surface): every element's props as JSON, and for every Raster its dimensions, full base64 `cells` payload, glyph rows and every decoded `cp:fg:bg` triplet. They show what the mod hands the surface, not what a terminal paints or how it lays out.
 
 ## 4. Not measurable here (escalated, not invented)
-Delivered cadence, folding, and whether 120/s is shared need a real interactive terminal session: this session is non-interactive and the test kit never paints. Supervisor decision needed or a manual run: mount the pane, run `claude --debug`, and count frames with N keys blitting at 16 ms. Until then the scheduler must assume: shared budget <= 100 blits/s, ~60 shown, pair limit per frame across all Rasters of the pane.
+Unavailable in this environment, each needs a real interactive terminal session (no tmux/PTY driver, non-interactive, no hot reload): live rendered capture at 60/140 columns and terminal layout/overflow verification; delivered blit cadence and folding; whether the 120/s limit is shared; terminal key-to-photon input latency; CPU consumption (only harness elapsed time exists). Live validation is INCOMPLETE until someone runs it. Supervisor decision needed or a manual run: mount the pane, run `claude --debug`, and count frames with N keys blitting at 16 ms. Until then the scheduler must assume: shared budget <= 100 blits/s, ~60 shown, pair limit per frame across all Rasters of the pane.
 
 ## 5. Interface agreements (for scheduler/painter/tween workers)
 
@@ -56,12 +56,24 @@ Delivered cadence, folding, and whether 120/s is shared need a real interactive 
 ### Tween store (tween.ts)
 - `type Tween = { from: number|number[]; to: number|number[]; startMs: number; durMs: number }`; key = `runId + ':' + element`. `sample(key, target, t, opts): value` creates/retargets (new `from` = value sampled at `t`), ease-out cubic, 400-700 ms. Colours interpolate per RGB channel. `snap(key|prefix)` for run switch (user-initiated), unmount, idle, reduced motion. Pure given `(store, t)`; the store is a module-level object owned by the caller (register.tsx), not raster.ts.
 
+### Lifecycle (verified against declarations and probes)
+Host notifications that exist: `session.start` (d.ts:3993; fires again after hot reload, module vars reset, pending waits of the old env cancelled, d.ts:3198 block); `ui.render` per redraw (d.ts:3692); `session.end` (d.ts:4085; runs inside one short bound, `next.budget`; reason `clear` keeps the process under a new session id with NO new `session.start`); `session.attach/detach` (clients); `ui.close` hook with origin `plugin|person|unload` (d.ts:6761-6790; `unload` is already gone and the opener's hooks do not run); `$.ui.panes()` lists the plugin's panes with shown/placed (poll only); timers return a Timer with `.cancel()`.
+Not exposed: any notification for a Raster unmounting, a pane being hidden/scrolled out, resize (other than a new `ui.render`), or a tab/run switch inside our own pane. The only signal that a Raster is gone is a `{ deny }` on blit (not mounted / size mismatch). **[measured]** after `ui.unmount()` and after `session.end` the current code keeps blitting (56 blits/500 ms and 63 blits/500 ms): nothing stops its timers.
+Scheduler contract:
+- **start**: lazily, on the first `ui.render` that registers a Raster (not only `session.start`, which does not fire after `/clear` or in a pane opened later). One driver `$.clock.every(16)`; guard against a second start with a module flag keyed to the Timer. Hot reload resets module state, so `session.start` must call `stop()` then re-arm lazily.
+- **reconcile**: every `ui.render` replaces the desired set `{key -> {cols, rows, tier, paint}}`; keys absent from the last render are removed; a key whose size/run/remount changed gets `gen++`. Pending is tracked per key outside this map.
+- **remove**: on deny with matching gen, on absence from a render, on `ui.close`(plugin/person) for the pane id, and on `session.end`. Removal never cancels an in-flight blit; it leaves `pending` set until its `finally`, and its result is ignored (gen mismatch).
+- **stop**: when the registry is empty for >~2 s (cancel the Timer: no Raster means no reason to wake), and on `session.end` (`stop()` + clear registry + clear tweens). An idle scheduler keeps no 16 ms timer.
+- **restart**: next `ui.render` with Rasters; `gen` keeps counting (never reset) so stale denies from before a stop cannot match; pending keys from before the stop still skip frames until their promises settle.
+- **unresolved blits across generations**: a pending key keeps skipping new frames even after a gen bump (at most one in flight per key); when it settles with an old gen its deny is dropped. If the host never settles, the key is stuck: add a watchdog (pending age > ~2 s clears pending and counts toward half-rate degradation).
+- **Escalated**: the host offers no unmount/hide/resize notification for Rasters, so hidden-pane detection relies on denies and optionally polling `$.ui.panes()` (isShown) at idle rate; Supervisor to confirm that is acceptable.
+
 ### Scheduler (scheduler.ts, module-level, survives re-render)
 - `register(key, { cols, rows, tier: 'A'|'B'|'static', paint: (t) => string })` reconciles by key; `gen` increments on a new key, size change, run switch or remount.
 - `pending: Set<key>` outside the render-rebuilt map; a key with a pending blit skips its frame, never queues; cleared in `finally`.
 - Deny unregisters only if `gen` captured at send still equals current.
 - Budget: <=100 blits/s total (shared until proven otherwise); Tier A (hero, pipeline, progress) up to 16 ms period, Tier B (divider, tab underline, spark, orbs, telemetry) <=15 fps, static only on data/size change. Repeated frame-budget misses degrade to half rate. Idle (no motion for the displayed run, offline, unfocused, no Raster surface or reduced motion): <=2 fps or on change only; text tick <=1 fps (active <=10 fps).
-- Single `$.clock.every(16)` driver; stop with `.cancel()` (Timer has `cancel()`, not callable).
+- Single `$.clock.every(16)` driver; stop with `.cancel()` (Timer has `cancel()`, not callable); see Lifecycle for start/stop.
 - Motion eligibility derives from the displayed run (not `activeRun(snapshot)`) and is recomputed during render.
 
 ## 6. Commands
