@@ -1,5 +1,6 @@
 // Plugin-local runner for typecheck / capture / probe. No dependencies; tsc and `claude` are looked up, never installed.
 import { spawnSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -32,7 +33,10 @@ function ensureTypes() {
 }
 
 const cmd = process.argv[2]
-if (cmd === 'typecheck') {
+if (cmd === 'sha') {
+  const f = process.argv[3] ?? die('usage: tools.mjs sha <file>')
+  console.log(createHash('sha256').update(readFileSync(resolve(f))).digest('hex'))
+} else if (cmd === 'typecheck') {
   const tsc = findTsc() ?? die('typescript not found (npm install at the repo root, or set TSC=/path/to/tsc)')
   ensureTypes()
   process.exit(run(process.execPath, [tsc, '-p', join(pkg, 'tsconfig.json')]).status ?? 1)
