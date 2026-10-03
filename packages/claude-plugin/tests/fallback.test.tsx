@@ -1,4 +1,4 @@
-// Text fallbacks, hotkeys, backpressure through the real wiring, close/end and the opt-in trace export.
+// Text fallbacks, hotkeys, backpressure through the real wiring, and close/end.
 import { expect, mock, test } from 'claude-code/testing'
 
 import { LIVE, OFFLINE } from './fixture'
@@ -20,9 +20,8 @@ const width = (s: string) => [...s].length // the fallbacks use single-cell glyp
 
 async function boot($: any, on: any, snap: Snap, opts: { blit?: (key: string) => Promise<unknown>; env?: Record<string, string> } = {}) {
   const clock = mock.clock(on)
-  const st = { snap: snapJson(snap), blits: [] as string[], procs: [] as string[][], writes: [] as { path: string; text: string }[], proc: { exitCode: 0, stdout: 'ok', stderr: '' } }
+  const st = { snap: snapJson(snap), blits: [] as string[], procs: [] as string[][], proc: { exitCode: 0, stdout: 'ok', stderr: '' } }
   on('fs.read', async () => ({ value: st.snap }))
-  on('fs.write', async (_: unknown, e: { path: string; text: string }) => (st.writes.push({ path: e.path, text: e.text }), { value: undefined }) as never)
   mock.env(on, { COCKPIT_DATA_DIR: '/data', ...opts.env })
   on('command.register', async () => ({ value: undefined }) as never)
   on('session.start', async (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
@@ -39,7 +38,6 @@ async function boot($: any, on: any, snap: Snap, opts: { blit?: (key: string) =>
 }
 
 const mountTerminal = ($: any, cols = 140) => $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(cols) })
-const cmd = ($: any, args: string) => $.command.run({ command: 'cockpit', args } as never)
 const endSession = ($: any) => $.session.end({ reason: 'other', sessionId: 's', resume: { id: 's' } } as never)
 const lastArgs = (st: { procs: string[][] }) => st.procs.at(-1)?.slice(2) ?? []
 
@@ -172,12 +170,12 @@ test('a blit the host denies unregisters its key and is not hammered; a never-re
   await clock.advance(5000)
   const by = st.blits.reduce((m, k) => ((m[k] = (m[k] ?? 0) + 1), m), {} as Record<string, number>)
   for (const [k, n] of Object.entries(by)) if (k !== 'hero') expect([k, n]).toEqual([k, 1]) // never resolved: one in flight, the rest skipped
-  // denied: unregistered and held for DENY_HOLD_MS (2 s), then retried: ~3 blits in 5 s, not the tier rate
+  // denied: unregistered and held 1 s by the scheduler, then retried: ~5 blits in 5 s, not 60/s
   expect(by.hero).toBeGreaterThanOrEqual(2)
-  expect(by.hero).toBeLessThanOrEqual(4)
+  expect(by.hero).toBeLessThanOrEqual(6)
   const n = by.hero!
   await clock.advance(1000)
-  expect(st.blits.filter(k => k === 'hero').length).toBeLessThanOrEqual(n + 1)
+  expect(st.blits.filter(k => k === 'hero').length).toBeLessThanOrEqual(n + 2)
   await ui.unmount()
   await endSession($)
   await $.session.start({ cwd: '/repo', surface: 'terminal' } as never) // a fresh Life holds no denied keys
@@ -202,7 +200,7 @@ test('a late deny after session.end has no effect (no blits, no throw)', async (
 })
 
 // Gap: the kit's `$` has no ui.close call and the host refuses $.ui.close from a hook of a module that never calls it (register.tsx opens
-// the pane but never closes it), so the ui.close hook cannot be raised here; session.end covers the same closeLife/export path.
+// the pane but never closes it), so the ui.close hook cannot be raised here; session.end covers the same closeLife path.
 
 test('session.end silences a live scheduler, a later render is inert, session.start re-enables', async ($, on) => {
   const { clock, st } = await boot($, on, live())
@@ -223,37 +221,4 @@ test('session.end silences a live scheduler, a later render is inert, session.st
   await clock.advance(2000)
   expect(st.blits.length).toBeGreaterThan(0)
   await ui.unmount()
-})
-
-test('trace off: no file and no output from session.end or the command', async ($, on) => {
-  const { clock, st } = await boot($, on, live())
-  const ui = await mountTerminal($)
-  await clock.advance(1000)
-  await ui.unmount()
-  expect((await cmd($, 'trace')) as any).toMatchObject({ text: expect.stringContaining('off') })
-  await endSession($)
-  expect(st.writes).toEqual([])
-})
-
-test('trace on: nothing is written while running; session.end exports chronological ring buffers; the command returns the dump', async ($, on) => {
-  const { clock, st } = await boot($, on, live(), { env: { COCKPIT_TRACE: '1' } })
-  const ui = await mountTerminal($)
-  await clock.advance(20_000) // > 256 hero events: the ring wraps
-  expect(st.writes).toEqual([])
-  const dumped = (await cmd($, 'trace')) as { text: string }
-  await ui.unmount()
-  await endSession($)
-  expect(st.writes).toHaveLength(1)
-  expect(st.writes[0]!.path.split('\\').join('/')).toMatch(/data\/trace\.json$/)
-  const dump = JSON.parse(st.writes[0]!.text)
-  expect(dump).toMatchObject({ version: 1, cadence: { name: 'conservative' } })
-  expect(dump.hostLimits.blitRateCap).toBeDefined()
-  const hero = dump.keys.hero as { t: number; kind: string; paintMs: number }[]
-  expect(hero.length).toBe(256)
-  expect(hero.every((e, i) => i === 0 || e.t >= hero[i - 1]!.t)).toBe(true)
-  expect(hero.every(e => ['start', 'resolve', 'skip', 'deny'].includes(e.kind))).toBe(true)
-  expect(JSON.parse(dumped.text).version).toBe(1)
-  const n = st.writes.length
-  await clock.advance(5000)
-  expect(st.writes.length).toBe(n) // no periodic export
 })
