@@ -2,10 +2,9 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, InputProps, Register, RenderChildren } from 'claude-code'
 
 import type { CockpitApproval, CockpitRun, CockpitSnapshot, CockpitTab, CockpitTask, CockpitUi, CockpitView } from '../types'
-import { enableTrace, exportTrace, resolveCadence, trace, writeTrace } from './limits'
 import * as paint from './raster'
 import { COCKPIT_ROOT } from './root'
-import { createScheduler, type KeySpec, type Scheduler } from './scheduler'
+import { createScheduler, makeClock, type RasterScheduler, type RasterSpec } from './scheduler'
 import { C, K, LOGO_GRADIENT } from './theme'
 import { createTweens, type Tweens } from './tween'
 
@@ -110,108 +109,72 @@ function eventColor(type: string): string {
 
 let lastGenerated = ''
 
-// One lifecycle per session: scheduler, tweens, text tick. Animation time (`anim`) is monotonic from creation and
-// frozen under COCKPIT_REDUCED_MOTION; wall time only ever feeds the clock string. `T` is the last wall reading, kept
-// sync because the scheduler's clock is: every timer callback refreshes it before running.
+// One lifecycle per session: scheduler, clock, tweens, text tick. `clock` is elapsed animation time (frozen under COCKPIT_REDUCED_MOTION,
+// read once at session.start); wall time only feeds the clock strings. Exactly one timer advances it: the scheduler's loop while it runs,
+// else the text tick, re-anchored from the prefetched $.clock.now() about once a second. No per-tick awaits.
 type Life = {
-  sched: Scheduler
+  sched: RasterScheduler
+  clock: ReturnType<typeof makeClock>
   tweens: Tweens
   open: boolean
-  T: number
-  epoch: number
-  frozenAt: number | null
+  reduced: boolean
   motion: boolean
-  denied: Map<string, number>
+  run: string
+  wall: number
   seen: number
   tick: (() => void) | null
-  cancels: (() => void)[]
-  anim: () => number
-  freeze: (on: boolean) => void
-  arm: () => void
   setMotion: (on: boolean) => void
+  arm: () => void
   close: () => void
 }
 let life: Promise<Life> | null = null
 let stopPoll: (() => void) | null = null
 const TICK_MS = 125 // text spinners and pulses: <=10 fps with motion
 const IDLE_TICK_MS = 1000
-const DENY_HOLD_MS = 2000 // a denied raster is retried this rarely
-const STALE_MS = 1500 // the host has no unmount event: no render for longer than the 1 s idle beat means the pane was gone, tweens snap
+const STALE_MS = 1500 // the host has no unmount event: no render for longer than ~1.5x the idle beat means the pane was gone, tweens snap
 
 async function createLife($: EngineInterface): Promise<Life> {
-  const T0 = await $.clock.now()
-  enableTrace(await $.env.get('COCKPIT_TRACE'))
-  const cadence = resolveCadence({ COCKPIT_CADENCE: await $.env.get('COCKPIT_CADENCE') })
+  const reduced = (await $.env.get('COCKPIT_REDUCED_MOTION')) === '1'
+  const wall = await $.clock.now()
+  const clock = makeClock({ fetch: () => $.clock.now() })
+  if (reduced) clock.freeze(true)
   const l: Life = {
-    sched: null as never, tweens: createTweens(), open: true, T: T0, epoch: T0, frozenAt: null, motion: false, denied: new Map(), seen: T0, tick: null, cancels: [],
-    anim: () => l.frozenAt ?? l.T - l.epoch,
-    freeze(on) {
-      if (on && l.frozenAt === null) l.frozenAt = l.T - l.epoch
-      else if (!on && l.frozenAt !== null) l.epoch = l.T - l.frozenAt, l.frozenAt = null
-      l.tweens.setMotion(!on && l.motion)
-    },
+    sched: null as never, clock, tweens: createTweens(), open: true, reduced, motion: false, run: '', wall, seen: wall, tick: null,
     setMotion(on) {
       if (on === l.motion || !l.open) return
       l.motion = on
       l.sched.setMotion(on)
-      l.tweens.setMotion(on)
       l.arm()
-    },
-    close() {
-      l.open = false
-      l.sched.close()
-      l.tick?.()
-      l.tick = null
-      for (const c of l.cancels.splice(0)) c()
-      l.tweens.reset()
     },
     arm() {
       l.tick?.()
-      const t = $.clock.every(l.motion ? TICK_MS : IDLE_TICK_MS, () => void update($, tickAtom, n => n + 1))
+      const ms = l.motion ? TICK_MS : IDLE_TICK_MS
+      const t = $.clock.every(ms, () => {
+        if (!l.sched.stats().periodMs) clock.tick(ms) // the scheduler's loop owns the clock while it runs
+        void update($, tickAtom, n => n + 1)
+      })
       l.tick = () => t.cancel()
     },
+    close() {
+      l.open = false
+      l.sched.stop()
+      l.tick?.()
+      l.tick = null
+      l.tweens.reset()
+    },
   }
-  // Every timer callback first reads the wall clock, so the scheduler's sync `now` is never older than one period.
-  const stamp = (fn: () => void) => () => void $.clock.now().then(t => {
-    if (!l.open) return
-    l.T = Math.max(l.T, t)
-    fn()
-  })
   l.sched = createScheduler({
-    cadence,
-    clock: {
-      now: () => l.T,
-      every: (ms, fn) => { const t = $.clock.every(ms, stamp(fn)); return () => t.cancel() },
-      after: (ms, fn) => { const t = $.clock.after(ms, stamp(fn)); return () => t.cancel() },
-    },
-    blit: async (key, cells) => { // UiBlitResult.deny: absent when taken, else why not (d.ts)
-      const r = await $.ui.blit({ requestId: PANE, key, cells })
-      if (r && 'deny' in r && r.deny) l.denied.set(key, l.T) // the next render must not re-register it at once
-      return r
-    },
+    now: clock.now,
+    every: (ms, fn) => { const t = $.clock.every(ms, () => (clock.tick(ms), fn())); return () => t.cancel() },
+    blit: (key, cells) => $.ui.blit({ requestId: PANE, key, cells }), // {} when taken, else { deny } (d.ts)
   })
   l.sched.setMotion(false)
-  l.tweens.setMotion(false)
   l.arm()
+  clock.refresh()
   return l
 }
 let ended = false // a render after session.end gets an inert Life: no timers, no blits
 const getLife = ($: EngineInterface) => (life ??= createLife($).then(l => (ended && l.close(), l)))
-// Trace export: explicit triggers only (ui.close, session.end, /cockpit trace), never on the paint/blit path. No documented plugin
-// data dir exists (d.ts has $.fs.write for any path), so close/end write to the cockpit data dir and the command returns the dump.
-async function exportOnClose($: EngineInterface) {
-  if (!trace.on) return
-  let timer: { cancel: () => void } | undefined
-  try {
-    const out = (async () => {
-      const { dataDir } = await locate($)
-      await writeTrace({ dataDir, write: (path, text) => $.fs.write(path, text) }, exportTrace())
-    })()
-    // a hung write must not stall teardown
-    await Promise.race([out, new Promise<void>(r => (timer = $.clock.after(2000, () => r())))])
-  } catch {}
-  timer?.cancel()
-}
 function closeLife() {
   const p = life
   life = null
@@ -239,7 +202,7 @@ async function cli($: EngineInterface, args: string[], timeoutMs = 60_000) {
 async function refresh($: EngineInterface) {
   const { dataDir } = await locate($)
   const l = await life
-  if (l?.open) l.freeze((await $.env.get('COCKPIT_REDUCED_MOTION')) === '1')
+  if (l?.open) l.wall = await $.clock.now(), l.clock.refresh() // 1 Hz poll: re-anchor elapsed time
   let snapshot: CockpitSnapshot | null = null
   try {
     snapshot = JSON.parse(await $.fs.read(`${dataDir}/snapshot.json`)) as CockpitSnapshot
@@ -369,7 +332,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'cockpit',
-      description: 'Agent cockpit: /cockpit [start|stop|run <request>|status|approve|changes <text>|reject|report|trace]',
+      description: 'Agent cockpit: /cockpit [start|stop|run <request>|status|approve|changes <text>|reject|report]',
     })
     ended = false
     closeLife()
@@ -384,17 +347,13 @@ export const register: Register = on => {
   on('ui.close', async ($, e, next) => {
     const r = await next(e) // a hook may keep the pane open: tear down only after it is really closing
     if (e.id === PANE) {
-      const done = exportOnClose($)
       closeLife()
-      await done
     }
     return r
   })
   on('session.end', async ($, e, next) => {
     ended = true
-    const done = exportOnClose($)
     closeLife()
-    await done
     stopPoll?.()
     stopPoll = null
     return next(e)
@@ -416,10 +375,6 @@ export const register: Register = on => {
         await openPane($)
         return { text: await startRun($, e.args.replace(/^\s*run\s*/, '')) }
       }
-      case 'trace': {
-        const out = await writeTrace({}, exportTrace())
-        return { text: out && 'text' in out ? out.text : 'Trace is off (set COCKPIT_TRACE=1).' }
-      }
       case 'status':
         return { text: (await cli($, ['status'])).text }
       case 'report': {
@@ -435,7 +390,7 @@ export const register: Register = on => {
         return { text: await decide($, sub, target, note) }
       }
       default:
-        return { text: 'Usage: /cockpit [start|stop|run <request>|status|approve [note]|changes <text>|reject [note]|report|trace]' }
+        return { text: 'Usage: /cockpit [start|stop|run <request>|status|approve [note]|changes <text>|reject [note]|report]' }
     }
   })
 
@@ -451,24 +406,22 @@ export const register: Register = on => {
     await read($, tickAtom)
     const l = await getLife($)
     const wall = await $.clock.now()
-    if (wall - l.seen > STALE_MS) l.tweens.reset() // the pane was gone: nothing eases across the gap
-    l.seen = l.T = Math.max(l.T, wall)
+    if (wall - l.seen > STALE_MS) l.tweens.reset(), (l.run = '') // the pane was gone: nothing eases across the gap
+    l.seen = l.wall = wall
     const now = wall
-    const anim = l.anim()
+    const anim = l.clock.now()
     const n = Math.floor(anim / TICK_MS) // text beat: derived from animation time, so it stops with it
     const s = v.snapshot
     const cols = Math.max(40, e.props.bodyColumns ?? e.viewport?.columns ?? 100)
     const rows = e.viewport?.rows ?? 40
     const online = !!s && s.daemon.port !== null
-    const specs = new Map<string, KeySpec>()
+    const specs = new Map<string, RasterSpec>()
 
-    // A Raster that keeps animating: drawn now at the current animation time, repainted by the scheduler afterwards.
-    const raster = (key: string, columns: number, height: number, tier: 'A' | 'B', fn: (t: number) => string, fallback: RenderChildren = null) => {
+    // A Raster drawn now at the current elapsed time; `animated` ones are repainted by the scheduler afterwards.
+    const raster = (key: string, columns: number, height: number, animated: boolean, fn: (t: number) => string, fallback: RenderChildren = null) => {
       if (!RasterEl || columns < 1) return fallback
-      // At rest only the hero (wall clock) is repainted by the scheduler (<=2 fps); the rest are redrawn by the 1 Hz render.
-      const held = l.denied.get(key)
-      if (held !== undefined && l.T - held >= DENY_HOLD_MS) l.denied.delete(key)
-      if ((l.motion || key === 'hero') && !l.denied.has(key)) specs.set(key, { tier, id: `${columns}x${height}`, paint: () => fn(l.anim()) })
+      // At rest only the hero (it carries the wall clock) is repainted by the scheduler; the rest are redrawn by the 1 Hz render.
+      if (animated && (l.motion || key === 'hero')) specs.set(key, { animated: true, paint: fn })
       return RasterEl({ key, columns, rows: height, cells: fn(anim) })
     }
     // Every return path reports the mounted raster keys; text-only surfaces have none and leave the scheduler alone.
@@ -476,14 +429,15 @@ export const register: Register = on => {
     // Tweens: retarget at render, sampled at paint time so the ease runs between renders.
     const run0 = online ? (u.selectedRun && s.runs.find(r => r.id === u.selectedRun)) || activeRun(s) : null
     const viewing = !!run0 && !TERMINAL.includes(run0.status)
-    l.setMotion(!!online && l.frozenAt === null && viewing)
-    if (!run0) l.tweens.reset()
-    else if (l.tweens.active() !== run0.id) l.tweens.switchRun(run0.id)
+    l.setMotion(!!online && !l.reduced && viewing)
+    if ((run0?.id ?? '') !== l.run) l.tweens.reset(), (l.run = run0?.id ?? '') // run switch (user pick or auto): nothing eases across it
+    const snap = !l.motion // reduced motion and idle: values jump
     const ease = (el: string, target: number, ms = 600) => {
-      if (!run0) return () => target
-      l.tweens.target(run0.id, el, target, anim, ms)
-      return (t: number) => (l.tweens.sample(run0.id, el, t) as number | undefined) ?? target
+      const id = run0?.id
+      if (!id) return () => target
+      return (t: number) => (l.run === id ? l.tweens.sample(id, el, target, t, { durMs: ms, snap }) : target)
     }
+    const easing = (el: string) => !!run0 && l.motion && !l.tweens.settled(run0.id, el, anim)
 
     // ── small pieces ──
 
@@ -509,16 +463,17 @@ export const register: Register = on => {
       </Box>
     )
 
-    const clock = new Date(now).toISOString().slice(11, 19)
+    const hms = (ms: number) => new Date(ms).toISOString().slice(11, 19)
+    const clock = hms(now)
     const chain = s ? `${s.hierarchy.supervisor} ▸ ${s.hierarchy.lead} ▸ workers` : 'opus ▸ codex ▸ workers'
     const attention = !!s?.pendingApprovals.length
     const heroInfo = (): paint.HeroData => ({
       online,
       alert: attention,
       left: chain,
-      right: `${online ? `online :${s!.daemon.port}` : 'offline'}  ${clock}`,
+      right: `${online ? `online :${s!.daemon.port}` : 'offline'}  ${hms(l.wall)}`,
     })
-    const hero = raster('hero', cols, 4, 'A', t => paint.hero({ cols, rows: 4 }, t, heroInfo()), (
+    const hero = raster('hero', cols, 4, true, t => paint.hero(cols, 4, t, heroInfo()), (
       <Box justifyContent="space-between" paddingX={1}>
         <Text bold>{[...'◆ AGENT COCKPIT'].map((ch, i) => <Text color={gradient(LOGO_GRADIENT, i / 22 - n / 40)}>{ch}</Text>)}</Text>
         <Text color={C.mute}>{online ? '● online' : '○ offline'}  {clock}</Text>
@@ -698,7 +653,7 @@ export const register: Register = on => {
     const dividerW = Math.max(1, centerW - 2)
     const divider = (
       <Box paddingX={1}>
-        {raster('divider', dividerW, 1, 'B', t => paint.divider({ cols: dividerW, rows: 1 }, t, { color: paint.hex(runColor), active: live }), <Text color={C.borderDim}>{'─'.repeat(dividerW)}</Text>)}
+        {raster('divider', dividerW, 1, live, t => paint.divider(dividerW, 1, t, { color: paint.hex(runColor), active: live }), <Text color={C.borderDim}>{'─'.repeat(dividerW)}</Text>)}
       </Box>
     )
 
@@ -736,16 +691,16 @@ export const register: Register = on => {
         color={runAttention ? pulse(n, C.yellow, C.yellowDeep, 0.35) : live ? pulse(n, C.violetDeep, C.border, 0.2) : C.border}
       >
         <Text> </Text>
-        {raster('pipeline', inner, 2, 'A', t => paint.pipeline({ cols: inner, rows: 2 }, t, { steps: stepNames, phase, fill: fillE(t), failed, color: paint.hex(runColor) }), textStepper)}
+        {raster('pipeline', inner, 2, live, t => paint.pipeline(inner, 2, t, { steps: stepNames, phase, fill: fillE(t), failed, color: paint.hex(runColor) }), textStepper)}
         <Text> </Text>
         <Box>
-          {raster('progress', barW, 1, 'B', t => paint.progress({ cols: barW, rows: 1 }, t, { frac: fracE(t), live }), <Text color={C.cyan}>{'█'.repeat(Math.round(fracE(anim) * barW))}</Text>)}
+          {raster('progress', barW, 1, live, t => paint.progress(barW, 1, t, { frac: fracE(t), live }), <Text color={C.cyan}>{'█'.repeat(Math.round(fracE(anim) * barW))}</Text>)}
           <Text color={C.ink} bold> {String(pct).padStart(3)}%</Text>
         </Box>
         {times.length > 1 && RasterEl ? (
           <Box>
             <Text color={C.dim}>activity </Text>
-            {raster('spark', sparkW, 1, 'B', t => paint.spark({ cols: sparkW, rows: 1 }, t, { values: bucketE.map(f => f(t)), live }))}
+            {raster('spark', sparkW, 1, live, t => paint.spark(sparkW, 1, t, { values: bucketE.map(f => f(t)), live }))}
           </Box>
         ) : null}
       </Card>
@@ -873,6 +828,7 @@ export const register: Register = on => {
     const tabW = tabs.map(([, label]) => label.length + 2)
     const tabIdx = Math.max(0, tabs.findIndex(([id]) => id === u.tab))
     const tabE = ease('tab', tabIdx, 220)
+    tabE(anim) // retarget now so `easing` sees it
     // Text fallback: ▔ under the active tab, a dim rule under the rest.
     let used = 0
     const underlineText = (
@@ -885,7 +841,7 @@ export const register: Register = on => {
         <Text color={C.borderDim}>{'▔'.repeat(Math.max(0, inner - used))}</Text>
       </Text>
     )
-    const underline = raster('underline', inner, 1, 'B', t => paint.underline({ cols: inner, rows: 1 }, t, { tabs: tabW, active: tabE(t), color: K.accent }), underlineText)
+    const underline = raster('underline', inner, 1, easing('tab'), t => paint.underline(inner, 1, t, { tabs: tabW, active: tabE(t), color: K.accent }), underlineText)
 
     const work = (
       <Box flexDirection="column" borderStyle="round" borderColor={C.border} paddingX={1} flexGrow={1}>
@@ -927,7 +883,7 @@ export const register: Register = on => {
       const active = state !== 'idle'
       return (
         <Box gap={1}>
-          {raster(`orb-${id}`, 4, 2, 'B', t => paint.orb({ cols: 4, rows: 2 }, t, { color: paint.hex(color), active, seed }), <Text color={active ? pulse(n, color, C.white, 0.4) : C.faint}>◉</Text>)}
+          {raster(`orb-${id}`, 4, 2, active, t => paint.orb(4, 2, t, { color: paint.hex(color), active, seed }), <Text color={active ? pulse(n, color, C.white, 0.4) : C.faint}>◉</Text>)}
           <Box flexDirection="column" flexShrink={1}>
             <Text wrap="truncate-end"><Text color={C.ink} bold>{name}</Text><Text color={C.dim}>  {role}</Text></Text>
             <Text color={active ? color : C.dim} wrap="truncate-end">{active ? `${SPIN[(n + seed) % SPIN.length]} ` : ''}{state}</Text>
@@ -998,7 +954,7 @@ export const register: Register = on => {
         </Text>
       )
     })
-    const meterBars = byAgent.length && RasterEl ? raster('meters', Math.max(1, sideCols - 4), byAgent.length, 'B', t => paint.meters({ cols: Math.max(1, sideCols - 4), rows: byAgent.length }, t, {
+    const meterBars = byAgent.length && RasterEl ? raster('meters', Math.max(1, sideCols - 4), byAgent.length, byAgent.some((_, i) => easing(`meter${i}`)), t => paint.meters(Math.max(1, sideCols - 4), byAgent.length, t, {
       values: meterE.map(f => f(t)), colors: byAgent.map((_, i) => meterColors[i % meterColors.length]!), labels: byAgent.map(a => `${a.agentId.slice(0, 7)} ${a.calls}`),
     })) : meterFall
     const meter = (
