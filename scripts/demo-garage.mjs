@@ -80,7 +80,7 @@ function tick() {
     const e = events[cursor++];
     const out = eventOut(e);
     out.seq = e.seq + seqOffset();
-    for (const s of streams) if (e.runId === s.runId) s.send(out);
+    for (const s of streams) if (!s.runId || e.runId === s.runId) s.send(out);
   }
   if (cursor >= events.length) {
     finishedAt ??= now;
@@ -107,21 +107,37 @@ function snapshot(runId) {
   return snap;
 }
 
+/** GET /events like the daemon's: replay what is past `since`, then go live. An omitted runId is every run. */
 function serveEvents(req, res, url) {
-  const runId = url.searchParams.get('runId') ?? undefined;
-  const since = Number(url.searchParams.get('since') ?? 0);
+  const runId = url.searchParams.get('runId') || undefined;
+  const catchup = url.searchParams.get('catchup') === '1';
+  const since = Number(url.searchParams.get('since') ?? 0) || 0;
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache', connection: 'keep-alive' });
   res.write(': connected\n\n');
-  const frame = (e) => res.write(`id: ${e.seq}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
-  // catch-up and subscribe in one synchronous run, so nothing slips between them (catchup=1 is what this always does)
-  for (let i = 0; i < cursor; i += 1) {
+  // the seq cursor covers replay and live alike: nothing at or below it is ever sent, so a `since` ahead of
+  // the mission's position holds delivery back until the mission passes it
+  let sent = since;
+  const stream = {
+    runId,
+    send(e) {
+      if (e.seq <= sent) return;
+      sent = e.seq;
+      res.write(`id: ${e.seq}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
+    },
+    end: () => res.end(),
+  };
+  // replay and subscribe in one synchronous run, so nothing slips between them; without catchup=1 the replay is
+  // capped at 1000 events as the daemon's is, with it the whole backlog is sent
+  let replayed = 0;
+  for (let i = 0; i < cursor && (catchup || replayed < 1000); i += 1) {
     const e = events[i];
     if (runId && e.runId !== runId) continue;
     const out = eventOut(e);
     out.seq = e.seq + seqOffset();
-    if (out.seq > since) frame(out);
+    if (out.seq <= since) continue;
+    stream.send(out);
+    replayed += 1;
   }
-  const stream = { runId, send: frame, end: () => res.end() };
   streams.add(stream);
   const ping = setInterval(() => res.write(': ping\n\n'), 15_000);
   res.on('close', () => {
