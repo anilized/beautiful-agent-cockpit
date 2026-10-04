@@ -627,7 +627,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'cockpit',
-      description: 'Agent cockpit: /cockpit [start|stop|run <request>|status|approve|changes <text>|reject|report|dashboard]',
+      description: 'Agent cockpit: /cockpit [start|stop|run <request>|status|approve|changes <text>|reject|report|dashboard|garage]',
     })
     $.ui.status(undefined) // no text status line: the HUD band draws it
     ended = false
@@ -683,6 +683,10 @@ export const register: Register = on => {
         const run = rest[0] ?? activeRun((await read($, view)).snapshot)?.id
         return { text: (await cli($, ['dashboard', ...(run ? [run] : [])])).text }
       }
+      case 'garage': {
+        const run = rest[0] ?? activeRun((await read($, view)).snapshot)?.id
+        return { text: (await cli($, ['garage', ...(run ? [run] : [])])).text }
+      }
       case 'approve':
       case 'reject':
       case 'changes': {
@@ -691,7 +695,7 @@ export const register: Register = on => {
         return { text: await decide($, sub, target, note) }
       }
       default:
-        return { text: 'Usage: /cockpit [start|stop|run <request>|status|approve [note]|changes <text>|reject [note]|report|dashboard]' }
+        return { text: 'Usage: /cockpit [start|stop|run <request>|status|approve [note]|changes <text>|reject [note]|report|dashboard|garage]' }
     }
   })
 
@@ -2259,9 +2263,10 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       ...(failed ? ([['t', 'retry', () => void busy($, 'retrying…', () => cli($, ['retry', run.id])).then(r => say($, r.text))]] as [string, string, () => void][]) : []),
       ['p', 'report', () => void loadReport($, run.id)],
       ['d', 'dashboard', () => void busy($, 'opening the dashboard…', () => cli($, ['dashboard', run.id])).then(r => say($, r.text))],
+      ['y', 'garage', () => void busy($, 'opening the garage…', () => cli($, ['garage', run.id])).then(r => say($, r.text))],
       ['x', 'stop', () => void daemon($, false)],
     ]
-    const keyName: Record<string, string> = { p: 'report', d: 'dashboard', x: 'stop', t: 'retry', n: 'new' }
+    const keyName: Record<string, string> = { p: 'report', d: 'dashboard', y: 'garage', x: 'stop', t: 'retry', n: 'new' }
     const footer = (
       <Box flexDirection="column" paddingX={1}>
         {u.busy ? (
