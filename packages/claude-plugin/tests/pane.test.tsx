@@ -322,7 +322,7 @@ test('every mission is listed and a press switches to it, at every width', async
   }
 })
 
-test('the grid shows the unified log, the agent focus files, a code preview and the terminal', async ($, on) => {
+test('the grid shows the unified log, the agent focus files, a code preview and the team tree', async ($, on) => {
   const snap = JSON.parse(LIVE)
   const run = snap.runs[0]
   const t = run.tasks[1] // TASK-102, running
@@ -362,13 +362,47 @@ test('the grid shows the unified log, the agent focus files, a code preview and 
     await has(/AGENT: BACKEND/)
     await has(/test\/strings\.test\.js/) // focus files
     await has(/toLowerCase/) // code preview
-    await has(/node --test test\/strings\.test\.js/) // terminal
-    await has(/✔ passed/)
-    await has(/new file:/) // git status in the terminal
+    await has(/◉ YOU/) // the team tree took the terminal's place
+    await has(/◆ COUNCIL/)
+    await has(/◇ codex/)
     await ui.unmount()
   }
   // the brand and theme came from the environment
   const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'desktop', ...pane(140) })
   expect(await ui.find({ type: 'Text', text: /TESTCO/ })).toBeDefined()
   await ui.unmount()
+})
+
+test('home is an overview of every mission; a mission opens from it and 0 comes back', async ($, on) => {
+  const snap = JSON.parse(LIVE)
+  for (const r of snap.runs) r.status = 'completed'
+  snap.pendingApprovals = []
+  snap.runs[0].team = [{ id: 'backend-dev', title: 'Backend developer', specialty: 'backend', agent: 'sonnet', effort: 'high', tasks: ['TASK-102'], state: 'idle' }]
+  snap.runs[0].tasks[1].persona = 'backend-dev'
+  snap.limits = { codex: { windows: [{ name: '7d', usedPercent: 16, resetsAt: null }], at: 'now' } }
+  on('fs.read', async () => ({ value: JSON.stringify(snap) }))
+  mock.clock(on)
+  mock.env(on, { COCKPIT_DATA_DIR: '/data' })
+  on('command.register', async () => ({ value: undefined }) as never)
+  on('session.start', async (_, e) => ({ cwd: e.cwd }))
+  on('ui.status', async () => ({ value: undefined }) as never)
+  on('ui.toast', async () => ({ value: undefined }) as never)
+  on('process.run', async () => ({ value: { exitCode: 0, stdout: '', stderr: '' } }) as never)
+  await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
+  for (const cols of [60, 140]) {
+    const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(cols) })
+    // nothing under way: the overview, not a mission form
+    expect(await ui.find({ type: 'Text', text: /MISSIONS/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /◈ backend-dev/ })).toBeDefined() // the latest mission's team
+    expect(await ui.find({ type: 'Text', text: /codex 7d/ })).toBeDefined()
+    expect(await ui.find({ key: `home-open-${snap.runs[1].id}` })).toBeDefined()
+    expect((await ui.find({ key: `home-open-${snap.runs[0].id}` }))?.props.hotkey).toBe('1')
+    expect(await ui.find({ key: 'compose-0' })).toBeUndefined()
+    await ui.press({ key: `home-open-${snap.runs[0].id}` })
+    expect(await ui.find({ key: 'tab-live' })).toBeDefined()
+    await ui.press({ key: 'home' })
+    expect(await ui.find({ key: 'tab-live' })).toBeUndefined()
+    expect(await ui.find({ key: `home-open-${snap.runs[0].id}` })).toBeDefined()
+    await ui.unmount()
+  }
 })

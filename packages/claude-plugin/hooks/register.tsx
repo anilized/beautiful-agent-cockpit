@@ -50,6 +50,8 @@ const STEPS: [string, string[]][] = [
   ['merge', ['merging']],
 ]
 const TERMINAL = ['completed', 'rejected', 'failed']
+/** `selectedRun` for the home overview (null follows the live mission, else lands home). */
+const HOME = '~home'
 
 // ── color math ───────────────────────────────────────────────────────────────
 
@@ -824,6 +826,60 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       )
     }
     const pickCrew = (crew: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }) => void patchUi($, { crew })
+    const SPEC_COLOR: Record<string, string> = {
+      backend: C.orange, frontend: C.blue, test: C.pink, database: C.yellow, security: C.red, performance: C.yellow,
+      documentation: C.text, refactoring: C.violet, research: C.cyan, generalist: C.mint,
+    }
+
+    // The team as a tree: you, the council, each lead and the workers it owns; a working seat pulses.
+    const TeamTree = ({ r, max }: { r: CockpitRun; max: number }) => {
+      const roles = r.roles ?? s!.hierarchy
+      const council: CockpitSeat[] = r.council?.length ? r.council : [{ id: 'sup-1', agent: roles.supervisor, effort: null, area: null, state: r.leadership.supervisor }]
+      const leads: CockpitSeat[] = r.leads?.length ? r.leads : [{ id: 'lead-1', agent: roles.lead, effort: null, area: null, state: r.leadership.lead }]
+      const personas = r.team ?? []
+      const leadOf = (id: string) => r.tasks.find(t => t.persona === id && t.lead)?.lead ?? leads[0]!.id
+      const waiting = s!.pendingApprovals.filter(a => a.runId === r.id).length
+      const busyNow = (state: string) => state !== 'idle'
+      const dot = (state: string, tone: string) => <Text color={busyNow(state) ? pulse(n, tone, C.white, 0.35) : C.faint}>{busyNow(state) ? '●' : '○'}</Text>
+      const eff = (e: string | null) => (e ? <Text color={C.dim}> ⚡{e}</Text> : null)
+      const lines: RenderChildren[] = [
+        <Text wrap="truncate-end"><Text color={C.yellow} bold>◉ YOU</Text><Text color={waiting ? C.yellow : C.dim}>{waiting ? `  ${waiting} decision${waiting > 1 ? 's' : ''} waiting` : '  approve · revise · merge'}</Text></Text>,
+        <Text wrap="truncate-end">
+          <Text color={C.faint}>└─ </Text><Text color={C.violet} bold>◆ COUNCIL</Text>
+          {council.map((x, i) => <Text>  {dot(x.state, C.violet)} <Text color={i === 0 ? C.ink : C.text} bold={i === 0}>{i === 0 ? '★' : ''}{x.agent}</Text>{eff(x.effort)}</Text>)}
+        </Text>,
+      ]
+      leads.forEach((ld, li) => {
+        const lastLead = li === leads.length - 1
+        const rail = lastLead ? '      ' : '   │  '
+        const kids = [
+          ...personas.filter(p => leadOf(p.id) === ld.id).map(p => ({ name: p.id, agent: p.agent, effort: p.effort, state: p.state, note: p.tasks.join(' '), tone: SPEC_COLOR[p.specialty] ?? C.orange })),
+          ...(li === 0 && !personas.length ? r.workers.map(w => ({ name: w.agentId, agent: '', effort: null, state: `working${w.task ? ` on ${w.task}` : ''}`, note: '', tone: C.orange })) : []),
+        ]
+        lines.push(
+          <Text wrap="truncate-end">
+            <Text color={C.faint}>   {lastLead ? '└─' : '├─'} </Text>{dot(ld.state, C.cyan)}<Text color={C.cyan} bold> ◇ {ld.agent}</Text>
+            <Text color={C.dim}>  {ld.area ? `${ld.area} ` : ''}{li === 0 ? 'head lead' : 'lead'}</Text>{eff(ld.effort)}
+            {busyNow(ld.state) ? <Text color={C.green}>  {ld.state}</Text> : null}
+          </Text>,
+        )
+        if (!kids.length && li === 0) lines.push(<Text color={C.dim} wrap="truncate-end">{rail}└─ ◈ workers are named when the plan is made</Text>)
+        kids.forEach((k, ki) => lines.push(
+          <Text wrap="truncate-end">
+            <Text color={C.faint}>{rail}{ki === kids.length - 1 ? '└─' : '├─'} </Text>{dot(k.state, k.tone)}<Text color={k.tone} bold> ◈ {k.name}</Text>
+            {k.agent ? <Text color={C.mute}>  {k.agent}</Text> : null}{eff(k.effort)}
+            <Text color={busyNow(k.state) ? C.green : C.dim}>  {busyNow(k.state) ? k.state : k.note || 'idle'}</Text>
+          </Text>,
+        ))
+      })
+      return (
+        <Box flexDirection="column">
+          {lines.slice(0, max)}
+          {lines.length > max ? <Text color={C.dim}>… {lines.length - max} more</Text> : null}
+        </Box>
+      )
+    }
+
 
     // ── NEW MISSION: its own screen. A brief in Markdown (typed here line by line, or written in an editor),
     // the crew that will run it, and the flags; s starts it. ──
@@ -916,27 +972,120 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       )
     }
 
-    const run = (u.selectedRun && s.runs.find(r => r.id === u.selectedRun)) || activeRun(s)
+    // Home unless a mission is picked or one is under way (that one opens by itself); 0 comes back here.
+    const liveRun = s.runs.find(r => !TERMINAL.includes(r.status)) ?? null
+    const run = u.selectedRun === HOME ? null : (u.selectedRun && s.runs.find(r => r.id === u.selectedRun)) || liveRun
     if (!run) {
+      const openRun = (id: string) => void patchUi($, { selectedRun: id, task: null, mind: null, scroll: {}, report: null })
+      const focusRun = liveRun ?? s.runs[0] ?? null
+      const twoCols = cols >= 110
+      const leftW = twoCols ? Math.floor(cols * 0.56) : cols
+      const rightW = twoCols ? cols - leftW : cols
+      const spend = s.runs.reduce((a, r) => a + (r.telemetry.costUsd || 0), 0)
+      const calls = s.runs.reduce((a, r) => a + (r.telemetry.calls || 0), 0)
+      const running = s.runs.filter(r => !TERMINAL.includes(r.status)).length
+      const waitingAll = s.pendingApprovals.length
+      const left = (['claude', 'codex'] as const).map(p => [p, limits[p]?.windows ?? []] as const).filter(([, w]) => w.length)
+      const Kpi = ({ label, value, tone }: { label: string; value: string; tone?: string }) => (
+        <Box flexDirection="column" marginRight={4}>
+          <Text color={tone ?? C.ink} bold>{value}</Text>
+          <Text color={C.dim}>{label}</Text>
+        </Box>
+      )
+      const MISSION_MAX = Math.max(3, Math.min(10, rows - 24))
+      const barW = 10
+      const missionRow = (r: CockpitRun, i: number) => {
+        const rc = STATUS_COLOR[r.status] ?? C.text
+        const dn = r.tasks.filter(isDone).length
+        const bar = smoothBar(r.status === 'completed' ? 1 : r.tasks.length ? dn / r.tasks.length : 0, barW)
+        const waits = s.pendingApprovals.some(a => a.runId === r.id)
+        const age = r.createdAt ? ago(now - Date.parse(r.createdAt)) : ''
+        const meta = `${r.status.replace(/_/g, ' ').padEnd(16).slice(0, 16)}`
+        return (
+          <Box key={`home-row-${r.id}`} justifyContent="space-between" hover={{ backgroundColor: C.hover }}>
+            <Box flexShrink={1}>
+              <Text color={MOVING.has(r.status) ? pulse(n, rc, C.white, 0.4) : rc}>{glyph(r.status, n)} </Text>
+              <Button plain hotkey={i < 9 ? String(i + 1) : undefined} key={`home-open-${r.id}`} label={clip(firstLine(r.request).replace(/^#+\s*/, ''), Math.max(10, leftW - 48))} onPress={() => openRun(r.id)} />
+            </Box>
+            <Text>
+              {waits ? <Text color={pulse(n, C.yellow, C.accent, 0.5)}>● </Text> : null}
+              <Text color={rc}>{meta}</Text>
+              <Text color={C.faint}>▕</Text><Text color={r.status === 'failed' ? C.red : C.accent}>{bar.fill}</Text><Text color={C.track}>{bar.rest}</Text><Text color={C.faint}>▏</Text>
+              <Text color={C.dim}> {`${dn}/${r.tasks.length}`.padStart(5)} {age.padStart(4)}</Text>
+            </Text>
+          </Box>
+        )
+      }
+      const MILESTONE = /^(task\.(created|completed|failed)|test\.(passed|failed)|review\.|integration\.completed|merge\.|approval\.|validation\.|plan\.|team\.|council\.|run\.(started|completed))/
+      const recent = s.runs
+        .flatMap(r => r.recentEvents.filter(ev => MILESTONE.test(ev.type)).map(ev => ({ ...ev, r })))
+        .sort((a, b) => b.ts.localeCompare(a.ts))
+        .slice(0, Math.max(4, Math.min(10, rows - 26)))
+      const panel = (title: string, right: RenderChildren, children: RenderChildren, width: number, color?: string) => (
+        <Box flexDirection="column" borderStyle="round" borderColor={color ?? C.border} paddingX={1} width={width}>
+          <Box justifyContent="space-between"><Text color={C.accent} bold>{title}</Text>{right}</Box>
+          {children}
+        </Box>
+      )
+      const leftCol = (
+        <Box flexDirection="column" width={leftW}>
+          {panel('MISSIONS', <Text color={C.dim}>{s.runs.length ? `press or 1-${Math.min(9, s.runs.length)} to open` : ''}</Text>, (
+            <Box flexDirection="column">
+              {s.runs.length ? s.runs.slice(0, MISSION_MAX).map(missionRow) : <Text color={C.dim}>No missions yet: n starts the first one.</Text>}
+              {s.runs.length > MISSION_MAX ? <Text color={C.dim}>… {s.runs.length - MISSION_MAX} older (d opens the dashboard)</Text> : null}
+            </Box>
+          ), leftW)}
+          {panel('RECENT', <Text color={C.dim}>every mission, newest first</Text>, (
+            <Box flexDirection="column">
+              {recent.length ? recent.map(ev => (
+                <Text wrap="truncate-end">
+                  <Text color={C.dim}>{ev.ts.slice(11, 19)} </Text>
+                  <Text color={C.mute}>{clip(firstLine(ev.r.request).replace(/^#+\s*/, ''), 18).padEnd(18)} </Text>
+                  <Text color={/failed|rejected/.test(ev.type) ? C.red : /passed|completed|accepted|merge\./.test(ev.type) ? C.green : C.text}>{ev.text}</Text>
+                </Text>
+              )) : <Text color={C.dim}>Quiet so far.</Text>}
+            </Box>
+          ), leftW)}
+        </Box>
+      )
+      const rightCol = (
+        <Box flexDirection="column" width={rightW}>
+          {focusRun ? panel('TEAM', <Text color={C.dim}>{clip(firstLine(focusRun.request).replace(/^#+\s*/, ''), Math.max(8, rightW - 12))}</Text>, <TeamTree r={focusRun} max={12} />, rightW) : null}
+          {left.length ? panel('PLAN LEFT', <Text color={C.dim}>subscription</Text>, (
+            <Box flexDirection="column">
+              {left.flatMap(([p, ws]) => ws.map(w => {
+                const pct = Math.max(0, 100 - w.usedPercent)
+                const bar = smoothBar(pct / 100, Math.max(6, rightW - 30))
+                const tone = pct > 50 ? C.green : pct > 20 ? C.yellow : C.red
+                const resets = w.resetsAt ? Date.parse(w.resetsAt) - now : NaN
+                return (
+                  <Text wrap="truncate-end">
+                    <Text color={C.mute}>{`${p} ${w.name}`.padEnd(10)}</Text>
+                    <Text color={C.faint}>▕</Text><Text color={tone}>{bar.fill}</Text><Text color={C.track}>{bar.rest}</Text><Text color={C.faint}>▏</Text>
+                    <Text color={tone} bold> {Math.round(pct)}%</Text><Text color={C.dim}>{resets > 0 ? ` ⟳${ago(resets)}` : ''}</Text>
+                  </Text>
+                )
+              }))}
+            </Box>
+          ), rightW) : null}
+          {panel('NEXT MISSION', <Button variant="primary" hotkey="n" key="new" label=" n · New mission " autoFocus onPress={() => void patchUi($, { composing: { kind: 'run' } })} />, <CrewRows crew={nextCrew} keys onChange={pickCrew} />, rightW)}
+        </Box>
+      )
       return out(
         <Box flexDirection="column">
           {hero}
-          <Box flexDirection="column" paddingY={1} paddingX={1}>
-            {failureCard}
-            {(
-              <Box flexDirection="column" alignItems="center">
-                <Text color={C.text} bold>Ready for a mission.</Text>
-                <Text color={C.dim}>One request in — an engineering org of agents takes it from there.</Text>
-                <Text> </Text>
-                <Button variant="primary" hotkey="n" label="  n · New mission  " autoFocus onPress={() => void patchUi($, { composing: { kind: 'run' } })} />
-                <Text> </Text>
-                <CrewRows crew={nextCrew} keys onChange={pickCrew} />
-                <Text color={C.dim}>v / b the chair / head lead · f / g their effort · or press any chip</Text>
-              </Box>
-            )}
+          {failureCard}
+          <Box paddingX={1} paddingY={0}>
+            <Kpi label="missions" value={String(s.runs.length)} />
+            <Kpi label="running" value={String(running)} tone={running ? C.green : C.dim} />
+            <Kpi label="need you" value={String(waitingAll)} tone={waitingAll ? C.yellow : C.dim} />
+            <Kpi label="spent" value={spend ? `$${spend.toFixed(2)}` : '—'} tone={C.yellow} />
+            <Kpi label="calls" value={compact(calls)} />
+            {left.map(([p, ws]) => <Kpi label={`${p} left`} value={`${Math.round(Math.max(0, 100 - Math.max(...ws.map(w => w.usedPercent))))}%`} tone={C.green} />)}
           </Box>
-          {keybar([['n', 'new mission'], ['v b', 'seats'], ['f g', 'effort'], ['x', 'stop']])}
-        </Box>
+          {twoCols ? <Box>{leftCol}{rightCol}</Box> : <Box flexDirection="column">{leftCol}{rightCol}</Box>}
+          {keybar([['n', 'new mission'], ['1-9', 'open'], ['v b', 'seats'], ['f g', 'effort'], ['x', 'stop']])}
+        </Box>,
       )
     }
 
@@ -1277,7 +1426,10 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const missionTitle = (
       <Box justifyContent="space-between">
         <Text color={C.mute} bold>MISSIONS <Text color={C.dim}>mission {runIdx + 1}/{s.runs.length}</Text></Text>
-        {s.runs.length > 1 ? <Button plain dimColor hotkey="m" key="next" label="next" onPress={() => select(s.runs[(runIdx + 1) % s.runs.length]!.id)} /> : null}
+        <Box gap={1}>
+          {s.runs.length > 1 ? <Button plain dimColor hotkey="m" key="next" label="next" onPress={() => select(s.runs[(runIdx + 1) % s.runs.length]!.id)} /> : null}
+          <Button plain dimColor hotkey="0" key="home" label="◂ home" onPress={() => void patchUi($, { selectedRun: HOME, scroll: {} })} />
+        </Box>
       </Box>
     )
     const MissionRow = ({ r }: { r: CockpitRun }) => {
@@ -1539,10 +1691,6 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const underline = raster('tab-underline', tasksIn, 1, easing('tab'), t => paint.underline(tasksIn, 1, t, { tabs: tabW, active: tabE(t), color: K.accent }), underlineText)
     // ── the mockup's panels: mission header + unified log, task list with stages, agent focus, code, terminal, output ──
 
-    const SPEC_COLOR: Record<string, string> = {
-      backend: C.orange, frontend: C.blue, test: C.pink, database: C.yellow, security: C.red, performance: C.yellow,
-      documentation: C.text, refactoring: C.violet, research: C.cyan, generalist: C.mint,
-    }
     const specOf = (key: string | null | undefined) => run.tasks.find(t => t.key === key)?.specialty ?? null
     const tagOf = (role: string, task: string | null, seat?: string | null) =>
       role === 'supervisor' ? (seat && seat !== 'sup-1' ? `SUPER ${seat.slice(4)}` : 'SUPER')
@@ -1702,24 +1850,6 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       )
     }
 
-    // Terminal: the orchestrator's last test run of the focus task, then its git status.
-    const TerminalBody = ({ max }: { max: number }) => {
-      const v = focusTask?.detail?.validation
-      const files = focusTask?.live?.files ?? []
-      const outLines = v && !v.skipped ? v.output.trim().split('\n').filter(Boolean).slice(-Math.max(2, max - files.length - 5)) : []
-      const label: Record<string, string> = { M: 'modified:', A: 'new file:', D: 'deleted: ', R: 'renamed: ' }
-      return (
-        <Box flexDirection="column">
-          {v && !v.skipped ? <Text color={C.text} wrap="truncate-end"><Text color={C.accent}>$ </Text>{v.command}</Text> : <Text color={C.dim}>{focusTask ? 'no test run yet' : 'no task in focus'}</Text>}
-          {outLines.map(l => <Text color={/fail|error|✗/i.test(l) ? C.red : /pass|ok|✓|success/i.test(l) ? C.green : C.mute} wrap="truncate-end">{l}</Text>)}
-          {v && !v.skipped ? <Text color={v.passed ? C.green : C.red} bold>{v.passed ? '✔ passed' : '✗ failed'}</Text> : null}
-          {files.length ? <Text color={C.text}><Text color={C.accent}>$ </Text>git status</Text> : null}
-          {files.length && focusTask?.branch ? <Text color={C.dim} wrap="truncate-end">On branch {focusTask.branch.split('/').slice(-1)[0]}</Text> : null}
-          {files.slice(0, Math.max(0, max - outLines.length - 5)).map(f => <Text color={FILE_COLOR[f.status] ?? C.text} wrap="truncate-end">    {label[f.status] ?? f.status.padEnd(9)} {f.path}</Text>)}
-        </Box>
-      )
-    }
-
     const brand = l.brand || 'ANILDEV'
     const repoName = run.repositories[0]?.name ?? 'workspace'
     const working = minds.filter(m => m.status === 'active').length || run.workers.length
@@ -1730,7 +1860,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const botH = Math.max(8, bodyH - topH)
     const tasksH = Math.max(7, Math.min(taskOrder.length + Math.min(finished.length, 3) + 5, Math.floor(topH * 0.6)))
     const focusH = Math.max(6, topH - tasksH)
-    const codeW = Math.floor(tasksW * 0.58)
+    const codeW = Math.floor(tasksW * 0.5)
     const termW = tasksW - codeW
     const sized = wide // only the grid pins heights; narrower panes grow with their content and scroll
 
@@ -1754,6 +1884,11 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       const scope = [...d.scope.files.map(f => `◦ ${f}`), ...d.scope.modules.map(m => `▣ ${m}`), ...d.scope.resources.map(r => `⛁ ${r}`)]
       if (scope.length) rows.push({ text: '' }, { text: 'SCOPE', color: C.mute, bold: true }, ...scope.map(x => ({ text: x, color: C.mute })))
       if (d.summary) rows.push({ text: '' }, { text: 'WORKER', color: C.mute, bold: true }, ...para(d.summary))
+      const tv = d.validation
+      if (tv && !tv.skipped) {
+        rows.push({ text: '' }, { text: `TESTS · ${tv.passed ? '✔ passed' : '✗ failed'}`, color: tv.passed ? C.green : C.red, bold: true }, { text: `$ ${tv.command ?? ''}`, color: C.mute })
+        rows.push(...tv.output.trim().split('\n').filter(Boolean).slice(-12).map(x => ({ text: x, color: /fail|error|✗/i.test(x) ? C.red : C.dim })))
+      }
       if (d.review) {
         rows.push({ text: '' }, { text: `REVIEW it${d.review.iteration} · ${d.review.verdict.replace(/_/g, ' ')}`, color: d.review.verdict === 'approve' ? C.green : C.yellow, bold: true }, ...para(d.review.summary))
         for (const i of d.review.issues) rows.push(...para(`✗ ${i.severity} ${i.file ? `${i.file}: ` : ''}${i.description}`, { color: i.severity === 'blocker' ? C.red : i.severity === 'major' ? C.yellow : C.dim }))
@@ -1857,9 +1992,9 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         {preview ? <DiffView diff={preview.diff} max={sized ? botH - 3 : 30} /> : <Text color={C.dim}>{focusTask ? 'No change on disk yet for ' + focusTask.key + '.' : 'No task in focus.'}</Text>}
       </Panel>
     )
-    const terminalPanel = (
-      <Panel title="TERMINAL" right={<Text color={C.dim}>{focusTask?.key ?? ''}</Text>} width={wide ? termW : undefined} height={sized ? botH : undefined}>
-        <TerminalBody max={sized ? botH - 3 : 24} />
+    const teamPanel = (
+      <Panel title="TEAM" right={<Text color={C.dim}>{team.length ? `${team.length} workers` : 'hierarchy'}</Text>} width={wide ? termW : undefined} height={sized ? botH : undefined}>
+        <TeamTree r={run} max={sized ? botH - 3 : 24} />
       </Panel>
     )
     const outputPanel = (
@@ -1978,7 +2113,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
             </Box>
             <Box>
               {codePanel}
-              {terminalPanel}
+              {teamPanel}
               {outputPanel}
             </Box>
           </Box>
@@ -1989,7 +2124,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         {missionsPanel}
         {agentsStrip}
         <Box>
-          <Box flexDirection="column" width={tasksW}>{centrePanel}{codePanel}{terminalPanel}</Box>
+          <Box flexDirection="column" width={tasksW}>{centrePanel}{codePanel}{teamPanel}</Box>
           <Box flexDirection="column" width={rightW}>{tasksPanel}{focusPanel}{outputPanel}</Box>
         </Box>
       </Box>
@@ -2001,7 +2136,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         {tasksPanel}
         {focusPanel}
         {codePanel}
-        {terminalPanel}
+        {teamPanel}
         {outputPanel}
       </Box>
     )

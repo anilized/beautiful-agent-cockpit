@@ -60,13 +60,18 @@ agent, task and change is on screen at once, in the same place every time.
 │ ◉ backend-dev   run ││ 15:23:58 [LEAD       ] ◎ Read src/…/JobRetryService.java           ││ src/…/JobRetryRequest.java            A │
 │ CREW · PLAN LEFT   ││ 15:23:31 [BACKEND-DEV] ✎ Edit src/…/JobRetryController.java       ││                                         │
 ├────────────────────┤└─────────────────────────────────────────────────────────────────────┘└─────────────────────────────────────────┘
-│                    │┌ CODE PREVIEW  …/JobRetryController.java ──┐┌ TERMINAL ───────────────┐┌ AGENT OUTPUT (backend) ────────────────┐
-│                    ││   12   12   @RestController                ││ $ mvn test               ││ 15:24 ✦ completed: endpoint + 12 tests  │
-│                    ││        15 + @PostMapping("/{id}/retry")    ││ Tests run: 34, Failures 0││ 15:23 ▍ Writing the audit test next…    │
+│                    │┌ CODE PREVIEW  …/JobRetryController.java ──┐┌ TEAM ──────── 2 workers ┐┌ AGENT OUTPUT (backend) ────────────────┐
+│                    ││   12   12   @RestController                ││ ◉ YOU                    ││ 15:24 ✦ completed: endpoint + 12 tests  │
+│                    ││        15 + @PostMapping("/{id}/retry")    ││ └─ ◆ COUNCIL ○ ★opus     ││ 15:23 ▍ Writing the audit test next…    │
 └────────────────────┘└────────────────────────────────────────────┘└──────────────────────────┘└─────────────────────────────────────────┘
  j: down  k: up  h: agents  l: tasks  │ 1-4 view │  n: new  p: report  d: dashboard  x: stop
 ```
 
+- **Home:** with nothing under way (or `0` / `◂ home` from a mission) the cockpit opens on an
+  overview: missions, running, waiting on you, spend, calls and what is left of each subscription;
+  every mission with its status and progress (a press or `1`–`9` opens it); the latest mission's team;
+  recent milestones across missions; and the crew for the next mission with `n`. A mission under way
+  opens by itself.
 - **Header:** the brand, and the mission's repository, status, working agents, spend, what is left
   of each subscription (`◔ claude 86% · codex 100%`) and the clock.
 - **NEEDS YOU:** shows only while a decision waits on you (`a` approve, `c` changes, `r` reject).
@@ -88,7 +93,8 @@ agent, task and change is on screen at once, in the same place every time.
   test, review, done); finished work folds (`o`). A press selects it.
 - **AGENT:** the followed agent's state and the files its task changed in its worktree (`M`/`A`/`D`).
 - **CODE PREVIEW:** the biggest change of the task in focus, with old and new line numbers.
-- **TERMINAL:** the orchestrator's last run of that task's tests, and its `git status`.
+- **TEAM:** the mission's hierarchy as a tree: you, the council, each lead and the workers it owns
+  (by name, model and effort), a working seat pulsing. The task's last test run is in its Task view.
 - **AGENT OUTPUT:** the followed agent's own stream (▸ opens a tool call or an outcome whole).
 - **Keys:** `j`/`k` move in the focused list, `h`/`l` switch between agents and tasks, `1`–`4`
   pick the centre view, `n` new mission, `p` report, `d` dashboard, `t` retry a failed mission,

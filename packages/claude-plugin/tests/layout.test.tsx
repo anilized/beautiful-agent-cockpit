@@ -58,7 +58,16 @@ test('width() counts wide characters as two cells', () => {
   expect(width('🚀')).toBe(2)
 })
 
-for (const [name, snap] of [['live', LIVE], ['offline', OFFLINE]] as const) {
+// home: nothing under way, so the overview draws
+const HOME_SNAP = (() => {
+  const h = JSON.parse(LIVE)
+  for (const r of h.runs) r.status = 'completed'
+  h.pendingApprovals = []
+  h.limits = { claude: { windows: [{ name: '5h', usedPercent: 14, resetsAt: null }, { name: '7d', usedPercent: 40, resetsAt: null }], at: '' }, codex: { windows: [{ name: '7d', usedPercent: 16, resetsAt: null }], at: '' } }
+  return JSON.stringify(h)
+})()
+
+for (const [name, snap] of [['live', LIVE], ['offline', OFFLINE], ['home', HOME_SNAP]] as const) {
   test(`no Text line exceeds bodyColumns: ${name}, terminal and desktop, 60/100/140`, async ($, on) => {
     on('fs.read', async () => ({ value: snap }))
     mock.clock(on)
