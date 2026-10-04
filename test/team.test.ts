@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { FakeAdapter, type FakeCall } from '@cockpit/agents';
 import { AgentsConfig, type LeadPlan } from '@cockpit/core';
 import { buildSnapshot } from '../packages/orchestrator/src/snapshot';
+import { telemetryView } from '../packages/orchestrator/src/dashboard';
 import { fakeEngine, makeRepo, tempDir, testConfig } from './helpers';
 
 // A council of supervisors, leads that own areas, and a team of named workers the human approves.
@@ -125,6 +126,14 @@ describe('councils, area leads and an approved team', () => {
     // The whole council judged the result.
     expect(FakeAdapter.calls.filter((c) => c.contract === 'SupervisorValidation').map((c) => `${c.agentId}@${c.effort}`)).toEqual(['opus@high']);
     expect(store.events({ runId: run.id, limit: 1000 }).filter((e) => e.type === 'council.reviewed').map((e) => (e.data as { subject: string }).subject)).toEqual(['architecture', 'result']);
+
+    // the dashboard gets the same crew, the personas on the tasks, and the limits it is handed
+    const tele = telemetryView(store, config.engine.dataDir, run.id, { config, limits: { codex: { windows: [{ name: '7d', usedPercent: 16, resetsAt: null }], at: 'now' } } });
+    expect(tele.crew?.council.map((s) => s.agent)).toEqual(['opus', 'codex'])
+    expect(tele.crew?.team.map((p) => `${p.id}:${p.agent}:${p.effort}`)).toEqual(['backend-dev:sonnet:high', 'tester:sonnet:low']);
+    expect(tele.tasks.map((t) => `${t.key}:${t.persona}:${t.lead}`)).toEqual(['TASK-101:backend-dev:lead-1', 'TASK-102:tester:lead-2']);
+    expect(tele.limits.codex?.windows[0]?.usedPercent).toBe(16);
+    expect(telemetryView(store, config.engine.dataDir, run.id).crew).toBeNull();
 
     view = buildSnapshot(store, config, { pid: 1, port: null }).runs.find((x) => x.id === run.id)!;
     expect(view.minds.filter((m) => m.seat === 'tester').every((m) => m.agentId === 'sonnet' && m.effort === 'low')).toBe(true);

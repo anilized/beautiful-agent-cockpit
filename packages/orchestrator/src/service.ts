@@ -148,7 +148,7 @@ export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {
       res.end(dashboardHtml());
       return undefined;
     }, { public: true })
-    .route('GET', '/telemetry', ({ query }) => telemetryView(store, dataDir, query.get('runId')))
+    .route('GET', '/telemetry', ({ query }) => telemetryView(store, dataDir, query.get('runId'), { config, limits: limits.get() }))
     .route('POST', '/shutdown', () => {
       setTimeout(() => void stop().then(() => process.exit(0)), 50);
       return { ok: true };

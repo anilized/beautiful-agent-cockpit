@@ -117,7 +117,9 @@ snapshot the orchestrator writes and sends decisions through the CLI.
 
 ### Telemetry dashboard
 
-`cockpit dashboard` (or `d` in the pane) opens a page the daemon serves on 127.0.0.1: spend,
+`cockpit dashboard` (or `d` in the pane) opens a page the daemon serves on 127.0.0.1, in the
+cockpit's look (phosphor by default, neon a click away; `COCKPIT_THEME` / `COCKPIT_BRAND` apply): the
+mission and its lifecycle, the team in tiers, what is left of each subscription, spend,
 tokens and cache rate, the lifecycle, a live **Minds** view of every model session (narration,
 reasoning, tools, outcomes), a task board, cumulative cost per role, input tokens per call, cost
 per task, a span timeline, a sortable calls table and a searchable event log. It refreshes

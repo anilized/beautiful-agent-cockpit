@@ -1,8 +1,10 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { CockpitConfig } from '@cockpit/core';
 import type { Store } from '@cockpit/persistence';
-import { describe, detailOf, minds, type MindView } from './snapshot';
+import type { Limits } from './limits';
+import { describe, detailOf, minds, runView, type MindView, type RunView } from './snapshot';
 
 /**
  * The telemetry dashboard's data: every model call, span and event of one run, read
@@ -13,11 +15,24 @@ export interface TelemetryView {
   runs: { id: string; request: string; status: string; createdAt: string }[];
   run: { id: string; request: string; status: string; createdAt: string; updatedAt: string } | null;
   calls: { ts: string; agentId: string; role: string; model: string; task: string | null; inputTokens: number; cachedTokens: number; outputTokens: number; costUsd: number | null; durationMs: number }[];
-  tasks: { key: string; title: string; status: string; iteration: number; agentId: string | null; description: string; dependsOn: string[]; round: number }[];
+  tasks: { key: string; title: string; status: string; iteration: number; agentId: string | null; description: string; dependsOn: string[]; round: number; specialty: string; persona: string | null; lead: string | null }[];
   /** Every model session of the run, newest first, with what it said, reasoned and ran. */
   minds: MindView[];
   spans: { name: string; start: string; durationMs: number; status: string; error: string | null; role: string | null; agentId: string | null; task: string | null; contract: string | null; inputTokens: number | null; outputTokens: number | null }[];
   events: { seq: number; ts: string; type: string; task: string | null; agentId: string | null; text: string; detail: string }[];
+  /** The council, the leads and the worker personas (with what each is doing), as the cockpit shows them. */
+  crew: { council: RunView['council']; leads: RunView['leads']; team: RunView['team'] } | null;
+  /** What is left of each subscription window. */
+  limits: Limits;
+  /** The cockpit's look: its name in the header and the palette (phosphor or neon). */
+  brand: string;
+  theme: string;
+}
+
+/** What the daemon adds to the store's view: the config (for the crew) and the latest subscription limits. */
+export interface TelemetryContext {
+  config: CockpitConfig;
+  limits: Limits;
 }
 
 /** Events and spans sent per request; the page shows the newest. */
@@ -26,13 +41,15 @@ const MAX_SPANS = 3000;
 /** The dashboard shows every session of the run and a long stream for each. */
 const MIND_LIMITS = { sessions: 200, activity: 400, text: 6000 };
 
-export function telemetryView(store: Store, dataDir: string, runId: string | null): TelemetryView {
+export function telemetryView(store: Store, dataDir: string, runId: string | null, ctx?: TelemetryContext): TelemetryView {
   const runs = store.runs(50);
   const run = (runId ? store.runById(runId) : null) ?? runs.find((r) => !['completed', 'rejected', 'failed'].includes(r.status)) ?? runs[0] ?? null;
   const base: TelemetryView = {
     generatedAt: new Date().toISOString(),
     runs: runs.map((r) => ({ id: r.id, request: r.request, status: r.status, createdAt: r.createdAt })),
     run: null, calls: [], tasks: [], spans: [], events: [], minds: [],
+    crew: null, limits: ctx?.limits ?? {},
+    brand: process.env.COCKPIT_BRAND || 'ANILDEV', theme: process.env.COCKPIT_THEME === 'neon' ? 'neon' : 'phosphor',
   };
   if (!run) return base;
   const tasks = store.tasks(run.id);
@@ -41,6 +58,8 @@ export function telemetryView(store: Store, dataDir: string, runId: string | nul
   const all = store.events({ runId: run.id, limit: 1_000_000 });
   const events = all.slice(-MAX_EVENTS);
   const deps = store.dependencies(run.id);
+  const view = ctx ? runView(store, ctx.config, run) : null;
+  const byKey = new Map((view?.tasks ?? []).map((t) => [t.key, t]));
   return {
     ...base,
     run: { id: run.id, request: run.request, status: run.status, createdAt: run.createdAt, updatedAt: run.updatedAt },
@@ -50,9 +69,11 @@ export function telemetryView(store: Store, dataDir: string, runId: string | nul
     })),
     tasks: tasks.map((t) => ({
       key: t.key, title: t.title, status: t.status, iteration: t.iteration, agentId: t.agentId, description: t.description, round: t.round,
+      specialty: t.specialty, persona: byKey.get(t.key)?.persona ?? null, lead: byKey.get(t.key)?.lead ?? null,
       dependsOn: deps.filter((d) => d.taskId === t.id).map((d) => keyOf(d.dependsOn)),
     })),
     minds: minds(store.sessions(run.id), all, keyOf, MIND_LIMITS),
+    crew: view ? { council: view.council, leads: view.leads, team: view.team } : null,
     spans: readSpans(dataDir, run.id, keyOf),
     events: events.map((e) => {
       const d = e.data as { taskId?: string; agentId?: string };

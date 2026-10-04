@@ -1,245 +1,259 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="phosphor">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cockpit Telemetry</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;0,800;1,400&display=swap" rel="stylesheet">
 <style>
-  :root {
-    color-scheme: light;
-    --page: #f4f4f1; --surface: #fcfcfb; --surface-2: #f3f2ee; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
-    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10); --hover: rgba(11,11,11,0.04);
-    --s-supervisor: #2a78d6; --s-lead: #eb6834; --s-worker: #1baf7a; --s-phase: #898781;
-    --good: #0ca30c; --warning: #fab219; --critical: #d03b3b;
-    --neon-a: #7c3aed; --neon-b: #0891b2; --neon-c: #db2777; --glow: rgba(124,58,237,0.10);
-    --think: #6d28d9; --tool: #0e7490;
-    --backdrop: radial-gradient(1200px 500px at 15% -10%, rgba(124,58,237,0.08), transparent 60%), radial-gradient(900px 500px at 95% 0%, rgba(8,145,178,0.08), transparent 60%);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      color-scheme: dark;
-      --page: #07070b; --surface: #111118; --surface-2: #17171f; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #8a8a96;
-      --grid: #23232c; --axis: #34343f; --ring: rgba(255,255,255,0.08); --hover: rgba(255,255,255,0.05);
-      --s-supervisor: #3987e5; --s-lead: #d95926; --s-worker: #199e70; --s-phase: #8a8a96;
-      --neon-a: #a78bfa; --neon-b: #22d3ee; --neon-c: #f472b6; --glow: rgba(167,139,250,0.18);
-      --think: #c4b5fd; --tool: #67e8f9;
-      --backdrop: radial-gradient(1200px 520px at 12% -12%, rgba(167,139,250,0.16), transparent 60%), radial-gradient(900px 520px at 96% -4%, rgba(34,211,238,0.12), transparent 60%), linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px) 0 0 / 32px 32px, linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px) 0 0 / 32px 32px;
-    }
-  }
-  :root[data-theme="dark"] {
+  /* The cockpit's two palettes (packages/claude-plugin/hooks/theme.ts): phosphor green on black glass, or neon. */
+  :root, [data-theme="phosphor"] {
     color-scheme: dark;
-    --page: #07070b; --surface: #111118; --surface-2: #17171f; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #8a8a96;
-    --grid: #23232c; --axis: #34343f; --ring: rgba(255,255,255,0.08); --hover: rgba(255,255,255,0.05);
-    --s-supervisor: #3987e5; --s-lead: #d95926; --s-worker: #199e70; --s-phase: #8a8a96;
-    --neon-a: #a78bfa; --neon-b: #22d3ee; --neon-c: #f472b6; --glow: rgba(167,139,250,0.18);
-    --think: #c4b5fd; --tool: #67e8f9;
-    --backdrop: radial-gradient(1200px 520px at 12% -12%, rgba(167,139,250,0.16), transparent 60%), radial-gradient(900px 520px at 96% -4%, rgba(34,211,238,0.12), transparent 60%), linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px) 0 0 / 32px 32px, linear-gradient(90deg, rgba(255,255,255,0.025) 1px, transparent 1px) 0 0 / 32px 32px;
+    --bg: #060a08; --panel: #08110c; --panel-2: #0b1710; --border: #1f4a30; --border-dim: #163524; --hover: #0f2016;
+    --accent: #4ade80; --ink: #eafff2; --text: #cfe3d6; --mute: #8aa595; --dim: #5f7a6a; --faint: #2f4a3a;
+    --violet: #a78bfa; --cyan: #22d3ee; --blue: #60a5fa; --green: #4ade80; --mint: #86efac; --teal: #0f766e;
+    --yellow: #facc15; --red: #f87171; --pink: #f472b6; --orange: #fb923c;
+    --track: #10201a; --chip: #12251a; --chip-on: #163a24; --think: #7aa38a;
+    --seat-sup: #2e2160; --seat-lead: #0c3a44;
+    --logo: linear-gradient(90deg, #86efac, #4ade80, #22d3ee, #4ade80, #86efac);
+    --bar: linear-gradient(90deg, #0f766e, #4ade80, #86efac);
+    --aurora: radial-gradient(900px 260px at 12% -80px, rgba(74,222,128,.16), transparent 70%), radial-gradient(700px 240px at 88% -90px, rgba(34,211,238,.12), transparent 70%);
+    --glow: rgba(74,222,128,.22);
   }
+  [data-theme="neon"] {
+    --bg: #0b0b0f; --panel: #111117; --panel-2: #16161e; --border: #2e2e36; --border-dim: #26262e; --hover: #1f1f27;
+    --accent: #ff8a3d; --ink: #fafafa; --text: #e5e7eb; --mute: #9ca3af; --dim: #6b7280; --faint: #3f3f46;
+    --violet: #a78bfa; --cyan: #22d3ee; --blue: #60a5fa; --green: #34d399; --mint: #6ee7b7; --teal: #0f766e;
+    --yellow: #fbbf24; --red: #f87171; --pink: #f472b6; --orange: #fb923c;
+    --track: #1f1f26; --chip: #2a2a33; --chip-on: #23232c; --think: #8b80b8;
+    --seat-sup: #3b1d6e; --seat-lead: #0e3a4a;
+    --logo: linear-gradient(90deg, #22d3ee, #a78bfa, #f472b6, #ff8a3d, #fbbf24, #22d3ee);
+    --bar: linear-gradient(90deg, #a78bfa, #22d3ee, #34d399);
+    --aurora: radial-gradient(900px 260px at 12% -80px, rgba(167,139,250,.20), transparent 70%), radial-gradient(700px 240px at 88% -90px, rgba(34,211,238,.14), transparent 70%);
+    --glow: rgba(167,139,250,.25);
+  }
+  :root { --s-supervisor: var(--violet); --s-lead: var(--cyan); --s-worker: var(--orange); --s-phase: var(--dim); }
+
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--backdrop), var(--page); background-attachment: fixed; color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; min-height: 100vh; }
-  .mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
-  .muted { color: var(--muted); } .secondary { color: var(--ink-2); }
+  html, body { background: var(--bg); }
+  body {
+    margin: 0; color: var(--text); min-height: 100vh;
+    font: 13px/1.5 "JetBrains Mono", "Cascadia Code", ui-monospace, Consolas, monospace; font-variant-ligatures: none;
+    background: var(--aurora), var(--bg); background-attachment: fixed;
+  }
+  /* faint scanlines, like the pane's glass */
+  body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 50; background: repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 1px, transparent 1px 3px); }
+  b, strong { color: var(--ink); }
+  .muted { color: var(--mute); } .dim { color: var(--dim); }
+  button, select, input { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; }
+  button { cursor: pointer; } button:hover, select:hover { border-color: var(--accent); }
+  input[type=checkbox] { accent-color: var(--accent); }
+  ::selection { background: var(--chip-on); }
+  ::-webkit-scrollbar { width: 8px; height: 8px; } ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; } ::-webkit-scrollbar-track { background: transparent; }
 
-  /* ── top bar ── */
-  .bar { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 10px 24px; background: color-mix(in srgb, var(--page) 82%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--ring); }
-  .logo { font-weight: 800; letter-spacing: 0.14em; font-size: 13px; background: linear-gradient(90deg, var(--neon-b), var(--neon-a), var(--neon-c), var(--neon-b)); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: sheen 8s linear infinite; }
+  /* ── header strip: the pane's hero row ── */
+  .strip { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; padding: 8px 20px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg) 84%, transparent); backdrop-filter: blur(8px); }
+  .strip::before { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: var(--bar); opacity: .7; }
+  .brand { font-weight: 800; letter-spacing: .08em; background: var(--logo); background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: sheen 9s linear infinite; }
   @keyframes sheen { to { background-position: 300% 0; } }
-  .bar .spacer { flex: 1; }
-  select, input[type=search], button { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--ring); border-radius: 8px; padding: 6px 10px; }
-  button { cursor: pointer; }
-  label.check { display: inline-flex; gap: 6px; align-items: center; color: var(--ink-2); }
-  .live { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; color: var(--neon-b); }
-  .live i { width: 8px; height: 8px; border-radius: 50%; background: var(--neon-b); box-shadow: 0 0 0 0 var(--neon-b); animation: ping 1.6s infinite; }
-  .live.off { color: var(--muted); } .live.off i { background: var(--muted); animation: none; }
-  @keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--neon-b) 70%, transparent); } 100% { box-shadow: 0 0 0 10px transparent; } }
+  .strip .tag { color: var(--dim); }
+  .strip .spacer { flex: 1; }
+  .live { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; letter-spacing: .12em; color: var(--accent); }
+  .live i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: ping 1.6s infinite; }
+  .live.off { color: var(--dim); } .live.off i { background: var(--dim); animation: none; }
+  @keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 70%, transparent); } 100% { box-shadow: 0 0 0 9px transparent; } }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; background: transparent; color: var(--dim); }
+  .seg button.on { background: var(--chip-on); color: var(--accent); }
 
-  main { padding: 20px 24px 64px; display: grid; gap: 16px; grid-template-columns: repeat(12, 1fr); max-width: 1680px; margin: 0 auto; }
-  .card { background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid var(--ring); border-radius: 14px; padding: 16px; min-width: 0; transition: border-color .2s, box-shadow .2s; }
-  .card:hover { border-color: color-mix(in srgb, var(--neon-a) 35%, var(--ring)); box-shadow: 0 0 0 1px var(--glow), 0 10px 40px -20px var(--glow); }
-  .card h2 { font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; margin: 0 0 2px; color: var(--ink-2); }
-  .card .sub { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
-  .span-12 { grid-column: span 12; } .span-8 { grid-column: span 8; } .span-7 { grid-column: span 7; } .span-5 { grid-column: span 5; } .span-4 { grid-column: span 4; }
-  @media (max-width: 1100px) { .span-8, .span-7, .span-5, .span-4 { grid-column: span 12; } }
+  /* ── panels: thin frames, uppercase accent titles ── */
+  main { padding: 16px 20px 56px; display: grid; gap: 14px; grid-template-columns: repeat(12, minmax(0, 1fr)); max-width: 1760px; margin: 0 auto; }
+  .panel { background: color-mix(in srgb, var(--panel) 94%, transparent); border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px 12px; min-width: 0; position: relative; }
+  .panel:hover { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent), 0 8px 30px -18px var(--glow); }
+  .ph { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .ph h2 { margin: 0; font-size: 12px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); }
+  .ph .meta { color: var(--dim); font-size: 12px; text-align: right; }
+  .span-12 { grid-column: span 12; } .span-8 { grid-column: span 8; } .span-7 { grid-column: span 7; } .span-5 { grid-column: span 5; } .span-4 { grid-column: span 4; } .span-3 { grid-column: span 3; }
+  @media (max-width: 1180px) { .span-8, .span-7, .span-5, .span-4, .span-3 { grid-column: span 12; } }
 
-  /* ── hero ── */
-  .hero { position: relative; overflow: hidden; padding: 20px 22px; }
-  .hero::before { content: ""; position: absolute; inset: 0; background: linear-gradient(115deg, var(--glow), transparent 45%); pointer-events: none; }
-  .hero .request { font-size: 20px; font-weight: 700; margin: 6px 0 16px; max-width: 1100px; }
-  .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; padding: 3px 10px; border-radius: 999px; border: 1px solid currentColor; }
-  .stepper { display: grid; grid-template-columns: repeat(8, 1fr); position: relative; margin-top: 4px; }
-  .stepper .track { position: absolute; left: 6.25%; right: 6.25%; top: 9px; height: 2px; background: var(--grid); }
-  .stepper .fill { position: absolute; left: 6.25%; top: 9px; height: 2px; background: linear-gradient(90deg, var(--neon-a), var(--neon-b)); box-shadow: 0 0 12px var(--neon-b); transition: width .8s ease; }
-  .step { position: relative; text-align: center; font-size: 12px; color: var(--muted); }
-  .step .node { width: 20px; height: 20px; margin: 0 auto 6px; border-radius: 50%; background: var(--surface); border: 2px solid var(--grid); position: relative; z-index: 1; display: grid; place-items: center; font-size: 10px; }
-  .step.done { color: var(--ink-2); } .step.done .node { border-color: var(--neon-a); background: var(--neon-a); color: var(--page); }
-  .step.now { color: var(--ink); font-weight: 700; } .step.now .node { border-color: var(--neon-b); box-shadow: 0 0 0 4px color-mix(in srgb, var(--neon-b) 25%, transparent), 0 0 18px var(--neon-b); animation: breathe 2s ease-in-out infinite; }
-  .step.bad .node { border-color: var(--critical); background: var(--critical); }
-  @keyframes breathe { 50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--neon-b) 10%, transparent), 0 0 26px var(--neon-b); } }
+  /* ── mission ── */
+  .mission .title { font-weight: 800; color: var(--ink); text-transform: uppercase; letter-spacing: .02em; font-size: 15px; }
+  .mission .title .repo { color: var(--accent); }
+  .mission .title .sep { color: var(--dim); font-weight: 400; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .chip { display: inline-flex; gap: 6px; align-items: center; padding: 1px 8px; border-radius: 4px; background: var(--chip); color: var(--text); font-size: 12px; }
+  .pill { display: inline-flex; gap: 6px; align-items: center; padding: 1px 8px; border-radius: 4px; font-weight: 800; font-size: 12px; color: var(--bg); background: var(--accent); }
+  .stepper { position: relative; display: grid; grid-template-columns: repeat(8, 1fr); margin: 14px 0 6px; }
+  .stepper .track, .stepper .fill { position: absolute; left: 6.25%; top: 7px; height: 2px; }
+  .stepper .track { right: 6.25%; background: var(--border-dim); }
+  .stepper .fill { background: var(--bar); box-shadow: 0 0 10px var(--glow); transition: width .8s ease; }
+  .step { position: relative; text-align: center; color: var(--dim); font-size: 12px; }
+  .step .node { width: 16px; height: 16px; margin: 0 auto 4px; border-radius: 50%; background: var(--bg); border: 2px solid var(--border); position: relative; z-index: 1; }
+  .step.done { color: var(--text); } .step.done .node { background: var(--accent); border-color: var(--accent); }
+  .step.now { color: var(--ink); font-weight: 700; } .step.now .node { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent), 0 0 14px var(--accent); animation: breathe 2s ease-in-out infinite; }
+  .step.bad .node { background: var(--red); border-color: var(--red); }
+  @keyframes breathe { 50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--accent) 8%, transparent), 0 0 22px var(--accent); } }
+  .progress { display: flex; align-items: center; gap: 10px; }
+  .bar { flex: 1; height: 10px; background: var(--track); border-radius: 2px; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--bar); transition: width .8s ease; }
+  .bar.thin { height: 6px; }
 
-  /* ── tiles ── */
-  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; }
-  .tile { position: relative; overflow: hidden; }
-  .tile .label { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
-  .tile .value { font-size: 28px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
-  .tile .note { font-size: 12px; color: var(--muted); }
-  .tile svg.spark { position: absolute; right: 0; bottom: 0; width: 55%; height: 44px; opacity: .9; }
+  /* ── KPI tiles ── */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+  .kpi { overflow: hidden; }
+  .kpi .label { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+  .kpi .value { font-size: 24px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .kpi .note { font-size: 12px; color: var(--mute); }
+  .kpi svg.spark { position: absolute; right: 0; bottom: 0; width: 55%; height: 40px; opacity: .85; }
+  .lim { display: grid; grid-template-columns: 74px 1fr 42px 40px; gap: 8px; align-items: center; font-size: 12px; margin-top: 3px; }
+  .lim .pct { text-align: right; font-weight: 800; } .lim .rst { color: var(--dim); }
 
-  /* ── minds ── */
-  .minds { display: grid; grid-template-columns: 340px 1fr; gap: 16px; min-height: 520px; }
-  @media (max-width: 1100px) { .minds { grid-template-columns: 1fr; } }
-  .roster { display: flex; flex-direction: column; gap: 8px; max-height: 640px; overflow: auto; padding-right: 4px; }
-  .mind { position: relative; display: grid; grid-template-columns: 34px 1fr; gap: 10px; text-align: left; width: 100%; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--ring); color: var(--ink); }
-  .mind:hover { border-color: color-mix(in srgb, var(--role) 50%, var(--ring)); }
-  .mind.sel { border-color: var(--role); box-shadow: 0 0 0 1px var(--role), 0 0 24px -6px var(--role); }
-  .orb { width: 34px; height: 34px; border-radius: 50%; position: relative; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--role) 50%, white), var(--role) 55%, color-mix(in srgb, var(--role) 40%, black)); }
-  .mind.idle .orb { filter: grayscale(.85) brightness(.7); }
-  .mind.active .orb::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 2px solid transparent; border-top-color: var(--role); border-right-color: var(--role); animation: spin 1.1s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .mind .who { font-weight: 700; font-size: 13px; } .mind .who span { font-weight: 500; color: var(--muted); }
-  .mind .what { font-size: 12px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .mind .last { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
-  .mind .time { position: absolute; top: 10px; right: 12px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .stream { display: flex; flex-direction: column; min-width: 0; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--ring); overflow: hidden; }
-  .stream-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--ring); }
-  .stream-head .title { font-weight: 700; } .stream-head .spacer { flex: 1; }
-  .stream-body { padding: 10px 14px 16px; overflow: auto; max-height: 600px; display: flex; flex-direction: column; gap: 2px; }
-  .entry { display: grid; grid-template-columns: 64px 22px 1fr; gap: 6px; padding: 5px 6px; border-radius: 8px; }
-  .entry:hover { background: var(--hover); }
-  .entry .ts { color: var(--muted); font-size: 11px; padding-top: 2px; font-variant-numeric: tabular-nums; }
-  .entry .ic { text-align: center; }
-  .entry.text .body { color: var(--ink); }
-  .entry.thinking .body { color: var(--think); font-style: italic; }
-  .entry.thinking .ic { color: var(--think); }
-  .entry.result { background: color-mix(in srgb, var(--neon-a) 8%, transparent); margin: 4px 0; }
-  .entry.result .ic { color: var(--neon-a); }
-  .entry.result .body { color: var(--ink); white-space: pre-wrap; }
-  .entry.result .body::first-line { font-weight: 700; }
-  .entry.tool .body { font: 12px/1.5 ui-monospace, Consolas, monospace; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .entry.tool.open .body { white-space: pre-wrap; word-break: break-word; }
-  .entry.tool { cursor: pointer; }
-  .entry.tool .ic { color: var(--tool); }
-  .entry .tn { color: var(--tool); font-weight: 700; margin-right: 8px; }
-  .entry.fresh { background: linear-gradient(90deg, color-mix(in srgb, var(--role) 14%, transparent), transparent 70%); animation: rise .35s ease both; }
-  @keyframes rise { from { opacity: 0; transform: translateY(-4px); } }
-  .caret::after { content: "▍"; color: var(--neon-b); animation: blink 1s steps(1) infinite; margin-left: 2px; }
+  /* ── team tiers ── */
+  .tiers { display: grid; grid-template-columns: 96px 1fr; row-gap: 3px; column-gap: 8px; }
+  .tier { font-weight: 800; letter-spacing: .04em; white-space: nowrap; }
+  .tier.you { color: var(--yellow); } .tier.council { color: var(--violet); } .tier.leads { color: var(--cyan); } .tier.workers { color: var(--green); }
+  .row { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: baseline; min-width: 0; }
+  .seat { display: inline-flex; gap: 6px; align-items: baseline; white-space: nowrap; }
+  .seat .no { color: var(--cyan); font-weight: 800; }
+  .seat .eff { color: var(--dim); }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+  .dot.on { background: var(--c, var(--accent)); box-shadow: 0 0 8px var(--c, var(--accent)); animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .45; } }
+  .state { color: var(--dim); } .state.on { color: var(--green); }
+
+  /* ── minds: roster + log ── */
+  .minds { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 12px; }
+  @media (max-width: 1180px) { .minds { grid-template-columns: 1fr; } }
+  .roster { display: flex; flex-direction: column; max-height: 620px; overflow: auto; border: 1px solid var(--border-dim); border-radius: 6px; }
+  .mind { display: grid; grid-template-columns: 10px 1fr auto; gap: 8px; align-items: baseline; width: 100%; text-align: left; border: 0; border-radius: 0; border-left: 2px solid transparent; background: transparent; padding: 5px 10px; }
+  .mind:hover { background: var(--hover); }
+  .mind.sel { background: var(--chip-on); border-left-color: var(--accent); }
+  .mind .who { color: var(--ink); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mind .who span { color: var(--dim); font-weight: 400; }
+  .mind .what { grid-column: 2 / 4; color: var(--mute); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mind .time { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .stream { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--border-dim); border-radius: 6px; overflow: hidden; }
+  .sh { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--border-dim); background: var(--panel-2); }
+  .sh .spacer { flex: 1; }
+  .sb { padding: 6px 10px 10px; overflow: auto; max-height: 580px; }
+  .ln { display: grid; grid-template-columns: 72px 1fr; gap: 8px; padding: 1px 4px; border-radius: 3px; }
+  .ln:hover { background: var(--hover); }
+  .ln .ts { color: var(--dim); font-variant-numeric: tabular-nums; }
+  .ln .tx { white-space: pre-wrap; word-break: break-word; }
+  .ln.thinking .tx { color: var(--think); font-style: italic; }
+  .ln.result .tx { color: var(--green); }
+  .ln.result .tx::first-line { font-weight: 800; }
+  .ln.tool { cursor: pointer; } .ln.tool .tx { color: var(--mute); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ln.tool.open .tx { white-space: pre-wrap; }
+  .ln .tn { color: var(--cyan); font-weight: 700; margin-right: 8px; }
+  .ln.fresh { background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 12%, transparent), transparent 70%); animation: rise .3s ease both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(-3px); } }
+  .caret::after { content: "▍"; color: var(--accent); animation: blink 1s steps(1) infinite; margin-left: 2px; }
   @keyframes blink { 50% { opacity: 0; } }
-  .keyline { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+  .keyline { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--dim); padding: 4px 10px; border-bottom: 1px solid var(--border-dim); }
 
   /* ── board ── */
-  .board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
   @media (max-width: 900px) { .board { grid-template-columns: 1fr 1fr; } }
-  .col { background: var(--surface-2); border: 1px solid var(--ring); border-radius: 12px; padding: 10px; min-height: 120px; }
-  .col h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
-  .tcard { display: block; width: 100%; text-align: left; background: var(--surface); color: var(--ink); border: 1px solid var(--ring); border-left: 3px solid var(--c); border-radius: 10px; padding: 8px 10px; margin-bottom: 8px; font-size: 12px; }
-  .tcard .k { font-weight: 800; letter-spacing: .04em; } .tcard .t { color: var(--ink-2); }
-  .tcard .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; color: var(--muted); font-size: 11px; }
-  .tcard .desc { display: none; margin-top: 6px; color: var(--ink-2); white-space: pre-wrap; }
+  .col { border: 1px solid var(--border-dim); border-radius: 6px; padding: 6px; min-height: 100px; }
+  .col h3 { margin: 0 4px 6px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--mute); display: flex; justify-content: space-between; }
+  .tcard { display: block; width: 100%; text-align: left; border: 0; border-left: 2px solid var(--c); border-radius: 3px; background: var(--panel-2); padding: 5px 8px; margin-bottom: 6px; }
+  .tcard:hover { background: var(--hover); }
+  .tcard .top { display: flex; gap: 8px; align-items: baseline; }
+  .tcard .k { color: var(--ink); font-weight: 800; white-space: nowrap; flex: none; } .tcard .t { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tcard .meta { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 2px; color: var(--dim); font-size: 12px; }
+  .tcard .desc { display: none; margin-top: 6px; white-space: pre-wrap; color: var(--mute); }
   .tcard.open .desc { display: block; }
-  .tcard.moving { box-shadow: 0 0 0 1px color-mix(in srgb, var(--c) 40%, transparent), 0 0 18px -8px var(--c); }
+  .tcard.moving { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 35%, transparent); }
 
-  /* ── charts, tables, events ── */
-  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--ink-2); margin-bottom: 8px; }
-  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  /* ── charts, table, events ── */
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--mute); margin-bottom: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
   svg { display: block; width: 100%; overflow: visible; }
-  svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-  svg .grid line { stroke: var(--grid); stroke-width: 1; }
-  svg .axis { stroke: var(--axis); stroke-width: 1; }
-  svg .label-ink { fill: var(--ink-2); }
-  #tip { position: fixed; pointer-events: none; z-index: 20; background: var(--surface); color: var(--ink); border: 1px solid var(--ring); border-radius: 10px; padding: 8px 10px; font-size: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.35); max-width: 380px; display: none; }
-  #tip .t { font-weight: 700; margin-bottom: 4px; }
-  #tip .row { display: flex; justify-content: space-between; gap: 16px; }
-  #tip .row span:last-child { font-variant-numeric: tabular-nums; }
+  svg text { fill: var(--dim); font: 11px "JetBrains Mono", ui-monospace, monospace; }
+  svg .grid line { stroke: var(--border-dim); stroke-width: 1; stroke-dasharray: 2 3; }
+  svg .axis { stroke: var(--border); stroke-width: 1; }
+  svg .label-ink { fill: var(--text); }
+  #tip { position: fixed; pointer-events: none; z-index: 60; background: var(--panel-2); color: var(--text); border: 1px solid var(--accent); border-radius: 6px; padding: 6px 10px; font-size: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.5); max-width: 380px; display: none; }
+  #tip .t { color: var(--accent); font-weight: 800; margin-bottom: 3px; }
+  #tip .r { display: flex; justify-content: space-between; gap: 16px; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  th { text-align: left; font-weight: 700; color: var(--ink-2); border-bottom: 1px solid var(--ring); padding: 6px 8px; position: sticky; top: 0; background: var(--surface); cursor: pointer; white-space: nowrap; }
-  td { padding: 6px 8px; border-bottom: 1px solid var(--ring); vertical-align: top; }
+  th { text-align: left; font-weight: 800; color: var(--mute); text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--border); padding: 5px 8px; position: sticky; top: 0; background: var(--panel); cursor: pointer; white-space: nowrap; }
+  td { padding: 4px 8px; border-bottom: 1px solid var(--border-dim); vertical-align: top; }
   td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   tr:hover td { background: var(--hover); }
   .scroll { max-height: 460px; overflow: auto; }
-  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
-  .ev { border-bottom: 1px solid var(--ring); }
-  .ev summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 76px 210px 80px 1fr; gap: 10px; padding: 6px 4px; font-size: 12px; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .ev { border-bottom: 1px solid var(--border-dim); }
+  .ev summary { list-style: none; cursor: pointer; display: grid; grid-template-columns: 76px 230px 84px 1fr; gap: 10px; padding: 3px 4px; }
   .ev summary::-webkit-details-marker { display: none; }
   .ev summary:hover { background: var(--hover); }
-  .ev summary .text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); }
+  .ev summary .text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text); }
   .ev[open] summary .text { white-space: normal; }
-  .ev pre { margin: 0 0 8px 90px; white-space: pre-wrap; word-break: break-word; font: 12px/1.5 ui-monospace, Consolas, monospace; color: var(--ink); }
-  .empty { color: var(--muted); padding: 24px 0; text-align: center; }
-  .error { color: var(--critical); }
+  .ev pre { margin: 0 0 6px 90px; white-space: pre-wrap; word-break: break-word; font: inherit; color: var(--mute); }
+  .empty { color: var(--dim); padding: 18px 0; text-align: center; }
+  .error { color: var(--red); }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
-<div class="bar">
-  <span class="logo">◆ AGENT COCKPIT</span>
-  <span class="muted">telemetry</span>
-  <select id="run" aria-label="Run"></select>
+<div class="strip">
+  <span class="brand" id="brand">◎ ANILDEV</span>
+  <span class="tag">// MULTI-AGENT CODING COCKPIT · telemetry</span>
+  <select id="run" aria-label="Mission"></select>
   <span class="spacer"></span>
   <span class="live" id="liveBadge"><i></i>LIVE</span>
-  <label class="check"><input type="checkbox" id="auto" checked> auto-refresh</label>
-  <span id="updated" class="muted"></span>
-  <button id="theme" title="Toggle theme">◐</button>
+  <label class="muted"><input type="checkbox" id="auto" checked> auto</label>
+  <span id="updated" class="dim"></span>
+  <span class="seg" id="themeSeg"><button data-t="phosphor">phosphor</button><button data-t="neon">neon</button></span>
 </div>
 <main>
-  <section class="card span-12 hero" id="hero"></section>
-  <div class="span-12 tiles" id="tiles"></div>
+  <section class="panel span-12 mission" id="mission"></section>
+  <div class="span-12 kpis" id="kpis"></div>
 
-  <section class="card span-12">
-    <h2>Minds</h2>
-    <p class="sub">Every model session of the run, live. Pick one to follow its stream, newest on top.</p>
-    <div class="minds">
-      <div class="roster" id="roster"></div>
-      <div class="stream" id="stream"></div>
-    </div>
+  <section class="panel span-4">
+    <div class="ph"><h2>Team</h2><span class="meta" id="teamMeta"></span></div>
+    <div class="tiers" id="team"></div>
+  </section>
+  <section class="panel span-8">
+    <div class="ph"><h2>Minds</h2><span class="meta">every model session of the mission · pick one to follow its stream, newest on top</span></div>
+    <div class="minds"><div class="roster" id="roster"></div><div class="stream" id="stream"></div></div>
   </section>
 
-  <section class="card span-12">
-    <h2>Task board</h2>
-    <p class="sub">The real task graph by status; click a card for the whole task</p>
+  <section class="panel span-12">
+    <div class="ph"><h2>Tasks</h2><span class="meta">by status · click a card for the whole task</span></div>
     <div class="board" id="board"></div>
   </section>
 
-  <section class="card span-12">
-    <h2>Cumulative cost</h2>
-    <p class="sub">Dollars spent since the run started, per role</p>
-    <div class="legend" id="legendCost"></div>
-    <div id="chartCost"></div>
+  <section class="panel span-7">
+    <div class="ph"><h2>Cumulative cost</h2><span class="meta">dollars since the mission started, per role</span></div>
+    <div class="legend" id="legendCost"></div><div id="chartCost"></div>
   </section>
-
-  <section class="card span-8">
-    <h2>Input tokens per call</h2>
-    <p class="sub">Each bar is one model call, in order; input dominates what a run costs</p>
-    <div class="legend" id="legendCalls"></div>
-    <div id="chartCalls"></div>
-  </section>
-
-  <section class="card span-4">
-    <h2>Cost by task</h2>
-    <p class="sub">Dollars per task; calls outside a task are "run-level"</p>
+  <section class="panel span-5">
+    <div class="ph"><h2>Cost by task</h2><span class="meta">calls outside a task are "run-level"</span></div>
     <div id="chartTasks"></div>
   </section>
-
-  <section class="card span-12">
-    <h2>Timeline</h2>
-    <p class="sub">Phases and model calls from the trace spans; hover a bar for its call</p>
-    <div class="legend" id="legendTimeline"></div>
-    <div id="chartTimeline"></div>
+  <section class="panel span-12">
+    <div class="ph"><h2>Input tokens per call</h2><span class="meta">one bar per model call, in order · input dominates what a mission costs</span></div>
+    <div class="legend" id="legendCalls"></div><div id="chartCalls"></div>
   </section>
-
-  <section class="card span-12">
-    <h2>Calls</h2>
-    <p class="sub">Every recorded model call (the table view of the charts above); click a header to sort</p>
+  <section class="panel span-12">
+    <div class="ph"><h2>Timeline</h2><span class="meta">phases and model calls from the trace spans · hover a bar</span></div>
+    <div class="legend" id="legendTimeline"></div><div id="chartTimeline"></div>
+  </section>
+  <section class="panel span-12">
+    <div class="ph"><h2>Calls</h2><span class="meta">every recorded model call · click a header to sort</span></div>
     <div class="scroll" id="callsTable"></div>
   </section>
-
-  <section class="card span-12">
-    <h2>Events</h2>
-    <p class="sub">Newest first; click a row for everything the event carries</p>
+  <section class="panel span-12">
+    <div class="ph"><h2>Events</h2><span class="meta">newest first · click a row for everything it carries</span></div>
     <div class="filters">
-      <input type="search" id="evSearch" placeholder="Filter text, task, agent…" size="32">
-      <select id="evType"><option value="">All event types</option></select>
+      <input type="search" id="evSearch" placeholder="filter text, task, agent…" size="32">
+      <select id="evType"><option value="">all event types</option></select>
     </div>
-    <div class="scroll" id="events" style="max-height: 640px"></div>
+    <div class="scroll" id="events" style="max-height: 620px"></div>
   </section>
 </main>
 <div id="tip"></div>
@@ -255,48 +269,48 @@
     ArchitectureOutput: 'designing the architecture', LeadArchitectureReview: 'reviewing the architecture', SupervisorDecisions: 'ruling on proposals',
     LeadPlan: 'planning the tasks', WorkerResult: 'implementing', LeadAnswer: "answering a worker's question", SupervisorEscalation: 'handling an escalation',
     LeadReview: 'reviewing the work', LeadLeaseDecision: 'settling a file conflict', LeadIntegrationResult: 'resolving merge conflicts',
-    SupervisorValidation: 'validating the result', SupervisorRevision: 'revising the direction',
+    SupervisorValidation: 'validating the result', SupervisorRevision: 'revising the direction', CouncilReview: 'weighing in for the council',
   };
   const STEPS = [['architect', ['created', 'architecting']], ['debate', ['proposing', 'deciding', 'awaiting_human_decision']], ['plan', ['planning']], ['build', ['executing']], ['integrate', ['integrating']], ['validate', ['validating']], ['approve', ['awaiting_approval']], ['merge', ['merging']]];
   const COLUMNS = [['Todo', ['pending', 'ready']], ['Doing', ['running', 'needs_input', 'validating', 'changes_requested', 'lease_conflict']], ['Review', ['in_review', 'escalated']], ['Done', ['approved', 'integrated', 'failed', 'cancelled']]];
+  const STAGE = { pending: 'queued', ready: 'ready', running: 'build', needs_input: 'asks', lease_conflict: 'conflict', changes_requested: 'rework', escalated: 'escalated', validating: 'test', in_review: 'review', approved: 'approved', integrated: 'done', failed: 'failed', cancelled: 'cancelled' };
+  const SPEC = { backend: 'orange', frontend: 'blue', test: 'pink', database: 'yellow', security: 'red', performance: 'yellow', documentation: 'text', refactoring: 'violet', research: 'cyan', generalist: 'mint' };
   const $ = (id) => document.getElementById(id);
   const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
   const roleColor = (r) => css(`--s-${ROLES.includes(r) ? r : 'phase'}`);
+  const specVar = (s) => `var(--${SPEC[s] ?? 'orange'})`;
   const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const money = (n) => (n == null ? '—' : n >= 100 ? `$${n.toFixed(0)}` : `$${n.toFixed(2)}`);
   const tok = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : `${Math.round(n)}`);
-  const dur = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s` : `${Math.floor(s / 3600)}h ${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`; };
+  const dur = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); return s < 60 ? `${s}s` : s < 3600 ? `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s` : `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`; };
+  const short = (ms) => { const m = Math.max(0, Math.round(ms / 60000)); return m < 60 ? `${m}m` : m < 2880 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`; };
   const clock = (iso) => iso.slice(11, 19);
+  const first = (s) => String(s ?? '').split('\n')[0].replace(/^#+\s*/, '').trim();
   const doing = (m) => (m.contract ? DOING[m.contract] ?? m.contract : m.role === 'worker' ? 'implementing' : 'working');
-  // A tool's argument on one line: a heredoc shows its first line, a worktree path its repo-relative part.
+  const tagOf = (m) => m.role === 'supervisor' ? (m.seat && m.seat !== 'sup-1' ? `SUPER ${m.seat.slice(4)}` : 'SUPER') : m.role === 'lead' ? (m.seat && m.seat !== 'lead-1' ? `LEAD ${m.seat.slice(5)}` : 'LEAD') : (m.seat ?? 'worker').toUpperCase();
   const toolArg = (a) => { const lines = a.split('\n'); const head = lines[0].replace(/^.*[\\/]worktrees[\\/][^\\/]+[\\/][^\\/]+[\\/][^\\/]+[\\/]/, ''); return lines.length > 1 ? `${head}  ⏎ +${lines.length - 1} lines` : head; };
   const toolIcon = (name) => /^(read|glob|grep|ls|notebookread)$/i.test(name) ? '◎' : /^(edit|write|multiedit|notebookedit|apply_patch)$/i.test(name) ? '✎' : /^(bash|shell|powershell)$/i.test(name) ? '❯' : /^web/i.test(name) ? '⌕' : '•';
-  let data = null;
-  let lastText = '';
-  let sort = { key: 'ts', dir: 1 };
-  // `mind=<sessionId>` in the link opens on that session instead of following the live one.
-  let selected = params.get('mind');
-  let follow = !selected;
-  const openEvents = new Set();
-  const openTools = new Set();
-  const openCards = new Set();
-  const seen = new Set();
-  const shown = {};
+  let data = null, lastText = '', sort = { key: 'ts', dir: 1 };
+  let selected = params.get('mind'), follow = !selected;
+  const openEvents = new Set(), openTools = new Set(), openCards = new Set(), seen = new Set(), shown = {};
 
-  // ── theme ──
-  const stored = (() => { try { return localStorage.getItem('cockpit-theme'); } catch { return null; } })();
-  if (stored) document.documentElement.dataset.theme = stored;
-  $('theme').onclick = () => {
-    const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
-    document.documentElement.dataset.theme = dark ? 'light' : 'dark';
-    try { localStorage.setItem('cockpit-theme', document.documentElement.dataset.theme); } catch {}
-    render();
+  // ── theme: the daemon's choice (COCKPIT_THEME) until the viewer picks one ──
+  const stored = (() => { try { return localStorage.getItem('cockpit-palette'); } catch { return null; } })();
+  const applyTheme = (t) => {
+    document.documentElement.dataset.theme = t;
+    $('themeSeg').querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.t === t));
   };
+  applyTheme(stored ?? 'phosphor');
+  $('themeSeg').querySelectorAll('button').forEach((b) => (b.onclick = () => {
+    applyTheme(b.dataset.t);
+    try { localStorage.setItem('cockpit-palette', b.dataset.t); } catch {}
+    render();
+  }));
 
   // ── tooltip ──
   const tip = $('tip');
   function showTip(ev, title, rows) {
-    tip.innerHTML = `<div class="t">${esc(title)}</div>` + rows.map(([k, v, c]) => `<div class="row"><span>${c ? `<span class="dot" style="background:${c}"></span>` : ''}${esc(k)}</span><span>${esc(v)}</span></div>`).join('');
+    tip.innerHTML = `<div class="t">${esc(title)}</div>` + rows.map(([k, v, c]) => `<div class="r"><span>${c ? `<span class="dot" style="background:${c};margin-right:6px"></span>` : ''}${esc(k)}</span><span>${esc(v)}</span></div>`).join('');
     tip.style.display = 'block';
     const w = tip.offsetWidth, h = tip.offsetHeight;
     tip.style.left = `${Math.min(innerWidth - w - 8, ev.clientX + 14)}px`;
@@ -306,20 +320,21 @@
 
   // ── data ──
   async function load() {
-    // A daemon token is hex; anything else is a copied or shortened link.
-    if (!token || !/^[0-9a-f]+$/i.test(token)) { $('hero').innerHTML = '<p class="error">This link has no valid access token. Open the dashboard again with <code>/cockpit dashboard</code> or the cockpit\'s <b>d</b> key, and use the link it prints.</p>'; return; }
+    if (!token || !/^[0-9a-f]+$/i.test(token)) { $('mission').innerHTML = '<p class="error">This link has no valid access token. Open the dashboard again with <b>/cockpit dashboard</b> or the cockpit\'s <b>d</b> key, and use the link it prints.</p>'; return; }
     try {
       const res = await fetch(`/telemetry${runId ? `?runId=${encodeURIComponent(runId)}` : ''}`, { headers: { authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error(res.status === 401 ? 'the access token is no longer valid (the daemon restarted): reopen the dashboard from the cockpit' : `HTTP ${res.status}`);
       const text = await res.text();
-      $('updated').textContent = `updated ${new Date().toLocaleTimeString()}`;
+      $('updated').textContent = new Date().toLocaleTimeString();
       $('updated').classList.remove('error');
-      // Redraw only when something changed, so animations (orbs, carets) never restart for nothing.
-      const same = text.replace(/"generatedAt":"[^"]*"/, '') === lastText;
-      lastText = text.replace(/"generatedAt":"[^"]*"/, '');
-      if (same) return;
+      // Redraw only on change, so pulses and carets never restart for nothing.
+      const key = text.replace(/"generatedAt":"[^"]*"/, '');
+      if (key === lastText) return;
+      lastText = key;
       data = JSON.parse(text);
       runId = data.run?.id ?? runId;
+      $('brand').textContent = `◎ ${data.brand ?? 'ANILDEV'}`;
+      if (!stored && data.theme) applyTheme(data.theme);
       render();
     } catch (err) {
       $('updated').textContent = `⚠ ${err.message}`;
@@ -341,46 +356,51 @@
   const terminal = () => ['completed', 'failed', 'rejected'].includes(data?.run?.status);
   function render() {
     if (!data) return;
-    $('run').innerHTML = data.runs.map((r) => `<option value="${esc(r.id)}" ${r.id === runId ? 'selected' : ''}>${esc(r.request.split('\n')[0].slice(0, 70))} · ${esc(r.status)}</option>`).join('');
-    if (!data.run) { $('hero').innerHTML = '<p class="empty">No runs yet.</p>'; return; }
+    $('run').innerHTML = data.runs.map((r) => `<option value="${esc(r.id)}" ${r.id === runId ? 'selected' : ''}>${esc(first(r.request).slice(0, 70))} · ${esc(r.status.replace(/_/g, ' '))}</option>`).join('');
+    if (!data.run) { $('mission').innerHTML = '<p class="empty">No missions yet.</p>'; return; }
     $('liveBadge').classList.toggle('off', terminal());
-    renderHero(); renderTiles(); renderMinds(); renderBoard(); renderCharts(); renderTable(); renderEvents();
+    renderMission(); renderKpis(); renderTeam(); renderMinds(); renderBoard(); renderCharts(); renderTable(); renderEvents();
   }
   function renderCharts() { if (data?.run) { renderCost(); renderCalls(); renderTasks(); renderTimeline(); } }
-
-  // Ticking clocks between refreshes: run wall time and each live session's elapsed time.
   function tick() {
     if (!data?.run) return;
     document.querySelectorAll('[data-since]').forEach((el) => (el.textContent = dur(Date.now() - Date.parse(el.dataset.since))));
   }
 
-  function renderHero() {
+  // ── mission: the pane's centre header ──
+  function renderMission() {
     const st = data.run.status;
     const phase = st === 'completed' ? STEPS.length : STEPS.findIndex(([, s]) => s.includes(st));
     const bad = ['failed', 'rejected'].includes(st);
-    const color = st === 'completed' ? 'var(--good)' : bad ? 'var(--critical)' : st.startsWith('awaiting') ? 'var(--warning)' : 'var(--neon-b)';
+    const color = st === 'completed' ? 'var(--green)' : bad ? 'var(--red)' : st.startsWith('awaiting') ? 'var(--yellow)' : 'var(--accent)';
     const fill = phase < 0 ? 0 : Math.min(1, phase / (STEPS.length - 1));
+    const done = data.tasks.filter((t) => ['approved', 'integrated'].includes(t.status)).length;
+    const frac = st === 'completed' ? 1 : data.tasks.length ? done / data.tasks.length : Math.max(0, phase) / STEPS.length;
     const live = data.minds.filter((m) => m.status === 'active');
-    $('hero').innerHTML = `
-      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
-        <span class="pill" style="color:${color}">${bad ? '✗' : st === 'completed' ? '✓' : st.startsWith('awaiting') ? '!' : '●'} ${esc(st.replace(/_/g, ' '))}</span>
-        <span class="muted mono">${esc(data.run.id)}</span>
-        <span class="muted">· running <b class="secondary" ${terminal() ? '' : `data-since="${data.run.createdAt}"`}>${dur((terminal() ? Date.parse(data.run.updatedAt) : Date.now()) - Date.parse(data.run.createdAt))}</b></span>
-        <span class="muted">· ${live.length ? `${live.length} model${live.length > 1 ? 's' : ''} thinking now: ${live.map((m) => `<b style="color:${roleColor(m.role)}">${esc(m.agentId)}</b> ${esc(ROLE_NAME[m.role] ?? m.role)}`).join(', ')}` : 'no model running'}</span>
+    $('mission').innerHTML = `
+      <div class="ph"><h2>Mission</h2><span class="meta">#${esc(data.run.id.slice(-6))}</span></div>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:baseline">
+        <div class="title">${esc(first(data.run.request))}</div>
+        <div class="chips">
+          <span class="pill" style="background:${color}">${bad ? '✗' : st === 'completed' ? '✓' : st.startsWith('awaiting') ? '!' : '●'} ${esc(st.replace(/_/g, ' '))}</span>
+          <span class="chip" style="color:var(--yellow)" ${terminal() ? '' : `data-since="${data.run.createdAt}"`}>${dur((terminal() ? Date.parse(data.run.updatedAt) : Date.now()) - Date.parse(data.run.createdAt))}</span>
+          <span class="chip">${live.length ? `${live.length} working: ${live.map((m) => `<b style="color:${roleColor(m.role)}">${esc(m.seat && m.role === 'worker' ? m.seat : m.agentId)}</b>`).join(' ')}` : 'no model running'}</span>
+        </div>
       </div>
-      <div class="request">${esc(data.run.request.split('\n')[0])}</div>
       <div class="stepper">
         <div class="track"></div><div class="fill" style="width:${87.5 * fill}%"></div>
-        ${STEPS.map(([name], i) => `<div class="step ${bad && i === phase ? 'bad' : i < phase ? 'done' : i === phase ? 'now' : ''}"><div class="node">${i < phase ? '✓' : ''}</div>${name}</div>`).join('')}
-      </div>`;
+        ${STEPS.map(([name], i) => `<div class="step ${bad && i === phase ? 'bad' : i < phase ? 'done' : i === phase ? 'now' : ''}"><div class="node"></div>${name}</div>`).join('')}
+      </div>
+      <div class="progress"><div class="bar"><i style="width:${Math.round(frac * 100)}%"></i></div><b>${String(Math.round(frac * 100)).padStart(3)}%</b><span class="dim">${done}/${data.tasks.length} tasks</span></div>`;
   }
 
-  // ── tiles with sparklines and counting numbers ──
+  // ── KPI tiles, PLAN LEFT among them ──
   function spark(values, color) {
     if (values.length < 2) return '';
     const W = 120, H = 40, max = Math.max(...values) || 1;
     const pts = values.map((v, i) => `${(i / (values.length - 1)) * W},${H - 2 - (v / max) * (H - 6)}`).join(' ');
-    return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs><linearGradient id="g${color.slice(1)}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".35"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs><polygon points="0,${H} ${pts} ${W},${H}" fill="url(#g${color.slice(1)})"/><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
+    const id = `g${Math.random().toString(36).slice(2, 8)}`;
+    return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs><linearGradient id="${id}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".35"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs><polygon points="0,${H} ${pts} ${W},${H}" fill="url(#${id})"/><polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
   }
   function countTo(el, to, fmt) {
     const from = shown[el.id] ?? 0;
@@ -390,10 +410,12 @@
     const step = (t) => { const k = Math.min(1, (t - t0) / 700), e = 1 - (1 - k) ** 3; el.textContent = fmt(from + (to - from) * e); if (k < 1) requestAnimationFrame(step); };
     requestAnimationFrame(step);
   }
-  function renderTiles() {
+  function limitRows() {
+    return Object.entries(data.limits ?? {}).flatMap(([p, l]) => (l?.windows ?? []).map((w) => ({ p, ...w, left: Math.max(0, 100 - w.usedPercent) })));
+  }
+  function renderKpis() {
     const c = data.calls;
     let run = 0; const cum = c.map((x) => (run += x.costUsd ?? 0));
-    const cost = run;
     const input = c.reduce((a, x) => a + x.inputTokens, 0);
     const cached = c.reduce((a, x) => a + x.cachedTokens, 0);
     const output = c.reduce((a, x) => a + x.outputTokens, 0);
@@ -401,39 +423,62 @@
     const done = data.tasks.filter((t) => ['approved', 'integrated'].includes(t.status)).length;
     const retried = data.tasks.filter((t) => t.iteration > 1).length;
     const tiles = [
-      ['t-cost', 'Spend', cost, money, `${c.length} calls`, spark(cum, css('--neon-a'))],
-      ['t-in', 'Input tokens', input, tok, `${input ? Math.round((cached / input) * 100) : 0}% from cache`, spark(c.map((x) => x.inputTokens), css('--neon-b'))],
-      ['t-out', 'Output tokens', output, tok, `${input ? Math.round(input / Math.max(1, output)) : 0} : 1 input to output`, spark(c.map((x) => x.outputTokens), css('--neon-c'))],
-      ['t-busy', 'Model time', busy, dur, `avg ${dur(busy / Math.max(1, c.length))} per call`, spark(c.map((x) => x.durationMs), css('--neon-a'))],
-      ['t-tasks', 'Tasks done', done, (v) => `${Math.round(v)}/${data.tasks.length}`, `${retried} needed more than one try`, ''],
+      ['k-cost', 'Spend', run, money, `${c.length} calls`, spark(cum, css('--accent'))],
+      ['k-in', 'Input tokens', input, tok, `${input ? Math.round((cached / input) * 100) : 0}% from cache`, spark(c.map((x) => x.inputTokens), css('--cyan'))],
+      ['k-out', 'Output tokens', output, tok, `${input ? Math.round(input / Math.max(1, output)) : 0} : 1 in to out`, spark(c.map((x) => x.outputTokens), css('--violet'))],
+      ['k-busy', 'Model time', busy, dur, `avg ${dur(busy / Math.max(1, c.length))} per call`, spark(c.map((x) => x.durationMs), css('--orange'))],
+      ['k-tasks', 'Tasks done', done, (v) => `${Math.round(v)}/${data.tasks.length}`, `${retried} needed another try`, ''],
     ];
-    if ($('tiles').children.length !== tiles.length) $('tiles').innerHTML = tiles.map(([id, l]) => `<div class="card tile"><div class="label">${l}</div><div class="value" id="${id}">—</div><div class="note"></div><div class="sp"></div></div>`).join('');
+    const lim = limitRows();
+    const html = tiles.map(([id, l]) => `<div class="panel kpi"><div class="label">${l}</div><div class="value" id="${id}">—</div><div class="note"></div><div class="sp"></div></div>`).join('')
+      + `<div class="panel kpi" id="k-plan"><div class="label">Plan left</div><div class="lims"></div></div>`;
+    if ($('kpis').children.length !== tiles.length + 1) $('kpis').innerHTML = html;
     tiles.forEach(([id, , v, fmt, note, sp], i) => {
-      const card = $('tiles').children[i];
+      const card = $('kpis').children[i];
       card.querySelector('.note').textContent = note;
       card.querySelector('.sp').innerHTML = sp;
       countTo($(id), v, fmt);
     });
+    const tone = (left) => (left > 50 ? 'var(--green)' : left > 20 ? 'var(--yellow)' : 'var(--red)');
+    $('k-plan').querySelector('.lims').innerHTML = lim.length
+      ? lim.map((r) => `<div class="lim"><span class="muted">${esc(r.p)} ${esc(r.name)}</span><div class="bar thin"><i style="width:${r.left}%;background:${tone(r.left)}"></i></div><span class="pct" style="color:${tone(r.left)}">${Math.round(r.left)}%</span><span class="rst">${r.resetsAt && Date.parse(r.resetsAt) > Date.now() ? `⟳${short(Date.parse(r.resetsAt) - Date.now())}` : ''}</span></div>`).join('')
+      : '<div class="note">no reading yet</div>';
   }
 
-  // ── minds: roster of sessions and the followed one's stream ──
+  // ── team in tiers, as the cockpit draws it ──
+  function renderTeam() {
+    const crew = data.crew;
+    if (!crew) { $('team').innerHTML = '<p class="empty" style="grid-column:1/3">The daemon sends no crew (an older version).</p>'; return; }
+    const on = (s) => s && s !== 'idle';
+    const dot = (s, c) => `<span class="dot ${on(s) ? 'on' : ''}" style="--c:${c}"></span>`;
+    const eff = (e) => (e ? `<span class="eff">⚡${esc(e)}</span>` : '');
+    const leadNo = (p) => { const t = data.tasks.find((x) => x.persona === p.id && x.lead); return Math.max(0, crew.leads.findIndex((l) => l.id === t?.lead)) + 1; };
+    const rows = [];
+    rows.push(['you', '◉ YOU', `<span class="dim">approve · revise · merge</span>`]);
+    rows.push(['council', '◆ COUNCIL', crew.council.map((x, i) => `<span class="seat">${dot(x.state, 'var(--violet)')}<b>${i === 0 ? '★' : ''}${esc(x.agent)}</b>${eff(x.effort)}${on(x.state) ? `<span class="state on">${esc(x.state)}</span>` : ''}</span>`).join('')]);
+    crew.leads.forEach((l, i) => rows.push(['leads', i === 0 ? '◇ LEADS' : '', `<span class="seat">${dot(l.state, 'var(--cyan)')}<span class="no">${i + 1}</span><b>${esc(l.agent)}</b><span class="dim">${esc(l.area ?? (i === 0 ? 'head' : 'lead'))}</span>${eff(l.effort)}<span class="state ${on(l.state) ? 'on' : ''}">${on(l.state) ? esc(l.state) : ''}</span></span>`]));
+    if (crew.team.length) crew.team.forEach((p, i) => rows.push(['workers', i === 0 ? '◈ WORKERS' : '', `<span class="seat">${dot(p.state, specVar(p.specialty))}<span class="no">${leadNo(p)}</span><b style="color:${specVar(p.specialty)}">${esc(p.id)}</b><span class="muted">${esc(p.agent)}</span>${eff(p.effort)}<span class="state ${on(p.state) ? 'on' : ''}">${esc(on(p.state) ? p.state : p.tasks.join(' ') || 'idle')}</span></span>`]));
+    else rows.push(['workers', '◈ WORKERS', '<span class="dim">named by the head lead with the plan</span>']);
+    $('team').innerHTML = rows.map(([k, label, body]) => `<div class="tier ${k}">${label}</div><div class="row">${body}</div>`).join('');
+    const busy = [...crew.council, ...crew.leads, ...crew.team].filter((x) => on(x.state)).length;
+    $('teamMeta').textContent = `${crew.council.length} council · ${crew.leads.length} lead${crew.leads.length > 1 ? 's' : ''} · ${crew.team.length} worker${crew.team.length === 1 ? '' : 's'} · ${busy} busy`;
+  }
+
+  // ── minds: the roster and the followed session's log ──
   function renderMinds() {
     const minds = data.minds;
     if (!minds.length) { $('roster').innerHTML = '<p class="empty">No model has run yet.</p>'; $('stream').innerHTML = ''; return; }
     if (follow || !minds.some((m) => m.sessionId === selected)) selected = (minds.find((m) => m.status === 'active') ?? minds[0]).sessionId;
     const scroll = $('roster').scrollTop;
     $('roster').innerHTML = minds.map((m) => {
-      const last = [...m.activity].reverse().find((a) => a.kind !== 'tool') ?? m.activity.at(-1);
       const active = m.status === 'active';
-      const lastText = last ? (last.kind === 'tool' ? `${toolIcon(last.text.split(':')[0])} ${toolArg(last.text)}` : last.text) : 'no output yet';
-      return `<button class="mind ${active ? 'active' : 'idle'} ${m.sessionId === selected ? 'sel' : ''}" data-s="${m.sessionId}" style="--role:${roleColor(m.role)}">
-        <div class="orb"></div>
-        <div style="min-width:0">
-          <div class="who">${esc(m.agentId)} <span>· ${esc(ROLE_NAME[m.role] ?? m.role)}</span></div>
-          <div class="what">${esc(doing(m))}${m.task ? ` <b>${esc(m.task)}</b>` : ''}${m.effort ? ` · ⚡${esc(m.effort)}` : ''}</div>
-          <div class="last">${esc(lastText.replace(/\s+/g, ' ').slice(0, 140))}</div>
-        </div>
-        <span class="time" ${active ? `data-since="${m.startedAt}"` : ''}>${active ? dur(Date.now() - Date.parse(m.startedAt)) : m.status === 'failed' ? '✗ failed' : dur(Date.parse(m.endedAt ?? m.startedAt) - Date.parse(m.startedAt))}</span>
+      const name = m.role === 'worker' && m.seat ? m.seat : m.agentId;
+      const sub = m.role === 'worker' ? m.agentId : m.seat ?? m.role;
+      return `<button class="mind ${m.sessionId === selected ? 'sel' : ''}" data-s="${m.sessionId}">
+        <span class="dot ${active ? 'on' : ''}" style="--c:${roleColor(m.role)};${active ? '' : `background:${m.status === 'failed' ? 'var(--red)' : 'var(--faint)'}`}"></span>
+        <span class="who" style="color:${roleColor(m.role)}">${esc(name)} <span>· ${esc(sub)}</span></span>
+        <span class="time" ${active ? `data-since="${m.startedAt}"` : ''}>${active ? dur(Date.now() - Date.parse(m.startedAt)) : m.status === 'failed' ? '✗' : dur(Date.parse(m.endedAt ?? m.startedAt) - Date.parse(m.startedAt))}</span>
+        <span class="what">${esc(doing(m))}${m.task ? ` ${esc(m.task)}` : ''}${m.effort ? ` · ⚡${esc(m.effort)}` : ''}</span>
       </button>`;
     }).join('');
     $('roster').scrollTop = scroll;
@@ -443,54 +488,48 @@
   function renderStream(m) {
     const active = m.status === 'active';
     const color = roleColor(m.role);
-    const body = $('stream').querySelector('.stream-body');
+    const body = $('stream').querySelector('.sb');
     const scroll = body && $('stream').dataset.s === m.sessionId ? body.scrollTop : 0;
     const entries = [...m.activity].reverse();
     const fresh = (a) => { const id = `${m.sessionId}|${a.ts}|${a.text.length}`; const isNew = !seen.has(id); seen.add(id); return isNew && Date.now() - Date.parse(a.ts) < 15000; };
     $('stream').dataset.s = m.sessionId;
-    $('stream').style.setProperty('--role', color);
     $('stream').innerHTML = `
-      <div class="stream-head">
-        <span class="pill" style="color:${color}">${esc(ROLE_NAME[m.role] ?? m.role)}</span>
-        <span class="title">${esc(m.agentId)}</span>
-        <span class="secondary">${esc(doing(m))}${m.task ? ` <b>${esc(m.task)}</b>` : ''}</span>
-        ${m.effort ? `<span class="muted">⚡ ${esc(m.effort)}</span>` : ''}
+      <div class="sh">
+        <span class="pill" style="background:${color}">${esc(tagOf(m))}</span>
+        <b>${esc(m.agentId)}</b>${m.effort ? `<span class="dim">⚡${esc(m.effort)}</span>` : ''}
+        <span>${esc(doing(m))}${m.task ? ` <b>${esc(m.task)}</b>` : ''}</span>
         <span class="spacer"></span>
-        <span class="${active ? 'live' : 'muted'}">${active ? '<i></i>LIVE&nbsp;' : esc(m.status)} <span ${active ? `data-since="${m.startedAt}"` : ''}>${dur((active ? Date.now() : Date.parse(m.endedAt ?? m.startedAt)) - Date.parse(m.startedAt))}</span></span>
-        <label class="check"><input type="checkbox" id="follow" ${follow ? 'checked' : ''}> follow live</label>
+        <span class="${active ? 'live' : 'dim'}">${active ? '<i></i>LIVE&nbsp;' : esc(m.status)} <span ${active ? `data-since="${m.startedAt}"` : ''}>${dur((active ? Date.now() : Date.parse(m.endedAt ?? m.startedAt)) - Date.parse(m.startedAt))}</span></span>
+        <label class="muted"><input type="checkbox" id="follow" ${follow ? 'checked' : ''}> follow live</label>
       </div>
-      <div class="stream-head keyline" style="padding-top:6px;padding-bottom:6px">
-        <span><span style="color:var(--neon-b)">▍</span> what the model says it is doing</span>
-        <span><span style="color:var(--neon-a)">✦</span> what the call concluded (plan, verdict, ruling)</span>
-        <span><span style="color:var(--think)">∴</span> reasoning (models that publish it: Codex summaries; the Claude CLI keeps its thinking private)</span>
-        <span><span style="color:var(--tool)">◎ ✎ ❯</span> tools it ran (click to see the whole call)</span>
-      </div>
-      <div class="stream-body">${entries.length ? entries.map((a, i) => {
+      <div class="keyline"><span><span style="color:var(--accent)">▍</span> says</span><span><span style="color:var(--green)">✔</span> concluded</span><span><span style="color:var(--think)">∴</span> reasoning</span><span><span style="color:var(--cyan)">◎ ✎ ❯</span> tools · click to open</span></div>
+      <div class="sb">${entries.length ? entries.map((a, i) => {
         const isFresh = fresh(a);
         if (a.kind === 'tool') {
           const at = a.text.indexOf(': '), name = at > 0 ? a.text.slice(0, at) : a.text, arg = at > 0 ? a.text.slice(at + 2) : '';
           const id = `${m.sessionId}|${a.ts}|${a.text.length}`;
-          return `<div class="entry tool ${openTools.has(id) ? 'open' : ''} ${isFresh ? 'fresh' : ''}" data-t="${esc(id)}"><span class="ts">${clock(a.ts)}</span><span class="ic">${toolIcon(name)}</span><span class="body"><span class="tn">${esc(name)}</span>${esc(openTools.has(id) ? arg : toolArg(arg))}</span></div>`;
+          return `<div class="ln tool ${openTools.has(id) ? 'open' : ''} ${isFresh ? 'fresh' : ''}" data-t="${esc(id)}"><span class="ts">${clock(a.ts)}</span><span class="tx">${toolIcon(name)} <span class="tn">${esc(name)}</span>${esc(openTools.has(id) ? arg : toolArg(arg))}</span></div>`;
         }
-        return `<div class="entry ${a.kind} ${isFresh ? 'fresh' : ''}"><span class="ts">${clock(a.ts)}</span><span class="ic">${a.kind === 'thinking' ? '∴' : a.kind === 'result' ? '✦' : `<span style="color:${color}">▍</span>`}</span><span class="body ${i === 0 && active ? 'caret' : ''}">${esc(a.text.trim())}</span></div>`;
+        const mark = a.kind === 'thinking' ? '∴ ' : a.kind === 'result' ? '✔ ' : '';
+        return `<div class="ln ${a.kind} ${isFresh ? 'fresh' : ''}"><span class="ts">${clock(a.ts)}</span><span class="tx ${i === 0 && active ? 'caret' : ''}">${mark}${esc(a.text.trim())}</span></div>`;
       }).join('') : `<p class="empty">${active ? 'waiting for the first words…' : 'This session produced no visible output.'}</p>`}</div>`;
-    $('stream').querySelector('.stream-body').scrollTop = scroll;
+    $('stream').querySelector('.sb').scrollTop = scroll;
     $('follow').onchange = (e) => { follow = e.target.checked; renderMinds(); };
-    $('stream').querySelectorAll('.entry.tool').forEach((el) => (el.onclick = () => { openTools.has(el.dataset.t) ? openTools.delete(el.dataset.t) : openTools.add(el.dataset.t); el.classList.toggle('open'); renderStream(m); }));
+    $('stream').querySelectorAll('.ln.tool').forEach((el) => (el.onclick = () => { openTools.has(el.dataset.t) ? openTools.delete(el.dataset.t) : openTools.add(el.dataset.t); renderStream(m); }));
   }
 
-  // ── task board ──
+  // ── task board: rows like the cockpit's task list ──
   function renderBoard() {
-    const statusColor = (s) => ['approved', 'integrated'].includes(s) ? 'var(--good)' : ['failed'].includes(s) ? 'var(--critical)' : ['cancelled'].includes(s) ? 'var(--muted)' : ['in_review', 'escalated', 'changes_requested', 'needs_input', 'lease_conflict'].includes(s) ? 'var(--warning)' : ['running', 'validating'].includes(s) ? 'var(--neon-b)' : 'var(--axis)';
+    const statusColor = (s) => ['approved', 'integrated'].includes(s) ? 'var(--green)' : s === 'failed' ? 'var(--red)' : s === 'cancelled' ? 'var(--dim)' : ['in_review', 'escalated', 'changes_requested', 'needs_input', 'lease_conflict'].includes(s) ? 'var(--yellow)' : ['running', 'validating'].includes(s) ? 'var(--accent)' : 'var(--border)';
     const latestRound = Math.max(0, ...data.tasks.map((t) => t.round));
     $('board').innerHTML = COLUMNS.map(([name, states]) => {
       const cards = data.tasks.filter((t) => states.includes(t.status)).sort((a, b) => b.round - a.round || a.key.localeCompare(b.key));
       return `<div class="col"><h3><span>${name}</span><span>${cards.length}</span></h3>${cards.map((t) => `
-        <button class="tcard ${openCards.has(t.key) ? 'open' : ''} ${['running', 'validating'].includes(t.status) ? 'moving' : ''}" data-k="${esc(t.key)}" style="--c:${statusColor(t.status)};${t.round < latestRound && ['failed', 'cancelled', 'approved', 'integrated'].includes(t.status) ? 'opacity:.6' : ''}">
-          <div><span class="k">${esc(t.key)}</span> <span class="t">${esc(t.title)}</span></div>
-          <div class="meta"><span style="color:${statusColor(t.status)}">● ${esc(t.status.replace(/_/g, ' '))}</span>${t.agentId ? `<span>${esc(t.agentId)}</span>` : ''}${t.iteration > 1 ? `<span>↺ ${t.iteration} tries</span>` : ''}${t.dependsOn.length ? `<span>⇠ ${esc(t.dependsOn.join(', '))}</span>` : ''}<span>round ${t.round}</span></div>
+        <button class="tcard ${openCards.has(t.key) ? 'open' : ''} ${['running', 'validating'].includes(t.status) ? 'moving' : ''}" data-k="${esc(t.key)}" style="--c:${statusColor(t.status)};${t.round < latestRound && ['failed', 'cancelled', 'approved', 'integrated'].includes(t.status) ? 'opacity:.55' : ''}">
+          <div class="top"><span class="k">${esc(t.key)}</span><span class="t">${esc(t.title)}</span></div>
+          <div class="meta"><span style="color:${statusColor(t.status)}">● ${esc(STAGE[t.status] ?? t.status)}</span>${t.persona ? `<span style="color:${specVar(t.specialty)}">${esc(t.persona)}</span>` : t.specialty ? `<span style="color:${specVar(t.specialty)}">${esc(t.specialty)}</span>` : ''}${t.agentId ? `<span>${esc(t.agentId)}</span>` : ''}${t.iteration > 1 ? `<span>↺${t.iteration}</span>` : ''}${t.dependsOn.length ? `<span>⇠${esc(t.dependsOn.join(','))}</span>` : ''}</div>
           <div class="desc">${esc(t.description)}</div>
-        </button>`).join('') || '<p class="muted" style="font-size:12px">—</p>'}</div>`;
+        </button>`).join('') || '<p class="dim" style="margin:4px">—</p>'}</div>`;
     }).join('');
     $('board').querySelectorAll('.tcard').forEach((c) => (c.onclick = () => { openCards.has(c.dataset.k) ? openCards.delete(c.dataset.k) : openCards.add(c.dataset.k); c.classList.toggle('open'); }));
   }
@@ -499,7 +538,6 @@
   const legend = (el, roles) => ($(el).innerHTML = roles.map((r) => `<span><i style="background:${roleColor(r)}"></i>${ROLE_NAME[r] ?? 'Phase'}</span>`).join(''));
   const width = (el) => Math.max(320, $(el).clientWidth);
   function niceStep(v) { if (v <= 0) return 1; const p = 10 ** Math.floor(Math.log10(v)); const m = v / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p; }
-  /** A round top and its step for values up to `v`: about four gridlines. */
   function scale(v) { const step = niceStep(v / 4); return { max: Math.max(step, Math.ceil(v / step) * step), step }; }
   function yGrid(h, top, bottom, sc, fmt, W, left) {
     let g = '<g class="grid">';
@@ -509,10 +547,8 @@
     }
     return g + '</g>';
   }
-
-  // Cumulative cost per role: a step line per role over wall time, crosshair tooltip.
   function renderCost() {
-    const el = 'chartCost', W = width(el), H = 240, L = 56, R = 16, T = 10, B = 26;
+    const el = 'chartCost', W = width(el), H = 230, L = 56, R = 16, T = 10, B = 26;
     const calls = data.calls;
     const roles = ROLES.filter((r) => calls.some((c) => c.role === r));
     legend('legendCost', roles);
@@ -520,20 +556,17 @@
     const t0 = Date.parse(data.run.createdAt), t1 = Math.max(Date.parse(calls.at(-1).ts), t0 + 1000);
     const series = roles.map((r) => { let s = 0; return { r, pts: calls.filter((c) => c.role === r).map((c) => ({ t: Date.parse(c.ts), v: (s += c.costUsd ?? 0), c })) }; });
     const sc = scale(Math.max(...series.map((s) => s.pts.at(-1)?.v ?? 0)));
-    const max = sc.max;
-    const x = (t) => L + ((t - t0) / (t1 - t0)) * (W - L - R), y = (v) => T + (H - T - B) * (1 - v / max);
-    let svg = `<svg viewBox="0 0 ${W} ${H}" height="${H}">${yGrid(H, T, B, sc, (v) => `$${v % 1 ? v.toFixed(1) : v}`, W - R, L)}`;
-    const ends = [];
-    svg += `<line class="axis" x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}"/>`;
+    const x = (t) => L + ((t - t0) / (t1 - t0)) * (W - L - R), y = (v) => T + (H - T - B) * (1 - v / sc.max);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" height="${H}">${yGrid(H, T, B, sc, (v) => `$${v % 1 ? v.toFixed(1) : v}`, W - R, L)}<line class="axis" x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}"/>`;
     for (let i = 0; i <= 5; i++) { const t = t0 + ((t1 - t0) * i) / 5; svg += `<text x="${x(t)}" y="${H - 8}" text-anchor="middle">${clock(new Date(t).toISOString())}</text>`; }
+    const ends = [];
     for (const s of series) {
       let d = `M${x(t0)},${y(0)}`, prev = 0;
       for (const p of s.pts) { d += ` H${x(p.t)} V${y(p.v)}`; prev = p.v; }
       d += ` H${x(t1)}`;
-      svg += `<path d="${d}" fill="none" stroke="${roleColor(s.r)}" stroke-width="2" stroke-linejoin="round"/>`;
+      svg += `<path d="${d} V${y(0)} H${x(t0)} Z" fill="${roleColor(s.r)}" fill-opacity=".07"/><path d="${d}" fill="none" stroke="${roleColor(s.r)}" stroke-width="2" stroke-linejoin="round" style="filter:drop-shadow(0 0 4px ${roleColor(s.r)})"/>`;
       if (s.pts.length) ends.push({ r: s.r, v: prev, y: y(prev) - 6 });
     }
-    // Highest first, each label at least 14px below the one above it.
     ends.sort((a, b) => a.y - b.y).forEach((e, i, all) => { if (i && e.y < all[i - 1].y + 14) e.y = all[i - 1].y + 14; });
     for (const e of ends) svg += `<text class="label-ink" x="${W - R - 4}" y="${e.y}" text-anchor="end">${ROLE_NAME[e.r]} ${money(e.v)}</text>`;
     svg += `<line id="costCross" class="axis" x1="0" x2="0" y1="${T}" y2="${H - B}" style="display:none"/><rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent" id="costHit"/></svg>`;
@@ -542,8 +575,7 @@
     hit.onmousemove = (ev) => {
       const r = hit.getBoundingClientRect();
       const t = t0 + ((ev.clientX - r.left) / r.width) * (t1 - t0);
-      const px = x(t);
-      cross.setAttribute('x1', px); cross.setAttribute('x2', px); cross.style.display = '';
+      cross.setAttribute('x1', x(t)); cross.setAttribute('x2', x(t)); cross.style.display = '';
       let total = 0;
       const rows = series.map((s) => { const p = [...s.pts].reverse().find((q) => q.t <= t); total += p?.v ?? 0; return [ROLE_NAME[s.r], money(p?.v ?? 0), roleColor(s.r)]; });
       rows.push(['Total', money(total), null]);
@@ -551,20 +583,17 @@
     };
     hit.onmouseleave = () => { cross.style.display = 'none'; hideTip(); };
   }
-
-  // Input tokens per call: one thin bar per call in order, coloured by role.
   function renderCalls() {
-    const el = 'chartCalls', W = width(el), H = 240, L = 56, R = 8, T = 10, B = 22;
+    const el = 'chartCalls', W = width(el), H = 220, L = 56, R = 8, T = 10, B = 22;
     const calls = data.calls;
     legend('legendCalls', ROLES.filter((r) => calls.some((c) => c.role === r)));
     if (!calls.length) { $(el).innerHTML = '<p class="empty">No calls recorded yet.</p>'; return; }
     const sc = scale(Math.max(...calls.map((c) => c.inputTokens)));
-    const max = sc.max;
-    const slot = (W - L - R) / calls.length, bw = Math.max(2, Math.min(24, slot - 2));
+    const slot = (W - L - R) / calls.length, bw = Math.max(2, Math.min(22, slot - 2));
     let svg = `<svg viewBox="0 0 ${W} ${H}" height="${H}">${yGrid(H, T, B, sc, tok, W - R, L)}<line class="axis" x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}"/>`;
     calls.forEach((c, i) => {
-      const h = ((H - T - B) * c.inputTokens) / max, x = L + i * slot + (slot - bw) / 2, y = H - B - h, r = Math.min(4, bw / 2, h);
-      svg += `<path d="M${x},${H - B} V${y + r} Q${x},${y} ${x + r},${y} H${x + bw - r} Q${x + bw},${y} ${x + bw},${y + r} V${H - B} Z" fill="${roleColor(c.role)}"/>`;
+      const h = ((H - T - B) * c.inputTokens) / sc.max, x = L + i * slot + (slot - bw) / 2, y = H - B - h, r = Math.min(2, bw / 2, h);
+      svg += `<path d="M${x},${H - B} V${y + r} Q${x},${y} ${x + r},${y} H${x + bw - r} Q${x + bw},${y} ${x + bw},${y + r} V${H - B} Z" fill="${roleColor(c.role)}" fill-opacity=".85"/>`;
       svg += `<rect data-i="${i}" x="${L + i * slot}" y="${T}" width="${slot}" height="${H - T - B}" fill="transparent"/>`;
     });
     svg += `<text x="${L}" y="${H - 6}">first call</text><text x="${W - R}" y="${H - 6}" text-anchor="end">latest</text></svg>`;
@@ -574,46 +603,42 @@
       rect.onmouseleave = hideTip;
     });
   }
-
-  // Cost by task: horizontal bars, one series, labelled with the value.
   function renderTasks() {
     const el = 'chartTasks';
     const by = new Map();
     for (const c of data.calls) { const k = c.task ?? 'run-level'; by.set(k, (by.get(k) ?? 0) + (c.costUsd ?? 0)); }
     const rows = [...by.entries()].sort((a, b) => b[1] - a[1]);
     if (!rows.length) { $(el).innerHTML = '<p class="empty">No calls recorded yet.</p>'; return; }
-    const W = width(el), L = 84, R = 56, rowH = 24, H = rows.length * rowH + 4, max = Math.max(...rows.map((r) => r[1])) || 1;
-    let svg = `<svg viewBox="0 0 ${W} ${H}" height="${H}">`;
+    const W = width(el), L = 84, R = 56, rowH = 22, H = rows.length * rowH + 4, max = Math.max(...rows.map((r) => r[1])) || 1;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" height="${H}"><defs><linearGradient id="taskBar" x1="0" x2="1"><stop offset="0" stop-color="${css('--teal')}"/><stop offset="1" stop-color="${css('--accent')}"/></linearGradient></defs>`;
     rows.forEach(([k, v], i) => {
-      const y = i * rowH + 4, w = Math.max(2, ((W - L - R) * v) / max), r = Math.min(4, w / 2);
-      svg += `<text class="label-ink" x="${L - 8}" y="${y + 13}" text-anchor="end">${esc(k)}</text>`;
-      svg += `<path d="M${L},${y} H${L + w - r} Q${L + w},${y} ${L + w},${y + r} V${y + 16 - r} Q${L + w},${y + 16} ${L + w - r},${y + 16} H${L} Z" fill="${css('--s-supervisor')}"/>`;
-      svg += `<text x="${L + w + 6}" y="${y + 13}">${money(v)}</text>`;
+      const y = i * rowH + 4, w = Math.max(2, ((W - L - R) * v) / max);
+      svg += `<text class="label-ink" x="${L - 8}" y="${y + 12}" text-anchor="end">${esc(k)}</text>`;
+      svg += `<rect x="${L}" y="${y}" width="${w}" height="14" rx="2" fill="url(#taskBar)"/>`;
+      svg += `<text x="${L + w + 6}" y="${y + 12}">${money(v)}</text>`;
       const t = data.tasks.find((x) => x.key === k);
       svg += `<rect x="0" y="${y - 2}" width="${W}" height="${rowH}" fill="transparent"><title>${esc(k)}${t ? ` — ${esc(t.title)} (${t.status}, ${t.iteration} tries)` : ''}: ${money(v)}</title></rect>`;
     });
     $(el).innerHTML = svg + '</svg>';
   }
-
-  // Timeline: phase spans on top, then a lane per role; bars from the trace spans.
   function renderTimeline() {
     const el = 'chartTimeline';
     const spans = data.spans.filter((s) => s.durationMs > 0);
     const lanes = ['phase', ...ROLES.filter((r) => spans.some((s) => s.role === r))];
     legend('legendTimeline', lanes.filter((l) => l !== 'phase'));
-    if (!spans.length) { $(el).innerHTML = '<p class="empty">No trace spans for this run (file export may be off in cockpit.yaml).</p>'; return; }
-    const W = width(el), L = 96, R = 16, laneH = 30, H = lanes.length * laneH + 26;
+    if (!spans.length) { $(el).innerHTML = '<p class="empty">No trace spans for this mission (file export may be off in cockpit.yaml).</p>'; return; }
+    const W = width(el), L = 96, R = 16, laneH = 28, H = lanes.length * laneH + 26;
     const t0 = Math.min(...spans.map((s) => Date.parse(s.start))), t1 = Math.max(...spans.map((s) => Date.parse(s.start) + s.durationMs));
     const x = (t) => L + ((t - t0) / Math.max(1, t1 - t0)) * (W - L - R);
     let svg = `<svg viewBox="0 0 ${W} ${H}" height="${H}">`;
-    lanes.forEach((l, i) => { svg += `<text class="label-ink" x="${L - 8}" y="${i * laneH + 19}" text-anchor="end">${l === 'phase' ? 'Phases' : ROLE_NAME[l]}</text><line class="axis" x1="${L}" x2="${W - R}" y1="${(i + 1) * laneH}" y2="${(i + 1) * laneH}" style="stroke: var(--grid)"/>`; });
+    lanes.forEach((l, i) => { svg += `<text class="label-ink" x="${L - 8}" y="${i * laneH + 18}" text-anchor="end">${l === 'phase' ? 'Phases' : ROLE_NAME[l]}</text><line x1="${L}" x2="${W - R}" y1="${(i + 1) * laneH}" y2="${(i + 1) * laneH}" style="stroke: var(--border-dim)"/>`; });
     for (let i = 0; i <= 6; i++) { const t = t0 + ((t1 - t0) * i) / 6; svg += `<text x="${x(t)}" y="${H - 6}" text-anchor="middle">${clock(new Date(t).toISOString())}</text>`; }
     spans.forEach((s, i) => {
       const lane = s.role && lanes.includes(s.role) ? lanes.indexOf(s.role) : 0;
       const a = x(Date.parse(s.start)), w = Math.max(2, x(Date.parse(s.start) + s.durationMs) - a);
       const y = lane * laneH + 7, fill = lane === 0 ? css('--s-phase') : roleColor(s.role);
-      svg += `<rect data-i="${i}" x="${a}" y="${y}" width="${w}" height="16" rx="${Math.min(4, w / 2)}" fill="${fill}" fill-opacity="${lane === 0 ? 0.45 : 0.9}" stroke="${css('--surface')}" stroke-width="2"/>`;
-      if (s.status === 'error') svg += `<text x="${a + w + 3}" y="${y + 12}" style="fill: var(--critical)">✗</text>`;
+      svg += `<rect data-i="${i}" x="${a}" y="${y}" width="${w}" height="14" rx="2" fill="${fill}" fill-opacity="${lane === 0 ? 0.45 : 0.9}" stroke="${css('--panel')}" stroke-width="1.5"/>`;
+      if (s.status === 'error') svg += `<text x="${a + w + 3}" y="${y + 11}" style="fill: var(--red)">✗</text>`;
     });
     $(el).innerHTML = svg + '</svg>';
     $(el).querySelectorAll('rect[data-i]').forEach((rect) => {
@@ -635,7 +660,7 @@
     const cols = [['ts', 'Time'], ['role', 'Role'], ['agentId', 'Agent'], ['task', 'Task'], ['inputTokens', 'Input', 1], ['cachedTokens', 'Cached', 1], ['outputTokens', 'Output', 1], ['costUsd', 'Cost', 1], ['durationMs', 'Duration', 1]];
     const rows = [...data.calls].sort((a, b) => { const x = a[sort.key] ?? '', y = b[sort.key] ?? ''; return (x < y ? -1 : x > y ? 1 : 0) * sort.dir; });
     if (!rows.length) { $('callsTable').innerHTML = '<p class="empty">No calls recorded yet.</p>'; return; }
-    const cell = (c, k) => k === 'ts' ? clock(c.ts) : k === 'role' ? `<span class="dot" style="background:${roleColor(c.role)}"></span>${ROLE_NAME[c.role] ?? c.role}` : k === 'costUsd' ? money(c.costUsd) : k === 'durationMs' ? dur(c.durationMs) : /Tokens$/.test(k) ? tok(c[k]) : esc(c[k] ?? '—');
+    const cell = (c, k) => k === 'ts' ? clock(c.ts) : k === 'role' ? `<span class="dot" style="background:${roleColor(c.role)};margin-right:6px"></span>${ROLE_NAME[c.role] ?? c.role}` : k === 'costUsd' ? money(c.costUsd) : k === 'durationMs' ? dur(c.durationMs) : /Tokens$/.test(k) ? tok(c[k]) : esc(c[k] ?? '—');
     $('callsTable').innerHTML = `<table><thead><tr>${cols.map(([k, l, n]) => `<th class="${n ? 'num' : ''}" data-k="${k}">${l}${sort.key === k ? (sort.dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead><tbody>${rows.map((c) => `<tr>${cols.map(([k, , n]) => `<td class="${n ? 'num' : ''}">${cell(c, k)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
     $('callsTable').querySelectorAll('th').forEach((th) => (th.onclick = () => { sort = { key: th.dataset.k, dir: sort.key === th.dataset.k ? -sort.dir : 1 }; renderTable(); }));
   }
@@ -644,12 +669,12 @@
     if (!data?.run) return;
     const typeSel = $('evType'), chosen = typeSel.value;
     const types = [...new Set(data.events.map((e) => e.type))].sort();
-    typeSel.innerHTML = `<option value="">All event types (${data.events.length})</option>` + types.map((t) => `<option ${t === chosen ? 'selected' : ''}>${esc(t)}</option>`).join('');
+    typeSel.innerHTML = `<option value="">all event types (${data.events.length})</option>` + types.map((t) => `<option ${t === chosen ? 'selected' : ''}>${esc(t)}</option>`).join('');
     const q = $('evSearch').value.trim().toLowerCase();
     const evs = data.events.filter((e) => (!chosen || e.type === chosen) && (!q || `${e.text} ${e.detail} ${e.task ?? ''} ${e.agentId ?? ''}`.toLowerCase().includes(q))).slice(-800).reverse();
-    const color = (t) => /fail|error|conflict|reject/.test(t) ? 'var(--critical)' : /approval|escalat/.test(t) ? 'var(--warning)' : /passed|completed|accepted|merge/.test(t) ? 'var(--good)' : 'var(--muted)';
+    const color = (t) => /fail|error|conflict|reject/.test(t) ? 'var(--red)' : /approval|escalat|team\./.test(t) ? 'var(--yellow)' : /passed|completed|accepted|merge/.test(t) ? 'var(--green)' : 'var(--dim)';
     const scroll = $('events').scrollTop;
-    $('events').innerHTML = evs.length ? evs.map((e) => `<details class="ev" data-seq="${e.seq}" ${openEvents.has(e.seq) ? 'open' : ''}><summary><span class="muted">${clock(e.ts)}</span><span><span class="dot" style="background:${color(e.type)}"></span>${esc(e.type)}</span><span class="muted">${esc(e.task ?? '')}</span><span class="text">${esc(e.text)}</span></summary><pre>${esc(e.detail)}</pre></details>`).join('') : '<p class="empty">No events match.</p>';
+    $('events').innerHTML = evs.length ? evs.map((e) => `<details class="ev" data-seq="${e.seq}" ${openEvents.has(e.seq) ? 'open' : ''}><summary><span class="dim">${clock(e.ts)}</span><span><span class="dot" style="background:${color(e.type)};margin-right:6px"></span>${esc(e.type)}</span><span class="dim">${esc(e.task ?? '')}</span><span class="text">${esc(e.text)}</span></summary><pre>${esc(e.detail)}</pre></details>`).join('') : '<p class="empty">No events match.</p>';
     $('events').scrollTop = scroll;
     $('events').querySelectorAll('details').forEach((d) => (d.ontoggle = () => (d.open ? openEvents.add(Number(d.dataset.seq)) : openEvents.delete(Number(d.dataset.seq)))));
   }
