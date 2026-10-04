@@ -129,9 +129,9 @@ describe('layout scales with data', () => {
 
 describe('entrance queue', () => {
   it('queues workers beyond the bays at the entrance', () => {
-    const l = buildLayout(spec({ workers: 20 }));
+    const l = buildLayout(spec({ waiting: 20 }));
     const door = l.resolve('entrance')!.grid;
-    expect(l.queueSlots).toBeGreaterThanOrEqual(20 - MIN_BAYS);
+    expect(l.queueSlots).toBeGreaterThanOrEqual(20);
     const seen = new Set<string>();
     for (let i = 0; i < l.queueSlots; i++) {
       const s = l.queueSlot(i);
@@ -231,8 +231,61 @@ describe('layoutFromState', () => {
     ids.push('bay:G', 'bay:H', 'crate:agent-cockpit', 'crate:docs', 'lab', 'bench', 'terminal', 'outbox');
     for (const id of ids) expect(l.resolve(id), id).not.toBeNull();
     expect(l.resolve('bay:B')!.label).toBe('BAY B — TASK-101 — agent-cockpit');
-    expect(l.spec.workers).toBe(2);
+    expect(l.spec.waiting).toBe(1);
     expectAllReachable(l);
+  });
+});
+
+describe('layoutFromState: extensions and waiting workers', () => {
+  const base = (characters: Character[], extra: Record<string, unknown> = {}): GarageState =>
+    ({
+      characters: Object.fromEntries(characters.map((c) => [c.id, c])),
+      stations: {},
+      bayOf: {},
+      crateOf: {},
+      taskIndex: { keyOfId: {}, idOfKey: {}, tasks: {} },
+      ...extra,
+    }) as unknown as GarageState;
+
+  it('resolves ext ids from stations and characters, preserving supplied definitions', () => {
+    const state = base(
+      [char({ id: 'rex', kind: 'worker', home: 'ext:pet', station: 'ext:ghost' }), char({ id: 'sup-1', kind: 'council', seat: 'sup-1', home: 'loft:sup-1' })],
+      { stations: { 'ext:cable': { id: 'ext:cable', kind: 'ext', state: 'idle' } } },
+    );
+    const l = layoutFromState(state, { extensions: [{ id: 'ext:pet', kind: 'pet', label: 'Rex', near: { station: 'lab', dx: 1, dy: 0 }, data: { species: 'dog' } }] });
+    for (const id of ['ext:pet', 'ext:ghost', 'ext:cable'] as StationId[]) expect(l.resolve(id), id).not.toBeNull();
+    expect(l.resolve('ext:pet')!.label).toBe('Rex');
+    expect(l.resolve('ext:pet')!.meta).toMatchObject({ species: 'dog' });
+    expect(l.resolve('ext:ghost')!.kind).toBe('ext');
+    expectAllReachable(l);
+  });
+
+  it('gives every waiting worker its own walkable, reachable slot even with unused bays', () => {
+    const workers = Array.from({ length: 20 }, (_, i) => char({ id: `w${i}`, kind: 'worker', home: 'entrance' }));
+    const state = base(workers, { bayOf: { 'TASK-1': 'A' } });
+    const l = layoutFromState(state);
+    expect(l.spec.waiting).toBe(20);
+    expect(l.queueSlots).toBeGreaterThanOrEqual(20);
+    const door = l.resolve('entrance')!.grid;
+    const seen = new Set<string>();
+    for (let i = 0; i < 20; i++) {
+      const s = l.queueSlot(i);
+      expect(l.walkable(s.gx, s.gy), `slot ${i}`).toBe(true);
+      expect(findPath(l, door, s), `slot ${i}`).not.toBeNull();
+      seen.add(`${s.gx},${s.gy}`);
+    }
+    expect(seen.size).toBe(20);
+  });
+
+  it('does not count workers that have a bay, and wraps past the last slot instead of leaving the room', () => {
+    const state = base(
+      [char({ id: 'a', kind: 'worker', home: 'entrance', station: 'bay:A' }), char({ id: 'b', kind: 'worker', home: 'entrance', station: 'lab', task: 'TASK-1' })],
+      { bayOf: { 'TASK-1': 'B' } },
+    );
+    const l = layoutFromState(state);
+    expect(l.spec.waiting).toBe(0);
+    const s = l.queueSlot(10_000);
+    expect(l.walkable(s.gx, s.gy)).toBe(true);
   });
 });
 

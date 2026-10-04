@@ -46,10 +46,10 @@ export interface LayoutSpec {
   /** Bays in use; the layout pads to at least {@link MIN_BAYS}. */
   bays: BaySpec[];
   repos: RepoId[];
-  /** Waiting places at the entrance; raised to fit `workers` that have no bay. */
+  /** Minimum waiting places at the entrance. The layout always has at least max(this, `waiting`, 6) slots. */
   queueSlots?: number;
-  /** Worker count, used to size the entrance queue. */
-  workers?: number;
+  /** Workers that have no bay and wait at the entrance; each gets its own slot. Unused bays do not reduce it. */
+  waiting?: number;
   extensions?: StationExtension[];
 }
 
@@ -185,7 +185,7 @@ export function buildLayout(input: Partial<LayoutSpec> = {}): Layout {
     bays: padBays(input.bays ?? []),
     repos: [...(input.repos ?? [])],
     queueSlots: input.queueSlots,
-    workers: input.workers,
+    waiting: input.waiting,
     extensions: input.extensions ?? [],
   };
   const chair = spec.chair && spec.council.includes(spec.chair) ? spec.chair : (spec.council[0] ?? null);
@@ -243,7 +243,7 @@ export function buildLayout(input: Partial<LayoutSpec> = {}): Layout {
   const queueSlots = Math.max(
     spec.queueSlots ?? 0,
     MIN_QUEUE_SLOTS,
-    Math.max(0, (spec.workers ?? 0) - spec.bays.length),
+    Math.max(0, Math.floor(spec.waiting ?? 0)),
   );
   const queueRows = Math.ceil(queueSlots / perRow);
   const rows = entranceY + 1 + queueRows + 1;
@@ -289,7 +289,8 @@ export function buildLayout(input: Partial<LayoutSpec> = {}): Layout {
   const walkable = (gx: number, gy: number): boolean => gx >= 0 && gy >= 0 && gx < cols && gy < rows && blockedTiles[gy * cols + gx] === 0;
 
   const slotAt = (i: number): Point => {
-    const n = Math.max(0, Math.floor(i));
+    // Past the last slot the queue wraps, so the answer is always a real, walkable tile.
+    const n = Math.max(0, Math.floor(i)) % queueSlots;
     return { gx: 1 + (n % perRow), gy: entranceY + 1 + Math.floor(n / perRow) };
   };
 
@@ -364,15 +365,20 @@ export function layoutSpecFromState(state: GarageState, extras: Pick<LayoutSpec,
   const bayIds = new Set<string>();
   const repos = new Set<string>();
   const ids: StationId[] = [];
-  let workers = 0;
+  let waiting = 0;
   for (const c of Object.values(state.characters)) {
     if (c.kind === 'council') council.add(c.seat ?? c.id);
     else if (c.kind === 'lead') leads.add(c.seat ?? c.id);
-    else workers++;
+    else if (!c.station.startsWith('bay:') && !(c.task && state.bayOf[c.task])) waiting++;
     ids.push(c.home, c.station);
   }
   ids.push(...(Object.keys(state.stations) as StationId[]));
-  for (const id of ids) {
+  const extensions = [...(extras.extensions ?? [])];
+  for (const id of uniqSorted(ids)) {
+    if (id.startsWith('ext:') && !extensions.some((e) => e.id === id)) {
+      // Named by the state but never defined: a plain prop at a reachable fallback spot.
+      extensions.push({ id: id as `ext:${string}`, kind: 'prop', label: id.slice(4) });
+    }
     if (id.startsWith('loft:')) council.add(id.slice(5));
     else if (id.startsWith('desk:')) leads.add(id.slice(5));
     else if (id.startsWith('bay:')) bayIds.add(id.slice(4));
@@ -393,8 +399,8 @@ export function layoutSpecFromState(state: GarageState, extras: Pick<LayoutSpec,
     head: extras.head ?? null,
     bays,
     repos: uniqSorted(repos),
-    workers,
-    extensions: extras.extensions ?? [],
+    waiting,
+    extensions,
   };
 }
 
