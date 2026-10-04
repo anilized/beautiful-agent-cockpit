@@ -238,7 +238,7 @@ export function describe(e: CockpitEvent, keyOf: (id: unknown) => string): strin
   }
 }
 
-export function buildSnapshot(store: Store, config: CockpitConfig, daemon: { pid: number; port: number | null }, live?: (taskId: string) => TaskLive | undefined, limits: Limits = {}): Snapshot {
+export function buildSnapshot(store: Store, config: CockpitConfig, daemon: { pid: number; port: number | null }, live?: (taskId: string) => TaskLive | undefined, limits: Limits = {}, runId?: string): Snapshot {
   // Read before anything is projected (all synchronous): an observer resuming at lastSeq misses no event the projection lacks.
   const lastSeq = store.lastSeq();
   const runs = store.runs(10);
@@ -249,7 +249,8 @@ export function buildSnapshot(store: Store, config: CockpitConfig, daemon: { pid
     daemon,
     hierarchy: config.agents.hierarchy,
     agents: config.agents.agents.map((a) => ({ id: a.id, adapter: a.adapter, model: a.model, roles: [...a.roles], enabled: a.enabled, effort: a.effort, efforts: effortLevels(a.adapter) })),
-    runs: visible.map((r) => runView(store, config, r, live)),
+    // A given run is shown even when older than the visible ten; an unknown one gives no runs.
+    runs: runId ? [store.runById(runId)].flatMap((r) => (r ? [runView(store, config, r, live)] : [])) : visible.map((r) => runView(store, config, r, live)),
     limits,
     pendingApprovals: store.approvals({ status: 'pending' }).map((a) => ({
       id: a.id, runId: a.runId, kind: a.kind, operation: a.operation, summary: a.summary, text: approvalText(store, a), createdAt: a.createdAt,

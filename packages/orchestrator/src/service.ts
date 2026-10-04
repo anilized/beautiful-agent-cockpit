@@ -1,3 +1,4 @@
+import type { ServerResponse } from 'node:http';
 import { join } from 'node:path';
 import type { CockpitConfig, Persona } from '@cockpit/core';
 import { AdapterRegistry, AgentRouter } from '@cockpit/agents';
@@ -14,12 +15,15 @@ import { buildSnapshot, runView, writeSnapshot } from './snapshot';
 import { dashboardHtml, telemetryView } from './dashboard';
 import { LiveWorkspaces } from './live';
 import { LimitsStore, readCodexLimits } from './limits';
+import { garageHtml, garageModule, type GarageOptions, type GarageResponse } from './garage';
 
 export interface EngineOptions {
   /** Register extra adapter factories (tests use the fake adapter). */
   configureRegistry?: (registry: AdapterRegistry) => void;
   telemetry?: Telemetry;
   dbPath?: string;
+  /** Where the Pixel Garage sources are served from (tests point it at a temp directory). */
+  garageSrcDir?: string;
 }
 
 /** Compose the orchestrator from its modules. */
@@ -58,6 +62,10 @@ export interface Daemon {
 const LIVE_REFRESH_MS = 3000;
 /** How often Codex's session logs are re-read for its limits. */
 const LIMITS_REFRESH_MS = 60_000;
+/** The events one SSE replay page holds; a catch-up drains pages of this size. */
+const EVENT_PAGE = 1000;
+/** A catch-up replays at most this many events, then tells the client to resync from a snapshot. */
+const CATCHUP_CAP = 10_000;
 
 export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {}): Promise<Daemon> {
   const engine = await createEngine(config, opts);
@@ -105,9 +113,16 @@ export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {
     return { decision: b.decision as HumanDecision, response: b.response ?? null };
   };
 
+  const garage: GarageOptions = opts.garageSrcDir ? { srcDir: opts.garageSrcDir } : {};
+  const sendGarage = (res: ServerResponse, out: GarageResponse) => {
+    res.writeHead(out.status, out.headers);
+    res.end(out.body);
+    return undefined;
+  };
+
   server
     .route('GET', '/health', () => ({ ok: true, pid: process.pid }))
-    .route('GET', '/snapshot', () => buildSnapshot(store, config, { pid: process.pid, port }, (id) => live.get(id), limits.get()))
+    .route('GET', '/snapshot', ({ query }) => buildSnapshot(store, config, { pid: process.pid, port }, (id) => live.get(id), limits.get(), query.get('runId') ?? undefined))
     .route('GET', '/runs', () => store.runs(50))
     .route('POST', '/runs', async ({ body }) => engine.startRun(body as StartRunInput))
     .route('GET', '/runs/:id', ({ params }) => {
@@ -136,7 +151,28 @@ export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {
       if (!String(req.headers.accept).includes('text/event-stream')) return store.events({ runId, since, limit: Number(query.get('limit') ?? 500) });
       let off = () => {};
       const send = sse(res, () => off());
-      for (const e of store.events({ runId, since, limit: 1000 })) send(e.type, e, e.seq);
+      if (query.get('catchup') === '1') {
+        // Lossless catch-up: drain every page, then subscribe in this same synchronous tick so nothing falls between them.
+        let cursor = since;
+        let drained = 0;
+        let capped = false;
+        for (;;) {
+          const page = store.events({ runId, since: cursor, limit: EVENT_PAGE });
+          for (const e of page) send(e.type, e, e.seq);
+          if (page.length < EVENT_PAGE) break;
+          cursor = page[page.length - 1]!.seq;
+          drained += page.length;
+          if (drained >= CATCHUP_CAP) {
+            capped = store.events({ runId, since: cursor, limit: 1 }).length > 0;
+            break;
+          }
+        }
+        if (capped) {
+          send('resync', {});
+          res.end();
+          return undefined;
+        }
+      } else for (const e of store.events({ runId, since, limit: 1000 })) send(e.type, e, e.seq);
       off = bus.subscribe((e) => {
         if (!runId || e.runId === runId) send(e.type, e, e.seq);
       });
@@ -148,6 +184,9 @@ export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {
       res.end(dashboardHtml());
       return undefined;
     }, { public: true })
+    // Pixel Garage: the page and its modules are static (public); its data comes from the token-gated /snapshot and /events.
+    .route('GET', '/garage', ({ res }) => sendGarage(res, garageHtml(garage)), { public: true })
+    .route('GET', '/garage/:file', async ({ params, res }) => sendGarage(res, await garageModule(params.file!, garage)), { public: true })
     .route('GET', '/telemetry', ({ query }) => telemetryView(store, dataDir, query.get('runId'), { config, limits: limits.get() }))
     .route('POST', '/shutdown', () => {
       setTimeout(() => void stop().then(() => process.exit(0)), 50);
