@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AUTH_MESSAGE, NO_RUNS_MESSAGE, boot, parseHash, selectRun, type BootEnv, type CanvasLike } from '../packages/garage/src/main';
 import type { GarageState } from '../packages/garage/src/model';
 import { IDS, type OverlayElement } from '../packages/garage/src/overlays';
-import type { CanvasRenderer } from '../packages/garage/src/renderer';
+import { createRenderer, type CanvasRenderer, type RenderCtx, type RenderSurface } from '../packages/garage/src/renderer';
 import type { FetchLike, ResponseLike } from '../packages/garage/src/stream';
 import { MISSION_RUN_ID, marks, tsOf } from './garage-mission';
 import { FakeClock, FakeDaemon, FakeDoc, FakeRaf, flush, idle, missionDaemon } from './garage-stream-harness';
@@ -22,6 +22,19 @@ class El implements OverlayElement {
   texts(): string[] { return [this.textContent ?? '', ...this.children.flatMap((c) => c.texts())].filter(Boolean); }
 }
 
+/** A canvas that is its own 2D context and draws nothing. */
+class Surf implements RenderSurface, RenderCtx {
+  fillStyle: string | object = '';
+  globalAlpha = 1;
+  imageSmoothingEnabled = true;
+  style = { width: '', height: '' };
+  constructor(public width: number, public height: number) {}
+  getContext(): RenderCtx { return this; }
+  fillRect() {}
+  drawImage() {}
+  setTransform() {}
+}
+
 const run = (id: string, status: string, createdAt: string) => ({ id, status, createdAt });
 const RUNS = [run('old', 'completed', '2026-01-01'), run('mid', 'running', '2026-01-02'), run('new', 'failed', '2026-01-03')];
 
@@ -32,6 +45,8 @@ interface Setup {
   daemon?: FakeDaemon;
   hidden?: boolean;
   t?: number;
+  /** Use the real Canvas2D renderer over stub surfaces. */
+  realRenderer?: boolean;
 }
 
 function setup(opts: Setup) {
@@ -51,10 +66,10 @@ function setup(opts: Setup) {
         return { ok, status: opts.status ?? (ok ? 200 : 503), json: async () => ({ runs: opts.runs ?? RUNS }), body: null } as ResponseLike;
       };
   const clicks: ((ev: { clientX: number; clientY: number }) => void)[] = [];
-  const canvas = {
+  const canvas = Object.assign(new Surf(800, 600), {
     addEventListener: (_t: string, fn: (typeof clicks)[number]) => clicks.push(fn),
     getBoundingClientRect: () => ({ left: 10, top: 20, width: 1, height: 1 }),
-  } as unknown as CanvasLike;
+  }) as unknown as CanvasLike;
   const calls = { synced: [] as GarageState[], intents: [] as unknown[], frames: 0, disposed: 0 };
   const renderer = {
     resize() {},
@@ -63,6 +78,7 @@ function setup(opts: Setup) {
     syncState: (s: GarageState) => calls.synced.push(s),
     applyIntent: (i: unknown) => calls.intents.push(i),
     anchorOf: () => null,
+    inspect: () => null,
     anchors: () => (calls.synced.length ? { 'lead-1': { x: 100, y: 100, visible: true }, far: { x: 900, y: 900, visible: true } } : {}),
     stats: () => ({ frameMs: 1, fps: 60 }),
   } as unknown as CanvasRenderer;
@@ -73,7 +89,7 @@ function setup(opts: Setup) {
       documentElement: { style: { setProperty: () => {} } },
     }),
     canvas, fetch, raf: raf.raf, caf: raf.caf, setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout, now: clock.now,
-    viewport: () => ({ width: 800, height: 600, dpr: 1 }), onResize: () => {}, createRenderer: () => renderer,
+    viewport: () => ({ width: 800, height: 600, dpr: 1 }), onResize: () => {}, createRenderer: opts.realRenderer ? (c) => createRenderer({ canvas: c, surfaces: { create: (w, h) => new Surf(w, h) } }) : () => renderer,
   };
   return { env, requests, replaced, els, fdoc, raf, clock, clicks, calls };
 }
@@ -169,6 +185,37 @@ describe('garage main', () => {
       expect(idle(t.daemon, t.clock, t.raf)).toBe(true);
       page.dispose();
       expect(t.calls.disposed).toBe(1);
+    });
+
+    it('a live structural event reaches the renderer: layout, destination and character metadata before any new snapshot', async () => {
+      const t = mission({ realRenderer: true, t: tsOf(marks.proposalsDecided!) });
+      t.daemon.head = marks.proposalsDecided!;
+      const page = await boot(t.env);
+      await flush();
+      const r = page.renderer!;
+      const client = page.lifecycle!.client;
+      expect(Object.keys(client.state()!.bayOf)).toHaveLength(0); // no bays yet
+      expect(r.layout.resolve('bay:1')).toBeFalsy();
+
+      t.daemon.advanceTo(marks.workersRunning!); // plan, tasks and workers arrive over the stream only
+      await flush();
+      expect(t.daemon.snapshotRequests).toHaveLength(1); // no reconcile has happened
+      const state = client.state()!;
+      const workers = Object.values(state.characters).filter((c) => c.station.startsWith('bay:'));
+      expect(workers.length).toBeGreaterThan(0);
+      expect(r.layout.resolve(workers[0]!.station)).toBeTruthy();
+      for (const w of workers) expect(r.inspect(w.id)!.station).toBe(w.station); // not parked at the entrance
+
+      // metadata: a task-scoped celebration finds the newly assigned worker
+      const w = workers.find((c) => c.task)!;
+      for (let n = 1; n <= 40; n++) r.frame(n * 250); // let everyone arrive
+      expect(r.inspect(w.id)!.moving).toBe(false);
+      const before = r.inspect(w.id)!.pose;
+      r.applyIntent({ type: 'celebrate', scope: 'task', task: w.task });
+      r.frame(10_250);
+      r.frame(10_500);
+      expect(r.inspect(w.id)!.pose).not.toBe(before);
+      page.dispose();
     });
 
     it('a canvas click selects the nearest character and opens the detail panel; a miss closes it', async () => {

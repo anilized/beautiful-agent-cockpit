@@ -194,8 +194,16 @@ export async function boot(env: BootEnv): Promise<Page> {
     runId,
     onUpdate(u) {
       latest = u.state;
-      if (u.kind === 'event') for (const intent of u.intents) renderer.applyIntent(intent);
-      else renderer.syncState(u.state);
+      // Every update first brings the renderer's layout, character metadata and resting places up to date (a live event can add a
+      // worker or a station); then an event's intents play on top, so transients (stamps, celebrations, an escalation's
+      // intermediate stops) still show. A move to where the character already is would only restart its walk.
+      renderer.syncState(u.state);
+      if (u.kind === 'event') {
+        for (const intent of u.intents) {
+          if (intent.type === 'move' && renderer.inspect(intent.character)?.station === intent.to) continue;
+          renderer.applyIntent(intent);
+        }
+      }
     },
     onSnapshot: (snap) => (snapshot = snap),
     onAuthError: (message) => overlays.banner(message),
