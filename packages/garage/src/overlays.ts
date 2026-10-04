@@ -76,6 +76,9 @@ export function bubbleFor(char: Character, state: GarageState): BubbleView | nul
   };
 }
 
+/** A newest-first copy of the log (state.log is never mutated). */
+const newestFirst = (log: GarageState['log']) => [...log].sort((a, b) => b.at - a.at || (b.seq ?? 0) - (a.seq ?? 0));
+
 const money = (n: number) => `$${n.toFixed(2)}`;
 const tokens = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : String(n));
 const spendLine = (e: { calls: number; inputTokens: number; outputTokens: number; costUsd: number }) =>
@@ -96,7 +99,7 @@ export function hudView(state: GarageState): HudView {
   const council = chars.filter(c => c.kind === 'council').length;
   const leads = chars.filter(c => c.kind === 'lead').length;
   const queue = state.board.slice(0, QUEUE_ROWS).map(c => `${c.key} · ${truncate(c.title, 40)} · ${c.persona ?? '—'} · ${c.column}`);
-  const log = [...state.log].sort((a, b) => b.at - a.at || (b.seq ?? 0) - (a.seq ?? 0)).slice(0, LOG_ROWS)
+  const log = newestFirst(state.log).slice(0, LOG_ROWS)
     .map(e => `${new Date(e.at).toISOString().slice(11, 19)} ${e.type} ${truncate(e.text, 80)}`);
   const status = `${state.run.status} · council ${council} · leads ${leads} · plan ${state.run.phase}`;
   const spend = [`total ${spendLine(state.spend.total)}`,
@@ -119,7 +122,7 @@ export function detailView(state: GarageState, id: CharacterId, info?: AgentInfo
   const recent: string[] = [];
   if (s?.lastTool) recent.push(`tool: ${truncate(s.lastTool, 80)}`);
   if (s?.lastNarration) recent.push(`said: ${truncate(s.lastNarration, 80)}`);
-  for (const e of state.log) {
+  for (const e of newestFirst(state.log)) {
     if (recent.length >= DETAIL_ACTIVITY_ROWS) break;
     if ((c.agentId && e.text.includes(c.agentId)) || (c.task && e.text.includes(c.task))) recent.push(`${e.type} ${truncate(e.text, 80)}`);
   }

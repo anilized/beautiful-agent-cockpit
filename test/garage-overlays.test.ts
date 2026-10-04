@@ -14,19 +14,21 @@ class StubEl implements OverlayElement {
   listeners: Record<string, () => void> = {};
   parent: StubEl | null = null;
   textWrites = 0;
+  /** Every write of any kind (text, attribute, style, children, removal). */
+  static mutations = 0;
   private text: string | null = '';
   constructor(public tag: string) {}
   get textContent() { return this.text; }
-  set textContent(v: string | null) { this.textWrites++; this.text = v; this.children = []; }
+  set textContent(v: string | null) { StubEl.mutations++; this.textWrites++; this.text = v; this.children = []; }
   // there is deliberately no innerHTML: any assignment would be a type error, and this setter fails the test at runtime.
-  set innerHTML(_v: string) { throw new Error('innerHTML assigned'); }
-  style = { setProperty: (k: string, v: string) => void (this.styles[k] = v) };
-  setAttribute(k: string, v: string) { this.attrs[k] = v; }
-  removeAttribute(k: string) { delete this.attrs[k]; }
-  append(...n: StubEl[]) { for (const c of n) { c.parent = this; this.children.push(c); } }
-  replaceChildren(...n: StubEl[]) { this.children = []; this.text = ''; this.append(...n); }
+  set innerHTML(_v: string) { StubEl.mutations++; throw new Error('innerHTML assigned'); }
+  style = { setProperty: (k: string, v: string) => { StubEl.mutations++; this.styles[k] = v; } };
+  setAttribute(k: string, v: string) { StubEl.mutations++; this.attrs[k] = v; }
+  removeAttribute(k: string) { StubEl.mutations++; delete this.attrs[k]; }
+  append(...n: StubEl[]) { StubEl.mutations++; for (const c of n) { c.parent = this; this.children.push(c); } }
+  replaceChildren(...n: StubEl[]) { StubEl.mutations++; this.children = []; this.text = ''; this.append(...n); }
   addEventListener(t: string, fn: () => void) { this.listeners[t] = fn; }
-  remove() { if (this.parent) this.parent.children = this.parent.children.filter(c => c !== this); this.parent = null; }
+  remove() { StubEl.mutations++; if (this.parent) this.parent.children = this.parent.children.filter(c => c !== this); this.parent = null; }
   get hidden() { return 'hidden' in this.attrs; }
   all(): StubEl[] { return [this, ...this.children.flatMap(c => c.all())]; }
   texts(): string[] { return this.all().map(e => e.text ?? '').filter(Boolean); }
@@ -39,7 +41,7 @@ function makeDoc() {
   const doc: OverlayDocument = {
     createElement: tag => new StubEl(tag),
     getElementById: id => byId.get(id) ?? null,
-    documentElement: { style: { setProperty: (k, v) => void (rootStyles[k] = v) } },
+    documentElement: { style: { setProperty: (k, v) => { StubEl.mutations++; rootStyles[k] = v; } } },
   };
   return { doc, byId, rootStyles, el: (id: string) => byId.get(id)! };
 }
@@ -138,7 +140,9 @@ describe('DOM discipline', () => {
     const snapshot = () => Object.values(IDS).flatMap(id => h.el(id).all()).map(e => e.textWrites + JSON.stringify(e.attrs) + JSON.stringify(e.styles));
     const kids = h.el(IDS.hud).children.map(c => c.children.slice());
     const before = snapshot();
+    const mutations = StubEl.mutations;
     o.render({ state: structuredClone(s), anchor });
+    expect(StubEl.mutations).toBe(mutations);
     expect(snapshot()).toEqual(before);
     expect(h.el(IDS.hud).children.map(c => c.children)).toEqual(kids);
     h.el(IDS.hud).children.forEach((c, i) => c.children.forEach((k, j) => expect(k).toBe(kids[i][j])));
@@ -193,6 +197,18 @@ describe('detail panel', () => {
     o.select(null);
     expect(h.el(IDS.detail).hidden).toBe(true);
     expect(detailView(baseState(), 'nobody')).toBeNull();
+  });
+});
+
+describe('detail activity order', () => {
+  it('shows the newest matching log entries first, keeps only five rows, and leaves state.log alone', () => {
+    const s = baseState({ sessions: {}, log: [] });
+    for (let i = 1; i <= 9; i++) s.log.push({ seq: i, at: i * 1000, type: `e${i}`, text: `backend-dev did step ${i}` });
+    s.log.push({ seq: 10, at: 10000, type: 'other', text: 'unrelated' });
+    const before = JSON.stringify(s.log);
+    const rows = detailView(s, 'backend-dev')!.rows.filter(r => r.startsWith('recent:'));
+    expect(rows).toEqual(['e9', 'e8', 'e7', 'e6', 'e5'].map(t => `recent: ${t} backend-dev did step ${t.slice(1)}`));
+    expect(JSON.stringify(s.log)).toBe(before);
   });
 });
 
