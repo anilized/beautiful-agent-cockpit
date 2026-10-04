@@ -387,7 +387,7 @@ describe('reconcile', () => {
     expect(r.daemon.snapshotRequests).toHaveLength(3);
   });
 
-  it('coalesces a burst of structural events into one refresh and keeps a single timer', async () => {
+  it('coalesces a burst of structural events into one refresh, 1 s after the last of them, on a single timer', async () => {
     const a = marks.runStarted!;
     const burst = events.filter((e) => e.seq > a && e.runId === RUN && isStructural(e.type)).slice(0, 5);
     expect(burst.length).toBe(5);
@@ -399,8 +399,65 @@ describe('reconcile', () => {
       await r.clock.advance(100);
       expect(r.clock.pending).toBe(1);
     }
-    await r.clock.advance(DEBOUNCE_MS);
+    // The last event was 100 ms ago: the refresh is 900 ms away.
+    await r.clock.advance(DEBOUNCE_MS - 100 - 1);
+    expect(r.daemon.snapshotRequests).toHaveLength(1);
+    await r.clock.advance(1);
     expect(r.daemon.snapshotRequests).toHaveLength(2);
+    await r.clock.advance(RECONCILE_MS - 1);
+    expect(r.daemon.snapshotRequests).toHaveLength(2);
+    await r.clock.advance(1);
+    expect(r.daemon.snapshotRequests).toHaveLength(3);
+  });
+
+  it('is a debounce: a second structural event 900 ms after the first moves the refresh to 1900 ms, not 1000 ms', async () => {
+    const a = marks.runStarted!;
+    const [first, second] = events.filter((e) => e.seq > a && e.runId === RUN && isStructural(e.type));
+    const r = rig(a);
+    r.client.start();
+    await flush();
+    r.daemon.advanceTo(first!.seq); // t = 0
+    await r.clock.advance(900);
+    r.daemon.advanceTo(second!.seq); // t = 900
+    await flush();
+    await r.clock.advance(100); // t = 1000: where the first event's deadline was
+    expect(r.daemon.snapshotRequests).toHaveLength(1);
+    await r.clock.advance(899); // t = 1899
+    expect(r.daemon.snapshotRequests).toHaveLength(1);
+    expect(r.clock.pending).toBe(1);
+    await r.clock.advance(1); // t = 1900
+    expect(r.daemon.snapshotRequests).toHaveLength(2);
+  });
+
+  it('cannot be postponed past the periodic reconcile by a continuous run of structural events', async () => {
+    const a = marks.runStarted!;
+    const plan = firstOf('plan.created');
+    const r = rig(a);
+    r.client.start();
+    await flush();
+    let seq = MISSION_LAST_SEQ;
+    const stream = r.daemon.streams[0]!;
+    // A structural event every 500 ms for 10 s: the 1 s debounce never matures, the 5 s period still does.
+    const reconciles: number[] = [];
+    for (let t = 0; t < 10_000; t += 500) {
+      stream.send({ ...plan, seq: ++seq, id: `evt_p${seq}` });
+      await r.clock.advance(500);
+      reconciles.push(r.daemon.snapshotRequests.length - 1);
+      expect(r.clock.pending).toBe(1);
+    }
+    expect(reconciles.slice(0, 9)).toEqual(Array(9).fill(0)); // nothing before t = 5000 ...
+    expect(reconciles[9]).toBe(1); // ... the periodic one at 5000 ...
+    expect(reconciles.slice(10, 19)).toEqual(Array(9).fill(1));
+    expect(reconciles[19]).toBe(2); // ... and the next at 10000
+    // That fetch covered the events so far, so no debounce is left over; one more event and then silence matures it.
+    await r.clock.advance(DEBOUNCE_MS);
+    expect(r.daemon.snapshotRequests).toHaveLength(3);
+    stream.send({ ...plan, seq: ++seq, id: `evt_p${seq}` });
+    await r.clock.advance(DEBOUNCE_MS - 1);
+    expect(r.daemon.snapshotRequests).toHaveLength(3);
+    await r.clock.advance(1);
+    expect(r.daemon.snapshotRequests).toHaveLength(4);
+    expect(r.daemon.maxSnapshotActive).toBe(1);
   });
 
   it('goes again 1 s after a fetch that a structural event overlapped, without a second fetch meanwhile', async () => {

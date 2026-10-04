@@ -10,7 +10,8 @@
 //              events applied since the last base with seq > snap.lastSeq). A ring that overflowed past snap.lastSeq lost events
 //              the snapshot does not hold, so that is a full sync instead.
 //   stop       cancels the fetch, the reader and the timer. Nothing may remain pending.
-// One timer drives both reconcile and retry, and at most one snapshot fetch is in flight (a full sync supersedes a reconcile).
+// One timer drives reconcile, debounce and retry (it sits at the earliest of their deadlines), and at most one snapshot fetch is
+// in flight (a full sync supersedes a reconcile).
 // `fetch`, timers and `now` are injected; there is no DOM here.
 import type { CockpitEvent } from '@cockpit/core';
 import type { Snapshot } from '@cockpit/orchestrator';
@@ -208,32 +209,45 @@ export function createStreamClient(o: StreamClientOptions): StreamClient {
   let gen = 0; // bumped on every start/stop: results of an older generation are ignored
   let snapCtl: AbortController | null = null;
   let stream: EventStream | null = null;
-  let timer: unknown = null;
-  let timerDue = 0;
-  let needFull = false;
-  let followUp = false; // a timer fired while a snapshot was in flight: go again after it
+  let followUp = false; // a reconcile came due while a snapshot was in flight: go again after it
   let failures = 0;
+
+  // Three deadlines share one timer, which always sits at the earliest of them:
+  //   periodic  RECONCILE_MS after a snapshot became the base: bounds staleness whatever else happens
+  //   debounce  DEBOUNCE_MS after the LAST structural event: every such event moves it later, so a burst makes one fetch,
+  //             but it can never push the periodic deadline back (the timer takes the minimum)
+  //   retry     the backoff after a failed full sync
+  let timer: unknown = null;
+  let timerAt: number | null = null;
+  let periodicDue: number | null = null;
+  let debounceDue: number | null = null;
+  let retryDue: number | null = null;
 
   const status = (s: StreamStatus): void => o.onStatus?.(s);
   const emit = (u: GarageUpdate): void => o.onUpdate(u);
 
-  /** The one timer: asking for an earlier moment moves it up, a later one is ignored. */
-  const arm = (delay: number): void => {
-    const due = o.now() + delay;
-    if (timer !== null) {
-      if (timerDue <= due) return;
-      o.clearTimeout(timer);
-    }
-    timerDue = due;
-    timer = o.setTimeout(fire, delay);
-  };
-  const disarm = (): void => {
+  const schedule = (): void => {
+    const next = [periodicDue, debounceDue, retryDue].reduce<number | null>((m, d) => (d === null ? m : m === null ? d : Math.min(m, d)), null);
+    if (next === timerAt) return;
     if (timer !== null) o.clearTimeout(timer);
-    timer = null;
+    timer = next === null ? null : o.setTimeout(fire, Math.max(0, next - o.now()));
+    timerAt = next;
   };
+  const clearDeadlines = (): void => {
+    periodicDue = debounceDue = retryDue = null;
+    schedule();
+  };
+  /** A snapshot has been fetched (or failed): the next periodic reconcile counts from now. */
   const armNext = (): void => {
-    arm(followUp ? DEBOUNCE_MS : RECONCILE_MS);
+    periodicDue = o.now() + RECONCILE_MS;
+    if (followUp) debounceDue = o.now() + DEBOUNCE_MS;
     followUp = false;
+    schedule();
+  };
+  /** A fetch is starting: it covers whatever was waiting for the periodic or the debounce deadline. */
+  const fetchStarting = (): void => {
+    periodicDue = debounceDue = retryDue = null;
+    schedule();
   };
 
   const teardown = (): void => {
@@ -253,7 +267,7 @@ export function createStreamClient(o: StreamClientOptions): StreamClient {
     running = false;
     gen++;
     teardown();
-    disarm();
+    clearDeadlines();
     status('halted');
     o.onAuthError(AUTH_MESSAGE);
   };
@@ -261,19 +275,30 @@ export function createStreamClient(o: StreamClientOptions): StreamClient {
   const failed = (error: unknown): void => {
     if (error instanceof HttpError && error.status === 401) return halt();
     failures++;
-    needFull = true;
     status('reconnecting');
     const delay = retryDelay(failures);
     if (delay === 0) void fullSync();
-    else arm(delay);
+    else {
+      retryDue = o.now() + delay;
+      schedule();
+    }
   };
 
   function fire(): void {
     timer = null;
+    timerAt = null;
     if (!running) return;
-    if (needFull) void fullSync();
-    else if (snapCtl) followUp = true;
-    else void reconcile();
+    const now = o.now();
+    const due = (d: number | null): boolean => d !== null && d <= now;
+    if (due(retryDue)) return void fullSync();
+    const reconcileDue = due(periodicDue) || due(debounceDue);
+    if (due(periodicDue)) periodicDue = null;
+    if (due(debounceDue)) debounceDue = null;
+    if (reconcileDue) {
+      if (snapCtl) followUp = true;
+      else void reconcile();
+    }
+    schedule();
   }
 
   const onEvent = (ev: CockpitEvent): void => {
@@ -285,7 +310,10 @@ export function createStreamClient(o: StreamClientOptions): StreamClient {
     ring.push(ev);
     if (ring.length > RING_MAX) dropped = Math.max(dropped, ring.shift()!.seq);
     emit({ kind: 'event', state, previous, intents: result.intents });
-    if (isStructural(ev.type)) arm(DEBOUNCE_MS);
+    if (isStructural(ev.type)) {
+      debounceDue = o.now() + DEBOUNCE_MS; // trailing: each structural event restarts the wait
+      schedule();
+    }
   };
 
   const open = (since: number): void => {
@@ -308,7 +336,7 @@ export function createStreamClient(o: StreamClientOptions): StreamClient {
     if (!running) return;
     teardown();
     const g = ++gen;
-    needFull = false;
+    fetchStarting();
     const ctl = (snapCtl = new AbortController());
     status('syncing');
     let snap: Snapshot;
@@ -335,6 +363,7 @@ export function createStreamClient(o: StreamClientOptions): StreamClient {
   async function reconcile(): Promise<void> {
     if (!running || snapCtl) return;
     const g = gen;
+    fetchStarting();
     const ctl = (snapCtl = new AbortController());
     let snap: Snapshot;
     try {
@@ -371,8 +400,7 @@ export function createStreamClient(o: StreamClientOptions): StreamClient {
       running = false;
       gen++;
       teardown();
-      disarm();
-      needFull = false;
+      clearDeadlines();
       followUp = false;
       ring = [];
       dropped = 0;
