@@ -864,51 +864,65 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       documentation: C.text, refactoring: C.violet, research: C.cyan, generalist: C.mint,
     }
 
-    // The team as a tree: you, the council, each lead and the workers it owns; a working seat pulses.
+    // The team in tiers: you, the council, the leads, the workers. The tier names hold a fixed column, so
+    // depth never pushes a row to the right; a worker's number says which lead owns it. A working seat pulses.
     const TeamTree = ({ r, max }: { r: CockpitRun; max: number }) => {
       const roles = r.roles ?? s!.hierarchy
       const council: CockpitSeat[] = r.council?.length ? r.council : [{ id: 'sup-1', agent: roles.supervisor, effort: null, area: null, state: r.leadership.supervisor }]
       const leads: CockpitSeat[] = r.leads?.length ? r.leads : [{ id: 'lead-1', agent: roles.lead, effort: null, area: null, state: r.leadership.lead }]
       const personas = r.team ?? []
-      const leadOf = (id: string) => r.tasks.find(t => t.persona === id && t.lead)?.lead ?? leads[0]!.id
+      const leadNo = (id: string) => {
+        const lead = r.tasks.find(t => t.persona === id && t.lead)?.lead
+        return Math.max(0, leads.findIndex(l => l.id === lead)) + 1
+      }
       const waiting = s!.pendingApprovals.filter(a => a.runId === r.id).length
       const busyNow = (state: string) => state !== 'idle'
-      const dot = (state: string, tone: string) => <Text color={busyNow(state) ? pulse(n, tone, C.white, 0.35) : C.faint}>{busyNow(state) ? '●' : '○'}</Text>
+      const dot = (state: string, tone: string) => <Text color={busyNow(state) ? pulse(n, tone, C.white, 0.35) : C.faint}>{busyNow(state) ? '●' : '○'} </Text>
       const eff = (e: string | null) => (e ? <Text color={C.dim}> ⚡{e}</Text> : null)
-      const lines: RenderChildren[] = [
-        <Text wrap="truncate-end"><Text color={C.yellow} bold>◉ YOU</Text><Text color={waiting ? C.yellow : C.dim}>{waiting ? `  ${waiting} decision${waiting > 1 ? 's' : ''} waiting` : '  approve · revise · merge'}</Text></Text>,
-        <Text wrap="truncate-end">
-          <Text color={C.faint}>└─ </Text><Text color={C.violet} bold>◆ COUNCIL</Text>
-          {council.map((x, i) => <Text>  {dot(x.state, C.violet)} <Text color={i === 0 ? C.ink : C.text} bold={i === 0}>{i === 0 ? '★' : ''}{x.agent}</Text>{eff(x.effort)}</Text>)}
-        </Text>,
+      const workers = [
+        ...personas.map(p => ({ no: leadNo(p.id), name: p.id, agent: p.agent, effort: p.effort, state: p.state, note: p.tasks.join(' '), tone: SPEC_COLOR[p.specialty] ?? C.orange })),
+        ...(!personas.length ? r.workers.map(w => ({ no: 1, name: w.agentId, agent: '', effort: null as string | null, state: `working${w.task ? ` on ${w.task}` : ''}`, note: '', tone: C.orange })) : []),
       ]
-      leads.forEach((ld, li) => {
-        const lastLead = li === leads.length - 1
-        const rail = lastLead ? '      ' : '   │  '
-        const kids = [
-          ...personas.filter(p => leadOf(p.id) === ld.id).map(p => ({ name: p.id, agent: p.agent, effort: p.effort, state: p.state, note: p.tasks.join(' '), tone: SPEC_COLOR[p.specialty] ?? C.orange })),
-          ...(li === 0 && !personas.length ? r.workers.map(w => ({ name: w.agentId, agent: '', effort: null, state: `working${w.task ? ` on ${w.task}` : ''}`, note: '', tone: C.orange })) : []),
-        ]
-        lines.push(
-          <Text wrap="truncate-end">
-            <Text color={C.faint}>   {lastLead ? '└─' : '├─'} </Text>{dot(ld.state, C.cyan)}<Text color={C.cyan} bold> ◇ {ld.agent}</Text>
-            <Text color={C.dim}>  {ld.area ? `${ld.area} ` : ''}{li === 0 ? 'head lead' : 'lead'}</Text>{eff(ld.effort)}
-            {busyNow(ld.state) ? <Text color={C.green}>  {ld.state}</Text> : null}
-          </Text>,
-        )
-        if (!kids.length && li === 0) lines.push(<Text color={C.dim} wrap="truncate-end">{rail}└─ ◈ workers are named when the plan is made</Text>)
-        kids.forEach((k, ki) => lines.push(
-          <Text wrap="truncate-end">
-            <Text color={C.faint}>{rail}{ki === kids.length - 1 ? '└─' : '├─'} </Text>{dot(k.state, k.tone)}<Text color={k.tone} bold> ◈ {k.name}</Text>
-            {k.agent ? <Text color={C.mute}>  {k.agent}</Text> : null}{eff(k.effort)}
-            <Text color={busyNow(k.state) ? C.green : C.dim}>  {busyNow(k.state) ? k.state : k.note || 'idle'}</Text>
-          </Text>,
-        ))
-      })
+      const nameW = Math.min(14, Math.max(6, ...workers.map(w => w.name.length)))
+      const agentW = Math.max(0, ...workers.map(w => w.agent.length))
+      const leadW = Math.max(...leads.map(l => l.agent.length))
+      type TierRow = { tier: string; tone: string; body: RenderChildren }
+      const rowsOut: TierRow[] = [
+        { tier: '◉ YOU', tone: C.yellow, body: waiting ? <Text>{dot('waiting', C.yellow)}<Text color={C.yellow}>{waiting} decision{waiting > 1 ? 's' : ''} waiting</Text></Text> : <Text color={C.dim}>approve · revise · merge</Text> },
+        { tier: '◆ COUNCIL', tone: C.violet, body: <Text>{council.map((x, i) => <Text>{i ? '   ' : ''}{dot(x.state, C.violet)}<Text color={i === 0 ? C.ink : C.text} bold={i === 0}>{i === 0 ? '★' : ''}{x.agent}</Text>{eff(x.effort)}</Text>)}</Text> },
+        ...leads.map((ld, li): TierRow => ({
+          tier: li === 0 ? '◇ LEADS' : '', tone: C.cyan,
+          body: (
+            <Text>
+              {dot(ld.state, C.cyan)}<Text color={C.cyan} bold>{li + 1} </Text><Text color={li === 0 ? C.ink : C.text} bold={li === 0}>{ld.agent.padEnd(leadW)}</Text>
+              <Text color={C.dim}>  {ld.area ?? (li === 0 ? 'head' : 'lead')}</Text>{eff(ld.effort)}
+              {busyNow(ld.state) ? <Text color={C.green}>  {ld.state}</Text> : null}
+            </Text>
+          ),
+        })),
+        ...(workers.length
+          ? workers.map((w, wi): TierRow => ({
+              tier: wi === 0 ? '◈ WORKERS' : '', tone: C.green,
+              body: (
+                <Text>
+                  {dot(w.state, w.tone)}<Text color={C.cyan} bold>{w.no} </Text><Text color={w.tone} bold>{clip(w.name, nameW).padEnd(nameW)}</Text>
+                  {agentW ? <Text color={C.mute}>  {w.agent.padEnd(agentW)}</Text> : null}{eff(w.effort)}
+                  <Text color={busyNow(w.state) ? C.green : C.dim}>  {busyNow(w.state) ? w.state : w.note || 'idle'}</Text>
+                </Text>
+              ),
+            }))
+          : [{ tier: '◈ WORKERS', tone: C.green, body: <Text color={C.dim}>named by the head lead with the plan</Text> }]),
+      ]
+      const shown = rowsOut.slice(0, max)
       return (
         <Box flexDirection="column">
-          {lines.slice(0, max)}
-          {lines.length > max ? <Text color={C.dim}>… {lines.length - max} more</Text> : null}
+          {shown.map(row => (
+            <Box>
+              <Box width={10} flexShrink={0}><Text color={row.tone} bold>{row.tier}</Text></Box>
+              <Box flexShrink={1}><Text wrap="truncate-end">{row.body}</Text></Box>
+            </Box>
+          ))}
+          {rowsOut.length > max ? <Text color={C.dim}>… {rowsOut.length - max} more</Text> : null}
         </Box>
       )
     }

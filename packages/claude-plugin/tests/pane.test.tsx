@@ -362,9 +362,12 @@ test('the grid shows the unified log, the agent focus files, a code preview and 
     await has(/AGENT: BACKEND/)
     await has(/test\/strings\.test\.js/) // focus files
     await has(/toLowerCase/) // code preview
-    await has(/◉ YOU/) // the team tree took the terminal's place
+    await has(/◉ YOU/) // the team tiers took the terminal's place
     await has(/◆ COUNCIL/)
-    await has(/◇ codex/)
+    await has(/◇ LEADS/)
+    await has(/1 decision waiting/)
+    expect([cols, !!(await ui.find({ type: 'Text', text: /object Object/ }))]).toEqual([cols, false])
+    await has(/1 codex/)
     await ui.unmount()
   }
   // the brand and theme came from the environment
@@ -393,7 +396,7 @@ test('home is an overview of every mission; a mission opens from it and 0 comes 
     const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(cols) })
     // nothing under way: the overview, not a mission form
     expect(await ui.find({ type: 'Text', text: /MISSIONS/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /◈ backend-dev/ })).toBeDefined() // the latest mission's team
+    expect(await ui.find({ type: 'Text', text: /1 backend-dev/ })).toBeDefined() // the latest mission's team, under lead 1
     expect(await ui.find({ type: 'Text', text: /codex 7d/ })).toBeDefined()
     expect(await ui.find({ key: `home-open-${snap.runs[1].id}` })).toBeDefined()
     expect((await ui.find({ key: `home-open-${snap.runs[0].id}` }))?.props.hotkey).toBe('1')
