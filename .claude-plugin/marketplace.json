@@ -1,0 +1,24 @@
+{
+  "name": "beautiful-agent-cockpit",
+  "owner": {
+    "name": "anilized",
+    "url": "https://github.com/anilized"
+  },
+  "metadata": {
+    "description": "A hierarchical multi-agent coding orchestrator for Claude Code: a council of supervisors, leads and a named worker team, with a live cockpit pane and a telemetry dashboard."
+  },
+  "plugins": [
+    {
+      "name": "agent-cockpit",
+      "source": "./packages/claude-plugin",
+      "description": "Run a team of AI agents from Claude Code: a supervisor council designs, leads plan and review, named workers build in isolated git worktrees, you approve. Live cockpit pane and browser dashboard.",
+      "version": "0.1.0",
+      "author": { "name": "anilized" },
+      "homepage": "https://github.com/anilized/beautiful-agent-cockpit",
+      "repository": "https://github.com/anilized/beautiful-agent-cockpit",
+      "license": "MIT",
+      "keywords": ["multi-agent", "orchestrator", "codex", "worktrees", "dashboard", "cockpit"],
+      "category": "development"
+    }
+  ]
+}

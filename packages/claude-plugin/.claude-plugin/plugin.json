@@ -1,6 +1,20 @@
 {
   "name": "agent-cockpit",
   "version": "0.1.0",
-  "description": "Cockpit for the hierarchical multi-agent orchestrator: leadership, tasks, workers, conflicts, tests, approvals, telemetry",
-  "types": "./types/index.d.ts"
+  "description": "Cockpit for a hierarchical multi-agent orchestrator: a supervisor council, leads and a named worker team in isolated git worktrees, with a live pane, approvals and telemetry",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "anilized",
+    "url": "https://github.com/anilized"
+  },
+  "homepage": "https://github.com/anilized/beautiful-agent-cockpit",
+  "repository": "https://github.com/anilized/beautiful-agent-cockpit",
+  "license": "MIT",
+  "keywords": [
+    "multi-agent",
+    "orchestrator",
+    "codex",
+    "worktrees",
+    "dashboard"
+  ]
 }
