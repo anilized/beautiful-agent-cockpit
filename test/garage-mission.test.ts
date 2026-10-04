@@ -173,9 +173,14 @@ describe('garage mission fixture: snapshotAt', () => {
     expect(run(marks.rateTestFailed!).tests.at(-1)).toMatchObject({ status: 'failed', task: 'TASK-1' });
 
     const blocked = run(marks.leaseConflict!);
-    expect(blocked.tasks.find((t) => t.key === 'TASK-4')).toMatchObject({ status: 'lease_conflict', blockedReason: expect.stringContaining('TASK-2') });
+    expect(blocked.tasks.find((t) => t.key === 'TASK-4')).toMatchObject({ status: 'lease_conflict', blockedReason: null });
     expect(blocked.conflicts).toEqual([expect.objectContaining({ task: 'TASK-4', heldBy: 'TASK-2' })]);
-    expect(run(marks.allApproved!).tasks.find((t) => t.key === 'TASK-4')!.blockedReason).toBeNull();
+    // The engine never writes blockedReason on entering lease_conflict, and task.blocked does not persist it.
+    expect(run(marks.workerAsks!).tasks.find((t) => t.key === 'TASK-2')!.blockedReason).toBeNull();
+    // Repository ids are opaque: events name `repo_01`, the snapshot names `api`.
+    const ids = events.filter((e) => e.type === 'task.created').map((e) => (e.data as { repoId: string }).repoId);
+    expect(ids.every((id) => /^repo_\d+$/.test(id))).toBe(true);
+    expect(run(marks.completed!).repositories.map((r) => r.name)).toEqual(['api', 'web']);
 
     const changes = run(marks.reviewChanges!).tasks.find((t) => t.key === 'TASK-3')!;
     expect(changes.detail.review).toMatchObject({ verdict: 'changes_requested', iteration: 1 });

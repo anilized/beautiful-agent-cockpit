@@ -9,11 +9,9 @@
 //
 // The cast: council sup-1 (chair) and sup-2; leads lead-1 (head) and lead-2 (area: frontend); worker
 // personas backend-dev, frontend-dev, test-engineer and docs-writer; repositories `api` and `web`.
-// Repository ids equal their names here, so a task's repo reads the same in an event (`repoId`) and in the
-// snapshot (`repo`). The real daemon differs: `repoId` is opaque and the snapshot's `repo` is the name, and
-// events carry no id-to-name map. Mapper authors must not rely on `repoId === repo` outside this fixture.
-// Likewise `blockedReason` is cleared here when a task leaves `lease_conflict`; this is assumed, not confirmed
-// against the engine.
+// Repository ids are opaque (`repo_01`), as in the daemon: events say `repoId`, the snapshot says the repo name,
+// and no event maps one to the other. `blockedReason` is not event-derived: entering `lease_conflict` leaves it
+// null (packages/orchestrator/src/task-pipeline.ts:299), and `task.blocked` does not persist it (line 237).
 //
 // What happens, in seq order (the `marks` export names the moments):
 //   council architecture -> lead review + proposals -> decisions (accept / reject) -> plan, team proposed,
@@ -57,9 +55,11 @@ const PERSONAS: Record<string, { title: string; specialty: string; agent: string
 const TEAM_REVISION: Record<string, { agent: string; effort: string | null }> = { 'test-engineer': { agent: 'claude-sonnet', effort: 'medium' } };
 
 const REPOS = [
-  { name: 'api', path: '/work/api', baseBranch: 'main' },
-  { name: 'web', path: '/work/web', baseBranch: 'main' },
+  { id: 'repo_01', name: 'api', path: '/work/api', baseBranch: 'main' },
+  { id: 'repo_02', name: 'web', path: '/work/web', baseBranch: 'main' },
 ];
+/** The opaque id events use for a repository name. */
+const repoIdOf = (name: string) => REPOS.find((r) => r.name === name)!.id;
 
 const AGENTS: Snapshot['agents'] = [
   { id: 'claude-opus', adapter: 'claude', model: 'claude-opus-5-5', roles: ['supervisor', 'lead', 'worker'], enabled: true, effort: 'high', efforts: ['low', 'medium', 'high'] },
@@ -258,7 +258,7 @@ function buildMission(): void {
   say(plan, 'result', 'LeadPlan: 4 tasks, 4 personas');
   emit('plan.created', { taskCount: TASKS.length, round: 1 });
   mark('planCreated');
-  for (const t of TASKS) emit('task.created', { taskId: t.id, key: t.key, title: t.title, repoId: t.repo, dependsOn: t.dependsOn });
+  for (const t of TASKS) emit('task.created', { taskId: t.id, key: t.key, title: t.title, repoId: repoIdOf(t.repo), dependsOn: t.dependsOn });
   mark('tasksCreated');
   emit('team.proposed', { personas: Object.entries(PERSONAS).map(([id, p]) => ({ id, agent: p.agent, effort: p.effort })), approvalId: 'appr_team1' });
   mark('teamProposed');
@@ -352,8 +352,11 @@ function buildMission(): void {
 
   // --- TASK-2: a question climbs worker -> lead -> supervisor; TASK-3 starts meanwhile ---
   tool(meter1, 'Edit', 'web/src/meter/useLimit.ts');
-  emit('question.asked', { taskId: 'task_meter', questions: ['Should the meter poll the limit or subscribe to a stream?'] });
-  emit('agent.waiting', { agentId: meter1.agentId, taskId: 'task_meter', question: 'Should the meter poll the limit or subscribe to a stream?' });
+  // A blocked worker, as the engine reports it: waiting, the question (BLOCKED-prefixed), then task.blocked.
+  const blockedQuestions = ['BLOCKED: Poll or stream is a design choice.', 'Should the meter poll the limit or subscribe to a stream?'];
+  emit('agent.waiting', { agentId: meter1.agentId, taskId: 'task_meter', question: blockedQuestions.join(' | ') });
+  emit('question.asked', { taskId: 'task_meter', questions: blockedQuestions });
+  emit('task.blocked', { taskId: 'task_meter', reason: 'Poll or stream is a design choice.' });
   mark('workerAsks');
   taskStatus('task_meter', 'running', 'needs_input');
   end(meter1);
@@ -446,7 +449,6 @@ function buildMission(): void {
   end(docs2);
   taskStatus('task_docs', 'running', 'validating');
   emit('file.lease.conflict', { taskId: 'task_docs', pattern: 'web/src/meter/**', heldBy: 'task_meter' });
-  emit('task.blocked', { taskId: 'task_docs', reason: 'web/src/meter/** is leased by TASK-2' });
   taskStatus('task_docs', 'validating', 'lease_conflict');
   mark('leaseConflict');
   const lease = seatSess('ses_lease', LEADS[1]!, 'lead', 'LeadLeaseDecision', 'task_docs');
@@ -491,11 +493,11 @@ function buildMission(): void {
 
   // --- integration: api clean, web with one conflict ---
   runStatus('executing', 'integrating');
-  emit('integration.started', { repoId: 'api', branch: `cockpit/integration/${MISSION_RUN_ID}`, tasks: ['task_rate', 'task_contract'] });
-  emit('integration.completed', { repoId: 'api', branch: `cockpit/integration/${MISSION_RUN_ID}`, passed: true }, { dt: 2500 });
+  emit('integration.started', { repoId: repoIdOf('api'), branch: `cockpit/integration/${MISSION_RUN_ID}`, tasks: ['task_rate', 'task_contract'] });
+  emit('integration.completed', { repoId: repoIdOf('api'), branch: `cockpit/integration/${MISSION_RUN_ID}`, passed: true }, { dt: 2500 });
   for (const id of ['task_rate', 'task_contract']) taskStatus(id, 'approved', 'integrated', 200);
-  emit('integration.started', { repoId: 'web', branch: `cockpit/integration/${MISSION_RUN_ID}`, tasks: ['task_meter', 'task_docs'] });
-  emit('integration.conflict', { repoId: 'web', taskId: 'task_docs', files: ['web/src/meter/README.md'] }, { dt: 2000 });
+  emit('integration.started', { repoId: repoIdOf('web'), branch: `cockpit/integration/${MISSION_RUN_ID}`, tasks: ['task_meter', 'task_docs'] });
+  emit('integration.conflict', { repoId: repoIdOf('web'), taskId: 'task_docs', files: ['web/src/meter/README.md'] }, { dt: 2000 });
   mark('integrationConflict');
   const integ = seatSess('ses_integrate', LEADS[0]!, 'lead', 'LeadIntegrationResult', 'task_docs');
   start(integ);
@@ -503,7 +505,7 @@ function buildMission(): void {
   tool(integ, 'apply_patch', 'web/src/meter/README.md');
   say(integ, 'result', 'LeadIntegrationResult: resolved');
   end(integ);
-  emit('integration.completed', { repoId: 'web', branch: `cockpit/integration/${MISSION_RUN_ID}`, passed: true }, { dt: 2500 });
+  emit('integration.completed', { repoId: repoIdOf('web'), branch: `cockpit/integration/${MISSION_RUN_ID}`, passed: true }, { dt: 2500 });
   for (const id of ['task_meter', 'task_docs']) taskStatus(id, 'approved', 'integrated', 200);
   mark('integrationDone');
 
@@ -531,8 +533,8 @@ function buildMission(): void {
   emit('approval.accepted', { approvalId: 'appr_final', response: null }, { dt: 90_000 });
   mark('approvalAccepted');
   runStatus('awaiting_approval', 'merging');
-  emit('merge.completed', { repoId: 'api', branch: `cockpit/integration/${MISSION_RUN_ID}`, into: 'main' });
-  emit('merge.completed', { repoId: 'web', branch: `cockpit/integration/${MISSION_RUN_ID}`, into: 'main' });
+  emit('merge.completed', { repoId: repoIdOf('api'), branch: `cockpit/integration/${MISSION_RUN_ID}`, into: 'main' });
+  emit('merge.completed', { repoId: repoIdOf('web'), branch: `cockpit/integration/${MISSION_RUN_ID}`, into: 'main' });
   mark('merged');
   runStatus('merging', 'completed');
   emit('run.completed', { outcome: 'approved' });
@@ -655,14 +657,10 @@ export function snapshotAt(upToSeq: number, opts: SnapshotOptions = {}): Snapsho
       case 'task.status_changed': {
         const t = rt.get(d.taskId)!;
         t.status = d.to;
-        if (d.to === 'running' || d.to === 'ready' || d.from === 'lease_conflict') t.blockedReason = null;
         // A task that needs no tests passes validation as skipped.
         if (d.to === 'in_review' && !t.validation && !spec(d.taskId).testCommand) t.validation = { command: null, passed: true, skipped: true, output: '' };
         break;
       }
-      case 'task.blocked':
-        rt.get(d.taskId)!.blockedReason = d.reason;
-        break;
       case 'task.completed':
         rt.get(d.taskId)!.summary = d.summary;
         break;
@@ -802,7 +800,7 @@ export function snapshotAt(upToSeq: number, opts: SnapshotOptions = {}): Snapsho
       const mine = taskViews.filter((t) => t.persona === p.id).map((t) => t.key);
       return { id: p.id, title: PERSONAS[p.id]!.title, specialty: PERSONAS[p.id]!.specialty, agent: p.agent, effort: p.effort, tasks: mine, state: busy.length ? `working on ${busy.join(', ')}` : 'idle' };
     }),
-    repositories: created ? REPOS.map((r) => ({ ...r, integration: integration.get(r.name) ?? null })) : [],
+    repositories: created ? REPOS.map((r) => ({ name: r.name, path: r.path, baseBranch: r.baseBranch, integration: integration.get(r.id) ?? null })) : [],
     tasks: taskViews,
     workers: active.filter((s) => s.role === 'worker').map((s) => ({ agentId: s.agentId, role: s.role, task: s.taskId ? keyOf(s.taskId) : null, since: s.startedAt })),
     conflicts: leaseConflicts.filter((c) => {
