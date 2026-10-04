@@ -40,6 +40,7 @@ Rules:
 - Never run destructive commands, deployments, production or cloud operations, or read secrets.
 - If an important decision is ambiguous, stop and return status "needs_input" with precise questions instead of guessing.
 - If you change executable code, add or update automated tests and run them; report each run in testsRun.
+- Never create symbolic links or junctions to anything outside the current directory. If dependencies are missing, install them here (for Node: "npm ci"; node_modules is ignored by git).
 ${NARRATE}
 ${STRUCTURED}`;
 }

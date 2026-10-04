@@ -1,3 +1,5 @@
+import { lstatSync, readdirSync, rmdirSync, unlinkSync } from 'node:fs';
+import { join } from 'node:path';
 import { spawnProcess } from './platform';
 
 export class GitError extends Error {
@@ -48,9 +50,52 @@ export async function addWorktree(repo: string, path: string, branch: string, ba
   else await git(repo, ['worktree', 'add', '-b', branch, path, base]);
 }
 
+/**
+ * Removes a worktree. Every symbolic link and junction inside it goes first, as a link: on Windows
+ * a forced `git worktree remove` deletes *through* a junction, emptying whatever it points at (an
+ * agent that linked `node_modules` to the main checkout once wiped that checkout's packages). If a
+ * link cannot be removed, the worktree stays on disk rather than risk it.
+ */
 export async function removeWorktree(repo: string, path: string): Promise<void> {
+  const left = unlinkLinks(path);
+  if (left.length) throw new Error(`kept the worktree ${path}: could not remove the link(s) ${left.join(', ')} safely`);
   await git(repo, ['worktree', 'remove', '--force', path], { allowFail: true });
   await git(repo, ['worktree', 'prune'], { allowFail: true });
+}
+
+/** Removes every symbolic link and junction under `dir` without following any; returns those it could not remove. */
+export function unlinkLinks(dir: string): string[] {
+  const left: string[] = [];
+  let names: string[];
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return left; // gone, or not a directory
+  }
+  for (const name of names) {
+    const p = join(dir, name);
+    let st;
+    try {
+      st = lstatSync(p);
+    } catch {
+      continue;
+    }
+    if (st.isSymbolicLink()) {
+      // Node reports a Windows junction as a symbolic link; unlink removes the link, never its target.
+      try {
+        unlinkSync(p);
+      } catch {
+        try {
+          rmdirSync(p);
+        } catch {
+          left.push(p);
+        }
+      }
+    } else if (st.isDirectory()) {
+      left.push(...unlinkLinks(p));
+    }
+  }
+  return left;
 }
 
 /** Stage everything and commit if there is anything to commit. Returns the new HEAD or null. */
