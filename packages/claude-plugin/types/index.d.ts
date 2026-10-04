@@ -128,6 +128,10 @@ export type CockpitUi = {
   failure: { text: string; request: string; uninitializedRepo: string | null } | null
   /** The council and the leads picked for the next mission, each at its own effort; null keeps the configured default. */
   crew: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] } | null
+  /** The next mission's brief (Markdown), its extra flags, and whether it was opened in an editor (then the file wins). */
+  draft: string
+  draftFlags: string
+  draftInEditor: boolean
   /** Session followed in the Minds tab; null follows the most recently active one. */
   mind: string | null
   /** Rows opened to show what their one line cuts off (tasks, events, Minds entries). */

@@ -22,6 +22,7 @@ async function boot($: any, on: any, snap: Snap, opts: { blit?: (key: string) =>
   const clock = mock.clock(on)
   const st = { snap: snapJson(snap), blits: [] as string[], procs: [] as string[][], proc: { exitCode: 0, stdout: 'ok', stderr: '' } }
   on('fs.read', async () => ({ value: st.snap }))
+  on('fs.write', async () => ({ value: undefined }) as never)
   mock.env(on, { COCKPIT_DATA_DIR: '/data', ...opts.env })
   on('command.register', async () => ({ value: undefined }) as never)
   on('session.start', async (_: unknown, e: { cwd: string }) => ({ cwd: e.cwd }))
@@ -121,6 +122,8 @@ test('hotkeys s n a c r e i m 1-4 j k h l p t x each stay bound to their action'
   ui = await mountTerminal($, 100)
   await ui.press({ key: 'new' })
   await ui.input({ key: 'compose-0', text: 'add a readme' })
+  expect((await ui.find({ key: 'brief-start' }))?.props.hotkey).toBe('s')
+  await ui.press({ key: 'brief-start' })
   expect((await ui.find({ key: 'init-commit' }))?.props.hotkey).toBe('i')
   expect((await ui.find({ key: 'edit-failed' }))?.props.hotkey).toBe('e')
   st.procs.length = 0

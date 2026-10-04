@@ -14,7 +14,7 @@ import { createTweens, type Tweens } from './tween'
 
 const PANE = 'agent-cockpit'
 const EMPTY: CockpitView = { snapshot: null, error: null, message: null }
-const UI0: CockpitUi = { selectedRun: null, tab: 'live', composing: null, nonce: 0, busy: null, report: null, failure: null, crew: null, mind: null, open: [], focus: 'tasks', task: null, scroll: {} }
+const UI0: CockpitUi = { selectedRun: null, tab: 'live', composing: null, nonce: 0, busy: null, report: null, failure: null, crew: null, draft: '', draftFlags: '', draftInEditor: false, mind: null, open: [], focus: 'tasks', task: null, scroll: {} }
 const view = atom({ plugin: 'agent-cockpit', key: 'view' } as const, EMPTY)
 const ui = atom({ plugin: 'agent-cockpit', key: 'ui' } as const, UI0)
 const tickAtom = atom({ plugin: 'agent-cockpit', key: 'tick' } as const, 0)
@@ -103,7 +103,7 @@ function wrapWords(text: string, w: number): string[] {
 }
 
 // Boxes that scroll on their own under the wheel: where the last render drew them, in the body's rows.
-type Region = { id: 'centre' | 'tasks' | 'output'; x0: number; x1: number; y0: number; y1: number; max: number }
+type Region = { id: 'centre' | 'tasks' | 'output' | 'brief'; x0: number; x1: number; y0: number; y1: number; max: number }
 let regions: Region[] = []
 let paneOffset = 0
 let taskKeys: string[] = []
@@ -116,6 +116,26 @@ const wrapped = (text: string, width: number) => text.split('\n').reduce((a, l) 
  * A Markdown element holds at most 10000 characters (a longer one makes the engine refuse the
  * whole pane): split at blank lines outside code fences into pieces under the cap.
  */
+/** Markdown read for a terminal: headings, lists, tables and code keep their shape; emphasis markers go. */
+type MdRow = { text: string; color?: string; bold?: boolean; italic?: boolean; indent?: number }
+function mdLines(md: string, w: number): MdRow[] {
+  const para = (text: string, style: Omit<MdRow, 'text'> = {}): MdRow[] => wrapWords(text, w - (style.indent ?? 0)).map(t => ({ ...style, text: t }))
+  const out: MdRow[] = []
+  let code = false
+  for (const raw of md.split('\n')) {
+    if (/^\s*(```|~~~)/.test(raw)) { code = !code; continue }
+    if (code) { out.push({ text: raw.replace(/\t/g, '  '), color: C.mute }); continue }
+    const line = raw.replace(/\*\*|__|`/g, '')
+    const h = /^(#{1,6})\s+(.*)$/.exec(line)
+    if (h) { if (out.length) out.push({ text: '' }); out.push(...para(h[2]!.toUpperCase(), { color: C.accent, bold: true })); continue }
+    if (/^\s*\|/.test(line)) { if (!/^\s*\|[\s:|-]+\|\s*$/.test(line)) out.push({ text: line.trim(), color: C.text }); continue }
+    const li = /^(\s*)([-*+]|\d+\.)\s+(.*)$/.exec(line)
+    if (li) { const ind = Math.min(6, li[1]!.length); const [first, ...rest] = wrapWords(li[3]!, w - ind - 2); out.push({ text: `• ${first ?? ''}`, indent: ind }, ...rest.map(t => ({ text: t, indent: ind + 2 }))); continue }
+    out.push(...(line.trim() ? para(line.trim()) : [{ text: '' }]))
+  }
+  return out
+}
+
 function markdownChunks(text: string, max = 9000): string[] {
   const out: string[] = []
   let cur = ''
@@ -282,8 +302,71 @@ async function cli($: EngineInterface, args: string[], timeoutMs = 60_000) {
   return { ok: res.exitCode === 0, text }
 }
 
+// Claude Code reports its own subscription windows to plugins: the same account the daemon's Claude calls use.
+let sessionLimits: { name: string; usedPercent: number; resetsAt: string | null }[] = []
+let limitsReadAt = 0
+const WINDOW_NAME: Record<string, string> = { five_hour: '5h', seven_day: '7d', spend_limit: 'spend' }
+async function takeSessionLimits($: EngineInterface, rateLimits: { kind: string; percentUsed: number; resetsAt?: string }[] | undefined) {
+  const next = (rateLimits ?? []).map(r => ({ name: WINDOW_NAME[r.kind] ?? r.kind.replace(/_/g, ' '), usedPercent: r.percentUsed, resetsAt: r.resetsAt ?? null }))
+  if (!next.length || JSON.stringify(next) === JSON.stringify(sessionLimits)) return
+  sessionLimits = next
+  await update($, tickAtom, n => n + 1) // redraw with the new figures
+}
+/** Pulled at most every 10 s where the host offers it; `session.measure` pushes every move. */
+async function readSessionLimits($: EngineInterface, wall: number) {
+  if (wall >= limitsReadAt && wall - limitsReadAt < 10_000) return
+  limitsReadAt = wall
+  try {
+    await takeSessionLimits($, (await $.session.usage()).rateLimits)
+  } catch {
+    /* a host without usage figures */
+  }
+}
+
+/** The next mission's brief on disk: what an editor opens and the CLI reads. */
+const draftFile = async ($: EngineInterface) => `${(await locate($)).dataDir}/drafts/mission.md`
+const BRIEF_TEMPLATE = '# Mission title\n\n## Goal\n\nWhat should the team build, and why?\n\n## Requirements\n\n- \n\n## Acceptance\n\n- \n\n## Notes\n\n'
+
+async function openDraft($: EngineInterface) {
+  const file = await draftFile($)
+  const u = await readUi($)
+  await $.fs.write(file, u.draft.trim() ? `${u.draft.replace(/\s+$/, '')}\n` : BRIEF_TEMPLATE)
+  const editor = (await $.env.get('COCKPIT_EDITOR')) ?? 'code'
+  const win = (await $.env.get('OS')) === 'Windows_NT'
+  let res = await $.process.run(win ? ['cmd', '/c', editor, file] : [editor, file], { timeoutMs: 15_000 }).catch(() => null)
+  if (!res || res.exitCode !== 0) res = await $.process.run(win ? ['cmd', '/c', 'start', '', file] : ['xdg-open', file], { timeoutMs: 15_000 }).catch(() => null)
+  await patchUi($, { draftInEditor: true })
+  await say($, res && res.exitCode === 0 ? `Opened ${file} — write the brief, save, then press l (or start: the saved file is used).` : `Could not open an editor; edit ${file} and press l.`)
+}
+
+async function loadDraft($: EngineInterface) {
+  try {
+    const text = await $.fs.read(await draftFile($))
+    await patchUi($, x => ({ draft: text.replace(/\s+$/, ''), scroll: { ...x.scroll, brief: 0 } }))
+    return text
+  } catch {
+    await say($, 'No saved brief yet.')
+    return null
+  }
+}
+
+async function launchMission($: EngineInterface) {
+  const u0 = await readUi($)
+  if (u0.draftInEditor) await loadDraft($)
+  const u = await readUi($)
+  const brief = u.draft.trim()
+  if (!brief || brief === BRIEF_TEMPLATE.trim()) return void say($, 'The brief is empty: write what the team should build first.')
+  const file = await draftFile($)
+  await $.fs.write(file, `${brief}\n`)
+  const ok = await startRun($, u.draftFlags, file)
+  // Refused: back to the mission so its failure card (and fix) shows; the brief is kept for a retry.
+  if (ok) await patchUi($, x => ({ composing: null, draft: '', draftFlags: '', draftInEditor: false, nonce: x.nonce + 1 }))
+  else await patchUi($, { composing: null })
+}
+
 async function refresh($: EngineInterface) {
   const { dataDir } = await locate($)
+  void readSessionLimits($, await $.clock.now())
   const l = await life
   if (l?.open) l.wall = await $.clock.now(), l.clock.refresh() // 1 Hz poll: re-anchor elapsed time
   let snapshot: CockpitSnapshot | null = null
@@ -359,19 +442,19 @@ async function gitRoot($: EngineInterface, dir: string) {
   return res.exitCode === 0 && res.stdout.trim() ? res.stdout.trim() : dir
 }
 
-async function startRun($: EngineInterface, text: string) {
+async function startRun($: EngineInterface, text: string, file?: string) {
   const rest = tokenize(text)
   const flagAt = rest.findIndex(t => t.startsWith('--'))
-  const request = (flagAt === -1 ? rest : rest.slice(0, flagAt)).join(' ')
-  const flags = flagAt === -1 ? [] : rest.slice(flagAt)
-  if (!request) return 'Usage: /cockpit run <request> [--test "<cmd>"] [--repo <path> ...]'
+  const request = file ? '' : (flagAt === -1 ? rest : rest.slice(0, flagAt)).join(' ')
+  const flags = file ? [...rest, '--file', file] : flagAt === -1 ? [] : rest.slice(flagAt)
+  if (!request && !file) return 'Usage: /cockpit run <request> [--test "<cmd>"] [--repo <path> ...]'
   // Default target: the repository the session sits in, at its root.
   const repo = rest.includes('--repo') ? [] : ['--repo', await gitRoot($, await $.session.cwd())]
   // The council and leads picked in the composer, unless the request names its own.
   const { crew } = await readUi($)
   const own = ['--council', '--leads', '--supervisor', '--lead'].some(f => rest.includes(f))
   const picked = crew && !own ? ['--council', crewArg(crew.council), '--leads', crewArg(crew.leads)] : []
-  const res = await busy($, 'launching run…', () => cli($, ['run', request, ...repo, ...flags, ...picked]))
+  const res = await busy($, 'launching run…', () => cli($, ['run', ...(request ? [request] : []), ...repo, ...flags, ...picked]))
   if (res.ok) {
     await say($, res.text)
     await patchUi($, { selectedRun: null, tab: 'live', failure: null })
@@ -380,10 +463,10 @@ async function startRun($: EngineInterface, text: string) {
     const reason = detail.find(l => /error|has no commits|not a git|usage/i.test(l)) ?? detail[0] ?? 'the orchestrator refused the run'
     const empty = /^(?:error:\s*)?(.+?) has no commits yet/i.exec(reason)
     await say($, null)
-    await patchUi($, { failure: { text: reason.replace(/^error:\s*/i, ''), request: text, uninitializedRepo: empty ? empty[1]! : null } })
+    await patchUi($, { failure: { text: reason.replace(/^error:\s*/i, ''), request: file ? '' : text, uninitializedRepo: empty ? empty[1]! : null } })
   }
   await refresh($)
-  return res.text
+  return file ? res.ok : res.text
 }
 
 /** Seats as the CLI takes them: agent[:effort][@area], comma-separated. */
@@ -416,7 +499,8 @@ async function initialCommitAndRetry($: EngineInterface) {
   })
   if (ok) return void patchUi($, { failure: { ...f, text: ok, uninitializedRepo: null } })
   await patchUi($, { failure: null })
-  await startRun($, f.request)
+  if (f.request) await startRun($, f.request)
+  else await launchMission($)
 }
 
 async function daemon($: EngineInterface, start: boolean) {
@@ -487,7 +571,7 @@ export const register: Register = on => {
         return { text: await daemon($, false) }
       case 'run': {
         await openPane($)
-        return { text: await startRun($, e.args.replace(/^\s*run\s*/, '')) }
+        return { text: String(await startRun($, e.args.replace(/^\s*run\s*/, ''))) }
       }
       case 'status':
         return { text: (await cli($, ['status'])).text }
@@ -512,6 +596,12 @@ export const register: Register = on => {
     }
   })
 
+  // Claude Code pushes its rate-limit windows when one moves a whole point: the cockpit's Claude figures.
+  on('session.measure', async ($, e, next) => {
+    await takeSessionLimits($, e.rateLimits)
+    return next(e)
+  })
+
   on('ui.scroll', async ($, e, next) => {
     const p = e.pointer
     if (e.requestId !== PANE || !p) return next(e)
@@ -525,7 +615,8 @@ export const register: Register = on => {
       if (key) await patchUi($, { task: key, focus: 'tasks' })
       return {}
     }
-    await patchUi($, x => ({ scroll: { ...x.scroll, [r.id]: Math.max(0, Math.min(r.max, (x.scroll[r.id] ?? 0) + e.by * 3)) } }))
+    const dir = r.id === 'brief' ? -1 : 1 // the brief counts from its end
+    await patchUi($, x => ({ scroll: { ...x.scroll, [r.id]: Math.max(0, Math.min(r.max, (x.scroll[r.id] ?? 0) + dir * e.by * 3)) } }))
     return {}
   })
 
@@ -569,6 +660,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const cols = Math.max(40, e.props.bodyColumns ?? e.viewport?.columns ?? 100)
     const rows = Math.max(e.props.scroll?.bodyRows ?? 0, (e.viewport?.rows ?? 40) - 8)
     const online = !!s && s.daemon.port !== null
+    const limits: CockpitLimits = { ...(s?.limits ?? {}), ...(sessionLimits.length ? { claude: { windows: sessionLimits, at: '' } } : {}) }
     const specs = new Map<string, RasterSpec>()
     regions = []
     paneOffset = e.props.scroll?.offset ?? 0
@@ -732,30 +824,78 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       )
     }
     const pickCrew = (crew: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }) => void patchUi($, { crew })
-    const COMPOSER_H = 8
 
-    const composer = (
-      <Box flexDirection="column" borderStyle="round" borderColor={pulse(n, C.accent, C.violet, 0.2)} paddingX={1}>
-        <Title label="✦ NEW MISSION" color={C.accent} right={<Text color={C.dim}>enter to launch</Text>} />
-        <Input
-          key={`compose-${u.nonce}`}
-          label="› "
-          placeholder='What should the team build? (optional: --test "npm test" --repo ../other)'
-          submitLabel="launch"
-          autoFocus
-          onSubmit={(text: string) => {
-            if (!text.trim()) return
-            void patchUi($, x => ({ composing: null, nonce: x.nonce + 1 })).then(() => startRun($, text))
-          }}
-        />
-        {s ? <CrewRows crew={nextCrew} keys={false} onChange={pickCrew} /> : null}
-        <Text wrap="truncate-end"><Text color={C.green} bold>◈ TEAM      </Text><Text color={C.dim}>the head lead names the workers (backend-dev, tester, …) · you approve the team before any starts</Text></Text>
-        <Box>
-          <Text color={C.dim}>★ chairs / leads · press a model, ⚡ effort or @ area to change it · runs in this folder unless --repo · </Text>
-          <Button plain dimColor key="cancel-run" label="cancel" onPress={() => void patchUi($, { composing: null })} />
-        </Box>
-      </Box>
-    )
+    // ── NEW MISSION: its own screen. A brief in Markdown (typed here line by line, or written in an editor),
+    // the crew that will run it, and the flags; s starts it. ──
+
+    if (u.composing?.kind === 'run' && s && online) {
+      const briefW = Math.max(20, cols - 6)
+      const brief = u.draft
+      const briefRows = brief.trim() ? mdLines(brief, briefW) : []
+      const lines = brief ? brief.split('\n').length : 0
+      const briefH = Math.max(6, rows - 19)
+      const fromEnd = Math.min(u.scroll.brief ?? 0, Math.max(0, briefRows.length - briefH))
+      const end = briefRows.length - fromEnd
+      const start = Math.max(0, end - briefH)
+      regions = [{ id: 'brief', x0: 0, x1: cols, y0: 4, y1: 4 + briefH, max: Math.max(0, briefRows.length - briefH) }]
+      const append = (line: string) => void patchUi($, x => ({ draft: x.draft ? `${x.draft}\n${line}` : line, nonce: x.nonce + 1, scroll: { ...x.scroll, brief: 0 } }))
+      const undo = () => void patchUi($, x => ({ draft: x.draft.split('\n').slice(0, -1).join('\n') }))
+      const target = s.runs[0]?.repositories[0]?.name
+      return out(
+        <Box flexDirection="column">
+          {hero}
+          <Box flexDirection="column" borderStyle="round" borderColor={pulse(n, C.accent, C.violet, 0.2)} paddingX={1}>
+            <Box justifyContent="space-between">
+              <Text><Text color={C.accent} bold>✦ NEW MISSION</Text><Text color={C.dim}>  brief · markdown · {lines} lines{u.draftInEditor ? ' · open in your editor' : ''}</Text></Text>
+              <Box gap={2}>
+                <Button plain hotkey="e" key="brief-edit" label="e · editor" onPress={() => void openDraft($)} />
+                <Button plain hotkey="l" key="brief-load" label="l · load" onPress={() => void loadDraft($)} />
+                <Button plain dimColor hotkey="u" key="brief-undo" label="u · undo line" onPress={undo} />
+                <Button plain dimColor key="brief-clear" label="clear" onPress={() => void patchUi($, { draft: '', draftInEditor: false })} />
+              </Box>
+            </Box>
+            <Box flexDirection="column" height={briefH} overflow="hidden">
+              {briefRows.length
+                ? briefRows.slice(start, end).map(r => <Text wrap="truncate-end" color={r.color ?? C.text} bold={r.bold} italic={r.italic}>{' '.repeat(r.indent ?? 0)}{r.text || ' '}</Text>)
+                : [
+                    <Text color={C.dim}>Describe the mission in Markdown: the goal, requirements, constraints, acceptance criteria.</Text>,
+                    <Text color={C.dim}>Type below — enter adds a line, an empty enter a paragraph break — or press e to write it in your editor.</Text>,
+                  ]}
+            </Box>
+            <Text color={C.dim}>{start > 0 ? `↑ ${start} more above` : ' '}{fromEnd > 0 ? `   ↓ ${fromEnd} more below` : ''}</Text>
+            <Input
+              key={`compose-${u.nonce}`}
+              label="› "
+              placeholder={lines ? 'next line… (enter adds it)' : '# Mission title'}
+              submitLabel="add line"
+              autoFocus
+              onSubmit={(text: string) => append(text)}
+            />
+          </Box>
+          <Box flexDirection="column" borderStyle="round" borderColor={C.border} paddingX={1}>
+            <Title label="CREW" right={<Text color={C.dim}>★ chairs / is the head lead · press a model, ⚡ effort, @ area · + add · × remove</Text>} />
+            <CrewRows crew={nextCrew} keys onChange={pickCrew} />
+            <Text wrap="truncate-end"><Text color={C.green} bold>◈ TEAM      </Text><Text color={C.dim}>the head lead names the workers (backend-dev, tester, …) · you approve the team before any starts</Text></Text>
+          </Box>
+          <Box flexDirection="column" borderStyle="round" borderColor={C.border} paddingX={1}>
+            <Input
+              key={`flags-${u.nonce}`}
+              label="options › "
+              value={u.draftFlags}
+              placeholder={`--test "npm test"  --repo ../other  (default: ${target ?? 'this folder'})`}
+              submitLabel="keep"
+              onInput={(t: string) => void patchUi($, { draftFlags: t })}
+              onSubmit={(t: string) => void patchUi($, { draftFlags: t })}
+            />
+          </Box>
+          <Box paddingX={1} gap={2}>
+            <Button variant="primary" hotkey="s" key="brief-start" label="  s · Start mission  " onPress={() => void launchMission($)} />
+            <Button plain dimColor hotkey="q" key="cancel-run" label="q · back (the brief is kept)" onPress={() => void patchUi($, { composing: null })} />
+            {u.busy ? <Text color={C.cyan}>{SPIN[n % SPIN.length]} {u.busy}</Text> : v.message ? <Text color={C.mute} wrap="truncate-end">↳ {firstLine(v.message)}</Text> : null}
+          </Box>
+        </Box>,
+      )
+    }
 
     // ── offline ──
 
@@ -783,7 +923,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           {hero}
           <Box flexDirection="column" paddingY={1} paddingX={1}>
             {failureCard}
-            {u.composing?.kind === 'run' ? composer : (
+            {(
               <Box flexDirection="column" alignItems="center">
                 <Text color={C.text} bold>Ready for a mission.</Text>
                 <Text color={C.dim}>One request in — an engineering org of agents takes it from there.</Text>
@@ -840,7 +980,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
 
     // The tightest window left per subscription, for the header.
     const headLimits = (['claude', 'codex'] as const)
-      .map(p => [p, s.limits?.[p]?.windows ?? []] as const)
+      .map(p => [p, limits[p]?.windows ?? []] as const)
       .filter(([, w]) => w.length)
       .map(([p, w]) => `${p} ${Math.round(Math.max(0, 100 - Math.max(...w.map(x => x.usedPercent))))}%`)
       .join(' · ')
@@ -1068,7 +1208,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       ? <CrewRows crew={liveCrew} states={seatStates} keys onChange={next => void setSeats($, run.id, next)} />
       : <CrewRows crew={nextCrew} keys onChange={pickCrew} />
     // Subscription limits: what is left of each window, the tightest one first.
-    const limitsOf = s.limits ?? {}
+    const limitsOf = limits
     const limitRows = (Object.entries(limitsOf) as [string, NonNullable<CockpitLimits['claude']>][]).flatMap(([provider, l]) => l.windows.map(w => ({ provider, ...w, left: Math.max(0, 100 - w.usedPercent) })))
     const leftTone = (left: number) => (left > 50 ? C.green : left > 20 ? C.yellow : C.red)
     const tightest = (provider: string) => {
@@ -1186,7 +1326,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
 
     // ── body height: what the header, the strips and the footer leave ──
 
-    const chrome = 1 + 2 + 1 + 2 + approvalRows + (u.failure ? 5 : 0) + (u.composing?.kind === 'run' ? COMPOSER_H : 0) + (run.error ? 1 : 0)
+    const chrome = 1 + 2 + 1 + 2 + approvalRows + (u.failure ? 5 : 0) + (run.error ? 1 : 0)
     const agentsStripH = wide ? 0 : 4 + (agentRows.length > Math.max(1, Math.floor((cols - 4) / 30)) ? 2 : 0) + (tel.byAgent?.length ?? 0) + (limitsLine ? 1 : 0)
     const missionsStripH = wide ? 0 : 3 + Math.ceil(missionRows.length / Math.max(1, Math.floor((cols - 4) / 32)))
     const bodyH = Math.max(12, rows - chrome - agentsStripH - missionsStripH)
@@ -1599,23 +1739,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const lineW = Math.max(20, tasksIn - 1)
     const para = (text: string, style: Omit<Row, 'text'> = {}): Row[] => wrapWords(text, lineW - (style.indent ?? 0)).map(t => ({ ...style, text: t }))
     const RowLine = ({ r }: { r: Row }) => <Text wrap="truncate-end" color={r.color ?? C.text} bold={r.bold} italic={r.italic}>{' '.repeat(r.indent ?? 0)}{r.text || ' '}</Text>
-    // Markdown, read for a terminal: headings, lists, tables and code keep their shape; emphasis markers go.
-    const mdRows = (md: string): Row[] => {
-      const out: Row[] = []
-      let code = false
-      for (const raw of md.split('\n')) {
-        if (/^\s*(```|~~~)/.test(raw)) { code = !code; continue }
-        if (code) { out.push({ text: raw.replace(/\t/g, '  '), color: C.mute }); continue }
-        const line = raw.replace(/\*\*|__|`/g, '')
-        const h = /^(#{1,6})\s+(.*)$/.exec(line)
-        if (h) { if (out.length) out.push({ text: '' }); out.push(...para(h[2]!.toUpperCase(), { color: C.accent, bold: true })); continue }
-        if (/^\s*\|/.test(line)) { if (!/^\s*\|[\s:|-]+\|\s*$/.test(line)) out.push({ text: line.trim(), color: C.text }); continue }
-        const li = /^(\s*)([-*+]|\d+\.)\s+(.*)$/.exec(line)
-        if (li) { const ind = Math.min(6, li[1]!.length); const [first, ...rest] = wrapWords(li[3]!, lineW - ind - 2); out.push({ text: `• ${first}`, indent: ind }, ...rest.map(t => ({ text: t, indent: ind + 2 }))); continue }
-        out.push(...(line.trim() ? para(line.trim()) : [{ text: '' }]))
-      }
-      return out
-    }
+    const mdRows = (md: string): Row[] => mdLines(md, lineW)
     const taskRows = (t: CockpitTask): Row[] => {
       const d = t.detail
       const rows: Row[] = [
@@ -1745,7 +1869,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     )
 
     if (sized) {
-      const bodyTop = 1 + (run.error ? 1 : 0) + (u.failure ? 5 : 0) + approvalRows + (u.composing?.kind === 'run' ? COMPOSER_H : 0)
+      const bodyTop = 1 + (run.error ? 1 : 0) + (u.failure ? 5 : 0) + approvalRows
       const right0 = agentsW + tasksW
       regions = [
         { id: 'centre', x0: agentsW, x1: right0, y0: bodyTop, y1: bodyTop + topH, max: centreMax },
@@ -1888,7 +2012,6 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         {run.error ? <Box paddingX={1}><Text color={C.red} wrap="truncate-end">✗ {run.error}</Text></Box> : null}
         {failureCard}
         {approvals.map(a => <ApprovalCard a={a} />)}
-        {u.composing?.kind === 'run' ? composer : null}
         {body}
         {footer}
       </Box>

@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { openSync, mkdirSync } from 'node:fs';
+import { openSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { effortLevels, loadConfig, type CockpitConfig } from '@cockpit/core';
@@ -16,7 +16,7 @@ const USAGE = `cockpit - hierarchical multi-agent coding cockpit
   cockpit daemon [--detach]                 start the orchestrator service
   cockpit stop                              stop the orchestrator service
   cockpit doctor                            check local Claude Code / Codex / git integration
-  cockpit run "<request>" --repo <path> [--test "<cmd>"] [--base <branch>] [--repo ...] [--project <name>]
+  cockpit run "<request>" | --file <brief.md>  --repo <path> [--test "<cmd>"] [--base <branch>] [--repo ...] [--project <name>]
               [--supervisor <agent>] [--lead <agent>] [--effort [<role>:]<agent>=<level> ...] [--follow]
               [--council <agent>[:<effort>],...] [--leads <agent>[:<effort>][@<area>],...]
                                             several supervisors (the first chairs) / leads (the first is the head)
@@ -184,7 +184,8 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       return;
     }
     case 'run': {
-      const request = rest.join(' ');
+      const file = args.flags.get('file')?.[0];
+      const request = file ? readFileSync(resolve(file), 'utf8').trim() : rest.join(' ');
       const repoPaths = args.flags.get('repo') ?? [];
       if (!request || !repoPaths.length) throw new Error('usage: cockpit run "<request>" --repo <path> [--test "<cmd>"]');
       const repos = repoPaths.map((p, i) => ({

@@ -44,6 +44,7 @@ for (const [name, snap] of [['offline', OFFLINE], ['live', LIVE]] as const) {
 
 test('a refused launch shows a failure card with the fix', async ($, on) => {
   on('fs.read', async () => ({ value: LIVE }))
+  on('fs.write', async () => ({ value: undefined }) as never)
   on('process.run', async () => ({ value: { exitCode: 1, stdout: '', stderr: 'error: /repo has no commits yet; commit something first' } }) as never)
   mock.clock(on)
   mock.env(on, { COCKPIT_DATA_DIR: '/data' })
@@ -56,6 +57,7 @@ test('a refused launch shows a failure card with the fix', async ($, on) => {
   const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(100) })
   await ui.press({ key: 'new' })
   await ui.input({ key: 'compose-0', text: 'add a readme' })
+  await ui.press({ key: 'brief-start' })
   expect(await ui.find({ key: 'init-commit' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /has no commits yet/ })).toBeDefined()
   await ui.press({ key: 'dismiss-failure' })
@@ -82,9 +84,12 @@ test('the mission form takes a council and leads at their own efforts; a live ru
   ]
   r.tasks[1].persona = 'backend-dev'
   snap.pendingApprovals = [{ id: 'apr_team', runId: r.id, kind: 'team', operation: null, summary: 'Team for round 1', text: 'Proposed team' }]
-  snap.limits = { claude: { windows: [{ name: '5h', usedPercent: 14, resetsAt: null }, { name: '7d', usedPercent: 40, resetsAt: null }], at: 'now' }, codex: { windows: [{ name: '5h', usedPercent: 0, resetsAt: null }], at: 'now' } }
+  // Codex from the daemon; Claude straight from this Claude Code session
+  snap.limits = { codex: { windows: [{ name: '5h', usedPercent: 0, resetsAt: null }], at: 'now' } }
   const calls: string[][] = []
+  const writes: [string, string][] = []
   on('fs.read', async () => ({ value: JSON.stringify(snap) }))
+  on('fs.write', async (_, e) => (writes.push([(e as unknown as { path: string }).path, (e as unknown as { text: string }).text]), { value: undefined }) as never)
   on('process.run', async (_, e) => {
     calls.push([...(e as unknown as { argv: string[] }).argv])
     return { value: { exitCode: 0, stdout: 'ok', stderr: '' } } as never
@@ -94,6 +99,7 @@ test('the mission form takes a council and leads at their own efforts; a live ru
   on('command.register', async () => ({ value: undefined }) as never)
   on('session.start', async (_, e) => ({ cwd: e.cwd }))
   on('session.cwd', async () => ({ value: '/repo' }) as never)
+  on('session.measure', async (_, e) => ({ changed: (e as { changed: string[] }).changed }) as never) // the engine's echo
   on('ui.status', async () => ({ value: undefined }) as never)
   on('ui.toast', async () => ({ value: undefined }) as never)
   await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
@@ -101,6 +107,8 @@ test('the mission form takes a council and leads at their own efforts; a live ru
   const last = (cmd: string) => [...calls].reverse().find(c => c.includes(cmd))!
 
   // what is left of each subscription, the tightest window per provider in the header
+  await ($ as any).session.measure({ context: {}, rateLimits: [{ kind: 'five_hour', percentUsed: 14 }, { kind: 'seven_day', percentUsed: 40 }], changed: ['rateLimits'] })
+  await ui.advance(500)
   expect(await ui.find({ type: 'Text', text: /claude 7d.*60%/ })).toBeDefined()
   // the team card: personas by name, with their models and efforts, editable before approving
   expect(await ui.find({ key: 'approve-apr_team' })).toBeDefined()
@@ -128,8 +136,17 @@ test('the mission form takes a council and leads at their own efforts; a live ru
   await ui.press({ key: 'area-1' }) // -> frontend
   await ui.press({ key: 'add-council' }) // + codex
   await ui.press({ key: 'effort-council-1' }) // default -> minimal
-  await ui.input({ key: 'compose-0', text: 'add a readme' })
+  // a long brief, line by line; it reaches the CLI as a file
+  await ui.input({ key: 'compose-0', text: '# Readme' })
+  await ui.input({ key: 'compose-1', text: '' })
+  await ui.input({ key: 'compose-2', text: '- explain the cockpit' })
+  expect(await ui.find({ type: 'Text', text: /README/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /• explain the cockpit/ })).toBeDefined()
+  await ui.press({ key: 'brief-start' })
+  expect(writes.at(-1)![0]).toMatch(/drafts[\\/]mission\.md$/)
+  expect(writes.at(-1)![1]).toBe('# Readme\n\n- explain the cockpit\n')
   const run = last('run')
+  expect(run.slice(run.indexOf('--file'), run.indexOf('--file') + 2)).toEqual(['--file', '/data/drafts/mission.md'])
   expect(run.slice(run.indexOf('--council'), run.indexOf('--council') + 2)).toEqual(['--council', 'opus,codex:minimal'])
   expect(run.slice(run.indexOf('--leads'), run.indexOf('--leads') + 2)).toEqual(['--leads', 'codex,opus:low@frontend'])
   expect(run.includes('--supervisor')).toBe(false)

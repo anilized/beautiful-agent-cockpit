@@ -121,9 +121,13 @@ carries in its fragment (never sent to a server or logged) and that allows GETs 
 You seat a council of Supervisors and one or more Leads; the head Lead staffs the workers, and you
 approve the team before any of them starts.
 
-- **Per mission:** the NEW MISSION form lists the **council** and the **leads**: press a model to
-  change it, `⚡` for its effort, `@` for a lead's area (backend, frontend, tests, …); `+ add` seats
-  another, `×` removes one. The first of each list (★) chairs the council / is the head lead. From the
+- **Per mission:** `n` opens the NEW MISSION screen. The **brief** is Markdown of any length: type it
+  line by line (enter adds a line, an empty one a paragraph break), or press `e` to write it in your
+  editor (`COCKPIT_EDITOR`, default VS Code; the file is `<dataDir>/drafts/mission.md`) and `l` to
+  load it back. Below it the **council** and the **leads**: press a model to change it, `⚡` for its
+  effort, `@` for a lead's area (backend, frontend, tests, …); `+ add` seats another, `×` removes one.
+  Options take `--test` / `--repo`; `s` starts the mission (the brief goes to `cockpit run --file`),
+  `q` goes back and keeps the brief. The first of each list (★) chairs the council / is the head lead. From the
   CLI: `cockpit run "..." --council opus:high,codex:low --leads codex:medium@backend,sonnet:low@frontend`.
   Unset, the run takes `hierarchy` from `config/agents.yaml` (`--supervisor` / `--lead` still work).
 - **The council:** the chair writes the architecture; the other members review it in parallel and
@@ -144,7 +148,8 @@ approve the team before any of them starts.
   call already in flight finishes where it started.
 - **Who may sit where:** an agent takes a seat only if the role is in its `roles` list in `agents.yaml`
   (`cockpit agents` lists them); workers come from the enabled `worker` agents.
-- **Subscription limits:** Claude Code reports its five-hour and weekly windows on every call;
+- **Subscription limits:** the cockpit takes Claude's five-hour and weekly windows from the Claude
+  Code session it runs in (pushed after every turn), and the daemon's Claude calls report them too;
   Codex's come from its own session logs (`~/.codex/sessions`), re-read every minute. The latest
   is kept in `<dataDir>/limits.json`, so the cockpit shows them before the first call of a day.
 
