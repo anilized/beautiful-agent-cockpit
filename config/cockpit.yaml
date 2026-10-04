@@ -2,12 +2,14 @@
 # dataDir: ~/.agent-cockpit           # SQLite DB, worktrees, traces, snapshot (env COCKPIT_DATA_DIR)
 maxParallelTasks: 4
 review:
-  maxIterations: 3                   # Worker -> Codex review loop before escalating to Opus
+  maxIterations: 3                   # worker -> lead review loop before escalating to the council
 decisions:
-  maxRounds: 2                       # Codex <-> Opus proposal rounds before planning
-  duringTasks: defer                 # defer: Opus rules on review proposals once, at final validation; immediate: a call per review
+  maxRounds: 2                       # lead <-> council proposal rounds before planning
+  duringTasks: defer                 # defer: the council rules on review proposals once, at final validation; immediate: a call per review
 validation:
-  maxRevisions: 1                    # Opus "revise" rounds before presenting to the human
+  maxRevisions: 1                    # council "revise" rounds before presenting to the human
+team:
+  approval: true                     # the head lead's worker team waits for your approval before any worker starts
 agentTimeoutMs: 2700000
 testTimeoutMs: 900000
 finalMerge: merge                    # merge | branch (leave the integration branch for the human)

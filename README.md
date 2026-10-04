@@ -1,295 +1,401 @@
 # beautiful-agent-cockpit
 
-A local-first, hierarchical multi-agent software engineering system hosted in Claude Code,
-with a live command-center pane in the terminal and a telemetry dashboard in the browser.
-One high-level request goes in; an event-driven workflow engine runs an engineering
-organization whose compute nodes are AI agents:
+**Run a whole engineering team of AI agents from Claude Code — and watch every one of them think.**
 
+You describe a mission. A council of supervisor models designs the architecture, lead models
+plan the work and staff a team of named workers (`backend-dev`, `tester`, `ui-dev`, …), and the
+workers build it in parallel, each in its own git worktree. Leads review every change, tests gate
+every merge, and nothing reaches your branch until you approve it. A live cockpit in your terminal
+and a telemetry dashboard in your browser show who is doing what, what each model is reasoning,
+what it costs, and how much of your subscription is left.
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-4ade80.svg)](LICENSE)
+![Node 22.13+](https://img.shields.io/badge/node-%E2%89%A522.13-4ade80.svg)
+![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin-a78bfa.svg)
+![Codex CLI](https://img.shields.io/badge/Codex%20CLI-optional-22d3ee.svg)
+
+![The telemetry dashboard, phosphor theme](docs/images/dashboard-phosphor.png)
+
+<sub>The dashboard during a mission (demo data: `node scripts/demo-dashboard.mjs`). The same
+palette, team view and log live in the terminal cockpit.</sub>
+
+## Contents
+
+- [Why](#why)
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Install](#install)
+- [Your first mission](#your-first-mission)
+- [The cockpit](#the-cockpit)
+- [The dashboard](#the-dashboard)
+- [Choosing who leads](#choosing-who-leads)
+- [Configuration](#configuration)
+- [Command line](#command-line)
+- [Under the hood](#under-the-hood)
+- [Development](#development)
+- [Contributing](#contributing)
+- [License](#license)
+
+## Why
+
+One agent with a big prompt loses the thread on real work. A team doesn't: an architect who
+sets the direction, leads who break it down and hold the bar, specialists who do one job each
+in isolation, and a human who signs off. This project runs that team on the CLIs you already pay
+for — **no API keys**: it drives your logged-in `claude` and (optionally) `codex`.
+
+- **A real hierarchy, enforced in code.** Workers talk only to their lead; only leads escalate to
+  the council; only the council (or a risky operation) reaches you.
+- **Parallel and safe.** Every task gets its own worktree and branch, file leases keep tasks from
+  colliding, and your working tree is untouched until the final, approved merge.
+- **You stay in charge.** You pick the council and the leads per mission, approve (or revise) the
+  worker team before anyone starts, and approve the final result.
+- **Every model at its own effort.** The same model can chair at `high`, lead at `medium` and test
+  at `low` — no shared knobs.
+- **Nothing hidden.** Each model narrates what it does; its reasoning (where the model publishes
+  it), tool calls and outcomes stream into the cockpit and the dashboard.
+- **Frugal by design.** The council rules on proposals once, at the end; hand-offs carry diffs and
+  test results rather than whole repositories.
+- **Resumable.** All state is in SQLite; restart anything and active missions pick up where they
+  were.
+
+## How it works
+
+```mermaid
+flowchart TD
+    H([You]) -->|mission brief| C
+    subgraph C [Supervisor council]
+      C1[chair · opus]:::sup
+      C2[member · codex]:::sup
+    end
+    C -->|architecture| L
+    subgraph L [Leads]
+      L1[backend lead · codex]:::lead
+      L2[frontend lead · sonnet]:::lead
+    end
+    L -->|plan + team| H
+    L1 --> W1[backend-dev · sonnet]:::work
+    L1 --> W2[tester · haiku]:::work
+    L2 --> W3[ui-dev · sonnet]:::work
+    W1 & W2 & W3 -->|diff + tests| L
+    L -->|integrated branch| C
+    C -->|validated result| H
+    classDef sup fill:#2e2160,stroke:#a78bfa,color:#eafff2
+    classDef lead fill:#0c3a44,stroke:#22d3ee,color:#eafff2
+    classDef work fill:#12251a,stroke:#fb923c,color:#eafff2
 ```
-Human ─► Opus (Supervisor / Architect) ◄─► Codex (Engineering Lead) ─► Workers (Sonnet, ...)
-                                                     ▲                       │
-                                                     └── review / answers ◄──┘
-Codex integration ─► Opus final validation ─► Human: APPROVE / REQUEST CHANGES / REJECT
-```
 
-Agents reason. The orchestrator coordinates. Git isolates. The Lead manages engineering.
-The Supervisor governs architecture. The human retains final authority. Opus and Codex are the
-default seats; any configured agent can take either one (see [Choosing who leads](#choosing-who-leads)).
+1. **Architecture.** The council's chair designs the approach, constraints and acceptance
+   criteria. The other members review it; any objection makes the chair revise once.
+2. **Debate.** The head lead challenges the design with evidence from the code; the council rules
+   (members give their view first; anything that genuinely needs you is escalated).
+3. **Plan and team.** The head lead splits the work into a dependency graph of tasks, assigns each
+   to a lead by area, and staffs a team of named workers, each a model at an effort. **The mission
+   waits for you to approve the team** — change a worker's model or effort, add or drop one, or send
+   the plan back with a note.
+4. **Build.** Independent tasks run in parallel in isolated worktrees. A worker that is unsure asks
+   its lead; its lead answers or escalates.
+5. **Review.** The task's lead reviews the diff against the test result; changes go back to the
+   same worker session. A failing test can never be approved.
+6. **Integrate and validate.** Approved branches merge into an integration branch, the tests run,
+   and the whole council judges the result.
+7. **You decide.** Approve (merge), request changes (another round), or reject.
 
-## Quick start
+## Requirements
+
+| | |
+|---|---|
+| **Node.js** | 22.13 or newer (uses the built-in `node:sqlite`) |
+| **git** | any recent version |
+| **Claude Code** | installed and logged in (`claude`) — a subscription or API account |
+| **Codex CLI** | optional, logged in (`codex login`) — to seat Codex models |
+| **OS** | Windows, macOS or Linux |
+
+## Install
 
 ```bash
+git clone https://github.com/anilized/beautiful-agent-cockpit.git
+cd beautiful-agent-cockpit
 npm install
-node bin/cockpit.mjs doctor              # finds claude, codex, git; checks logins
-node bin/cockpit.mjs daemon --detach     # start the orchestrator service
-node bin/cockpit.mjs run "Add rate limiting to the API" --repo ../api --test "npm test" --repo ../gateway --test "go test ./..." --follow
-node bin/cockpit.mjs status
-node bin/cockpit.mjs approve <runId>     # or: changes <runId> "..." / reject <runId>
-node bin/cockpit.mjs dashboard           # telemetry dashboard in the browser
+node bin/cockpit.mjs doctor      # finds claude, codex and git, and checks the logins
 ```
 
-No API keys: the adapters drive your already-authenticated `claude` and `codex` CLIs.
+Load the cockpit into Claude Code by pointing it at the plugin directory:
 
-### In Claude Code (the cockpit)
+```bash
+claude --plugin-dir /path/to/beautiful-agent-cockpit/packages/claude-plugin
+```
 
-Load the mod in `packages/claude-plugin` (`claude --plugin-dir packages/claude-plugin`, or
-install it as a plugin). Then:
+(Or add the directory to your Claude Code plugin settings so it loads every time.)
+
+## Your first mission
+
+Inside Claude Code, in the repository you want to work on (it needs at least one commit):
+
+1. Type `/cockpit`. The cockpit opens; press **`s`** to start the orchestrator.
+2. Press **`n`** for a new mission. Write the brief — line by line, or press **`e`** to write it in
+   your editor and **`l`** to load it back. Below it, pick the **council** and the **leads**
+   (press a model to change it, ⚡ for its effort, `@` for a lead's area; `+ add` seats another).
+3. Press **`s`** to start. Watch the architecture form and the debate run.
+4. When the plan is ready, **NEEDS YOU** shows the proposed team. Adjust it and press **`a`**.
+5. Follow the work: the log, each agent's stream, the code preview, the team. Press **`d`** for the
+   dashboard.
+6. When the council has validated the result, review the report (**`4`** or **`p`**) and press
+   **`a`** to merge, **`c`** to ask for changes, or **`r`** to reject.
+
+Prefer the terminal? The same mission from a shell:
+
+```bash
+node bin/cockpit.mjs daemon --detach
+node bin/cockpit.mjs run "Add rate limiting to the API" --repo ../api --test "npm test" \
+  --council opus:high,codex:medium --leads codex:high@backend,sonnet:medium@frontend --follow
+node bin/cockpit.mjs approve <runId>
+```
+
+## The cockpit
+
+A dense command center in a Claude Code pane, built after lazygit and agent managers like Claude
+Squad: every agent, task and change is on screen at once, in the same place every time.
+
+```
+◎ ANILDEV  // MULTI-AGENT CODING COCKPIT       ⎇ api  ● executing  3 agents  $2.72  ◔ claude 79% · codex 91%
+┌ MISSIONS 1/2  m: › 0: ⌂┐┌ API / ADD RATE LIMITING   ⎇ main  #a1b2c3  ● executing ┐┌ TASKS (5)  1 done ──────────┐
+│ ● Rate limiting   1/5  ││ ● architect ─ ● debate ─ ● plan ─ ◉ build ─ ○ integrate … ││ ● Per-plan limits  backend-dev│
+│ ✓ Audit log       4/4  ││ ▕████████▏ 20%                                            ││ ◉ Middleware 429   backend-dev│
+├ AGENTS ─── 3 working ──┤│ 1 Log  2 Task  3 Events  4 Report                         ││ ● Admin usage view ui-dev     │
+│ ○ opus · chair         ││ 00:37 [UI-DEV     ] ❯ Bash npm test -- UsageTable          │├ AGENT: UI-DEV ── ● working ──┤
+│ ◉ codex · backend lead ││ 00:36 [LEAD       ] ∴ The limiter is mounted before auth…  ││ src/admin/UsageTable.tsx   A │
+│ ◉ backend-dev · sonnet ││       continues on the next row, never cut short           ││                              │
+│ CREW  ★ opus ⚡high    ││ 00:34 [BACKEND-DEV] ✎ Write config/limits.yaml             ││                              │
+├ PLAN LEFT ─────────────┤├ CODE PREVIEW ──────────────┬ TEAM ─────────────────────────┤├ AGENT OUTPUT (ui-dev) ───────┤
+│ claude 5h ▕███▏ 79% 3h ││  12   12  router.use(auth)  │ ◉ YOU     approve · merge     ││ 00:36 ▍ Adding a UsageTable… │
+│ SPEND $2.72            ││       13 +router.use(limit) │ ◆ COUNCIL ○ ★opus ○ codex     ││                              │
+└────────────────────────┘└────────────────────────────┴ ◈ WORKERS ● 1 backend-dev … ──┘└──────────────────────────────┘
+ j k move  h l agents/tasks  1-4 view  0 home  │  n new  p report  d dashboard  x stop
+```
+
+| Area | What it shows |
+|---|---|
+| **Home** | Opens when nothing is under way (or `0` from a mission): missions with status and progress (`1`–`9` open one), the latest mission's team, recent milestones, what is left of each subscription, and the next mission's crew. |
+| **NEW MISSION** (`n`) | Its own screen: a Markdown brief of any length (`e` editor, `l` load, `u` undo a line), the council and leads, options (`--test`, `--repo`); `s` starts, `q` goes back and keeps the brief. |
+| **Header** | Repository, status, working agents, spend, subscription left, clock. |
+| **NEEDS YOU** | Only while a decision waits: `a` approve, `c` changes, `r` reject. For a team, each worker with its model and effort, editable in place (`⧉` adds a second one for parallel work, `×` drops one). |
+| **AGENTS · CREW** | Every council seat, lead and worker by name, `running` / `thinking` / `idle`; earlier sessions to read back; the live crew, editable. |
+| **Centre** | The mission's lifecycle and progress, then `1` **Log** (every agent and the orchestrator, newest on top; long thoughts wrap whole), `2` **Task** (the whole task, its review and its last test run), `3` **Events**, `4` **Report**. |
+| **TASKS · AGENT** | Each task with its worker and pipeline stage; the followed agent's state and changed files. |
+| **CODE PREVIEW** | The biggest change of the task in focus, with line numbers. |
+| **TEAM** | The hierarchy in tiers — YOU, COUNCIL, LEADS, WORKERS — each worker numbered by the lead that owns it. |
+| **AGENT OUTPUT** | The followed agent's own stream (▸ opens a tool call or an outcome whole). |
+| **PLAN LEFT · SPEND** | What is left of each Claude / Codex window and when it resets; the mission's cost per agent. |
+
+**Keys:** `j`/`k` move in the focused list, `h`/`l` switch between agents and tasks, `1`–`4` pick
+the centre view, `o` folds finished tasks, `m` next mission, `0` home, `n` new mission, `p` report,
+`d` dashboard, `t` retry a failed mission, `s`/`x` start/stop the orchestrator. Rows that are cut
+short open with a click.
+
+**Look:** phosphor green by default; `COCKPIT_THEME=neon` for violet / cyan / orange.
+`COCKPIT_BRAND` sets the name in the header (default `ANILDEV`). The cockpit animates at up to
+60 fps while a mission runs, idles at 1 fps, and freezes with `COCKPIT_REDUCED_MOTION=1`. From 130
+columns it is the grid above; narrower, two columns, then one.
+
+**Slash commands:**
 
 | Command | |
 |---|---|
-| `/cockpit` | open the cockpit pane (focused) |
-| `/cockpit start` / `stop` | start / stop the orchestrator service |
-| `/cockpit run <request> [--test "<cmd>"] [--repo <path> ...]` | start a mission (defaults to the session's directory) |
+| `/cockpit` | open the cockpit pane |
+| `/cockpit start` · `stop` | start / stop the orchestrator |
+| `/cockpit run <request> [--test "<cmd>"] [--repo <path> …]` | start a mission from the prompt |
 | `/cockpit approve [note]` · `changes <text>` · `reject [note]` | decide the pending approval |
-| `/cockpit report` · `status` | final engineering report · textual status |
-| `/cockpit dashboard` | open the telemetry dashboard in the browser (prints the link too) |
+| `/cockpit report` · `status` · `dashboard` | the report · a text status · the dashboard link |
 
-#### The pane: a command center
+## The dashboard
 
-A dense, panel-per-concern layout after lazygit and agent managers such as Claude Squad: every
-agent, task and change is on screen at once, in the same place every time.
+`d` in the cockpit (or `node bin/cockpit.mjs dashboard`) opens a page the orchestrator serves on
+`127.0.0.1`, in the cockpit's look:
 
-```
-◎ ANILDEV  // MULTI-AGENT CODING COCKPIT                ⎇ api   ● executing   3 agents   $12.40   15:24:36
-┌ MISSIONS ──────────┐┌ API / ADD JOB RETRY ENDPOINT   ⎇ main  #a1b2c3  ● executing  12m ┐┌ TASKS (8)  3 done ────── + New mission ┐
-│ ▌● Job retry  3/8  ││ ● architect ─ ● debate ─ ● plan ─ ◉ build ─ ○ integrate …          ││ ● Implement retry endpoint backend ▕████▏ build │
-│   ✓ Audit log 4/4  ││ ▕████████████▏ 38%                                                 ││ ◉ Retry button UI      frontend ▕█████▏ review│
-├ AGENTS ── 3 working┤│ 1 Log  2 Task  3 Events  4 Report                                   ││ ○ Integration tests    test     ▕     ▏ queued│
-│ ○ opus · chair  idle││ 15:24:20 [BACKEND-DEV] ✔ completed: JobRetryController + tests     │├ AGENT: BACKEND-DEV ──── ● working 2m18s ┤
-│ ◉ codex · head think││ 15:24:12 [ORCH       ] ✔ test.passed task TASK-101                 ││ src/…/JobRetryService.java            M │
-│ ◉ backend-dev   run ││ 15:23:58 [LEAD       ] ◎ Read src/…/JobRetryService.java           ││ src/…/JobRetryRequest.java            A │
-│ CREW               ││ 15:23:31 [BACKEND-DEV] ✎ Edit src/…/JobRetryController.java       ││                                         │
-├────────────────────┤└─────────────────────────────────────────────────────────────────────┘└─────────────────────────────────────────┘
-│                    │┌ CODE PREVIEW  …/JobRetryController.java ──┐┌ TEAM ──────── 2 workers ┐┌ AGENT OUTPUT (backend) ────────────────┐
-│                    ││   12   12   @RestController                ││ ◉ YOU     approve · merge││ 15:24 ✦ completed: endpoint + 12 tests  │
-│                    ││        15 + @PostMapping("/{id}/retry")    ││ ◆ COUNCIL ○ ★opus ⚡high  ││ 15:23 ▍ Writing the audit test next…    │
-└────────────────────┘└────────────────────────────────────────────┘└──────────────────────────┘└─────────────────────────────────────────┘
- j: down  k: up  h: agents  l: tasks  │ 1-4 view │  n: new  p: report  d: dashboard  x: stop
-```
+- the mission, its lifecycle and progress; spend, tokens, cache rate, model time;
+- **plan left** — every subscription window and when it resets;
+- the **team** in tiers, live;
+- **Minds** — every model session; follow one to read its narration, reasoning, tool calls and
+  outcomes as they happen;
+- the task board, cumulative cost per role, cost per task, input tokens per call, a span timeline,
+  a sortable calls table and a searchable event log.
 
-- **Home:** with nothing under way (or `0` / `◂ home` from a mission) the cockpit opens on an
-  overview: missions, running, waiting on you, spend, calls and what is left of each subscription;
-  every mission with its status and progress (a press or `1`–`9` opens it); the latest mission's team;
-  recent milestones across missions; and the crew for the next mission with `n`. A mission under way
-  opens by itself.
-- **Header:** the brand, and the mission's repository, status, working agents, spend, what is left
-  of each subscription (`◔ claude 86% · codex 100%`) and the clock.
-- **NEEDS YOU:** shows only while a decision waits on you (`a` approve, `c` changes, `r` reject).
-  For a **team** it lists each worker by name with its model and effort: press either to change
-  it, `⧉` adds a second one for parallel work, `×` drops one; `c` sends the plan back with a note.
-- **MISSIONS:** every run with its progress; a press switches (`m` cycles).
-- **AGENTS:** every council seat, every lead and every worker by its name (backend-dev, tester…),
-  each `running`, `thinking` or `idle`; earlier sessions to read back; the **CREW** (council and
-  leads with their efforts, editable live: `v`/`b` the chair / head lead, `f`/`g` their effort, or
-  press any chip).
-- **PLAN LEFT** (bottom left, out of the way): each subscription window's remaining share and when
-  it resets, then the mission's **SPEND** per agent.
-- **Centre:** the mission (repository / request, branch, run, status, elapsed), the animated
-  lifecycle and progress, then `1` **Log** — one feed of every agent and the orchestrator, newest
-  on top: what each model says it is doing, tools (`◎` read, `✎` edit, `❯` shell), reasoning
-  where the model publishes it (`∴`, Codex), `✔` outcomes (a plan, a verdict, a ruling) and
-  milestones (tests, reviews, integration); `2` **Task** — the selected task in full; `3`
-  **Events**; `4` **Report** (long reports render in parts).
-- **TASKS:** each task's specialty, title and how far through the pipeline it is (queued, build,
-  test, review, done); finished work folds (`o`). A press selects it.
-- **AGENT:** the followed agent's state and the files its task changed in its worktree (`M`/`A`/`D`).
-- **CODE PREVIEW:** the biggest change of the task in focus, with old and new line numbers.
-- **TEAM:** the mission's hierarchy in tiers — YOU, COUNCIL, LEADS, WORKERS — each tier's name in a
-  fixed column so depth never shifts a row; every worker (by name, model and effort) carries the
-  number of the lead that owns it; a working seat pulses. The task's last test run is in its Task view.
-- **AGENT OUTPUT:** the followed agent's own stream (▸ opens a tool call or an outcome whole).
-- **Keys:** `j`/`k` move in the focused list, `h`/`l` switch between agents and tasks, `1`–`4`
-  pick the centre view, `n` new mission, `p` report, `d` dashboard, `t` retry a failed mission,
-  `s`/`x` start/stop the orchestrator.
-- **Look:** phosphor green by default; `COCKPIT_THEME=neon` for the violet/cyan/pink palette.
-  `COCKPIT_BRAND` sets the name in the header (default `ANILDEV`).
-- **Motion:** 60 fps while a mission runs (the header at the 16 ms frame; the other animated
-  rasters every ≥ 66 ms; all of them under 100 blits/s, below the host's ~120/s intake), 1/s at
-  rest, frozen with `COCKPIT_REDUCED_MOTION=1`. From 130 columns the pane is the grid above;
-  narrower, it becomes two columns, then one.
+![The dashboard, neon theme](docs/images/dashboard-neon.png)
 
-The worktree data (changed files, code preview) is read by the daemon every 3 s for tasks in
-progress; the rest comes from the snapshot it writes on every event.
-
-A toast announces every new decision request. The cockpit is presentation only: it reads the
-snapshot the orchestrator writes and sends decisions through the CLI.
-`claude plugin test packages/claude-plugin` renders it against recorded snapshots.
-
-### Telemetry dashboard
-
-`cockpit dashboard` (or `d` in the pane) opens a page the daemon serves on 127.0.0.1, in the
-cockpit's look (phosphor by default, neon a click away; `COCKPIT_THEME` / `COCKPIT_BRAND` apply): the
-mission and its lifecycle, the team in tiers, what is left of each subscription, spend,
-tokens and cache rate, the lifecycle, a live **Minds** view of every model session (narration,
-reasoning, tools, outcomes), a task board, cumulative cost per role, input tokens per call, cost
-per task, a span timeline, a sortable calls table and a searchable event log. It refreshes
-every few seconds. The page itself is public; its data needs a read-only token that the link
-carries in its fragment (never sent to a server or logged) and that allows GETs only.
+The page switches between phosphor and neon with one click. Its data needs a read-only token that
+the link carries in its fragment (never sent to a server or logged), and that token allows GETs
+only. To work on the page without a daemon: `node scripts/demo-dashboard.mjs`.
 
 ## Choosing who leads
 
-You seat a council of Supervisors and one or more Leads; the head Lead staffs the workers, and you
-approve the team before any of them starts.
+- **The council** — one or more supervisors; the first (★) chairs and has the final say. Members
+  review the architecture, give their view before the chair rules on proposals, and judge the
+  result; one member's "revise" sends the work back. A council of one costs nothing extra.
+- **The leads** — the first (★) is the head lead: it reviews the architecture, plans and
+  integrates. Each task names the lead that owns it (by area); that lead answers its worker and
+  reviews its work.
+- **The team** — named by the head lead with the plan (`backend-dev`, `tester`, `db-engineer`, …),
+  each a worker model at an effort. You approve it before any worker starts
+  (`team.approval: false` in `cockpit.yaml` skips that). A later round asks again only
+  for new or changed workers.
+- **Efforts are never shared.** Every seat and every worker carries its own level.
+- **Mid-mission** (a limit ran out, a model misbehaves): edit the CREW in the cockpit, or
+  `cockpit seats <runId> --council opus,sonnet --leads codex:high`. Calls already running finish
+  where they are.
+- **Who may sit where** is the `roles` list of each agent in `config/agents.yaml`
+  (`cockpit agents` prints it). Unset, a mission takes `hierarchy` from that file.
 
-- **Per mission:** `n` opens the NEW MISSION screen. The **brief** is Markdown of any length: type it
-  line by line (enter adds a line, an empty one a paragraph break), or press `e` to write it in your
-  editor (`COCKPIT_EDITOR`, default VS Code; the file is `<dataDir>/drafts/mission.md`) and `l` to
-  load it back. Below it the **council** and the **leads**: press a model to change it, `⚡` for its
-  effort, `@` for a lead's area (backend, frontend, tests, …); `+ add` seats another, `×` removes one.
-  Options take `--test` / `--repo`; `s` starts the mission (the brief goes to `cockpit run --file`),
-  `q` goes back and keeps the brief. The first of each list (★) chairs the council / is the head lead. From the
-  CLI: `cockpit run "..." --council opus:high,codex:low --leads codex:medium@backend,sonnet:low@frontend`.
-  Unset, the run takes `hierarchy` from `config/agents.yaml` (`--supervisor` / `--lead` still work).
-- **The council:** the chair writes the architecture; the other members review it in parallel and
-  any "revise" makes the chair answer their concerns once. Before the chair rules on the Lead's
-  proposals the members give their view; at the end they judge the result with the chair, and a
-  member's "revise" sends the work back. A council of one costs nothing extra.
-- **The leads:** the head lead reviews the architecture, plans and integrates; each task names the
-  lead that owns it (by area), and that lead answers its worker and reviews its work.
-- **The team:** the head lead's plan names its workers after their jobs (`backend-dev`, `tester`,
-  `db-engineer`, …), each a worker model at an effort, and gives every task one. The mission waits
-  in NEEDS YOU until you approve the team (`engine.team.approval: false` in `cockpit.yaml` skips it);
-  edit it there, or `cockpit team <runId> '<json>'`. Sending it back drops the unstarted tasks and
-  the head lead plans again with your note. A later round only asks again for new or changed workers.
-- **Efforts are never shared:** every seat and every worker carries its own level, so one model can
-  chair at `high`, lead at `medium` and work as `tester` at `low`.
-- **Mid-run** (a limit ran out): edit the CREW in the AGENTS panel, or
-  `cockpit seats <runId> --council opus,sonnet --leads codex:high`. Later calls use the new seats; a
-  call already in flight finishes where it started.
-- **Who may sit where:** an agent takes a seat only if the role is in its `roles` list in `agents.yaml`
-  (`cockpit agents` lists them); workers come from the enabled `worker` agents.
-- **Subscription limits:** the cockpit takes Claude's five-hour and weekly windows from the Claude
-  Code session it runs in (pushed after every turn), and the daemon's Claude calls report them too;
-  Codex's come from its own session logs (`~/.codex/sessions`), re-read every minute. The latest
-  is kept in `<dataDir>/limits.json`, so the cockpit shows them before the first call of a day.
+## Configuration
 
-```
-packages/
-  core/          domain model, event contracts, state machines, task + conflict graphs, agent output contracts, config schemas
-  persistence/   SQLite store (node:sqlite) — the authoritative workflow state
-  telemetry/     OpenTelemetry tracer; local JSONL span export, optional OTLP (Tempo/Jaeger)
-  workspace/     platform layer (process/tree-kill/shims), git worktrees, file/module/resource leases
-  agents/        AgentAdapter contract, ClaudeAdapter, CodexAdapter, FakeAdapter, router, role prompts
-  transport/     127.0.0.1 HTTP + SSE with a per-daemon bearer token
-  orchestrator/  engine (run phases), task pipeline, scheduler, review engine, permission engine, event bus, service,
-                 CLI, telemetry dashboard (dashboard.ts / dashboard.html)
-  claude-plugin/ the Claude Code mod (cockpit pane, /cockpit command; raster painters, blit scheduler, tweens, theme)
-config/          cockpit.yaml · agents.yaml · routing.yaml · permissions.yaml
-```
+Everything lives in `config/` and is safe to change without touching code.
 
-### Keeping tokens down
+| File | What it holds |
+|---|---|
+| `agents.yaml` | The agents (adapter, model, roles, default effort, specialties, capacity) and the default seating. Add a worker by adding an entry. |
+| `cockpit.yaml` | Engine settings: parallelism, review rounds, decision rounds, timeouts, team approval, final merge (`merge` or leave a `branch`), telemetry export (local JSONL, optional OTLP). |
+| `routing.yaml` | How tasks are routed to workers when the plan names none: per specialty, risk and complexity. |
+| `permissions.yaml` | High-risk command classifiers (destructive shell, pushes, migrations, secrets, cloud…) that require your approval, and the workers' tool allow / deny lists. |
 
-- **Supervisor at the end, not per task:** proposals the Lead raises while reviewing tasks are
-  deferred to final validation and ruled on there in one call (`decisions.duringTasks: defer` in
-  `cockpit.yaml`; `immediate` restores a Supervisor call per review). Escalations of a blocked task
-  still reach the Supervisor at once.
-- **Narrow hand-offs:** the Lead reviews from the diff and the orchestrator's test result (diffs
-  past 60k characters are cut and opened on demand); the Supervisor validates from the report and
-  inspects worktrees only to settle a specific doubt.
-- **Parallel by default:** a module claim that the task's own file list already narrows is not
-  leased, so tasks naming the same package but disjoint files run side by side
-  (`maxParallelTasks`, default 4).
+Environment: `COCKPIT_DATA_DIR` (default `~/.agent-cockpit`: database, worktrees, traces,
+snapshot), `COCKPIT_THEME`, `COCKPIT_BRAND`, `COCKPIT_EDITOR` (for mission briefs, default `code`),
+`COCKPIT_REDUCED_MOTION`, `COCKPIT_CODEX_BIN`.
 
-### Run lifecycle
+**Subscription limits** come from Claude Code itself (the session the cockpit runs in, and every
+Claude call the orchestrator makes) and from Codex's own session logs (`~/.codex/sessions`).
+
+## Command line
 
 ```
-created → architecting (Opus) → proposing (Codex challenges with evidence)
-        ⇄ deciding (Opus: accept / amend / reject / request analysis / escalate to human)
-        → planning (Codex: task DAG with repo, files/modules/resources, deps, tests)
-        → executing (scheduler: parallel, conflict-aware, leased, isolated)
-        → integrating (merge queue per repo + integration tests; conflicts → Codex, else back to the worker)
-        → validating (Opus) → awaiting_approval (human)
-        → merging → completed          | REQUEST CHANGES → planning (round + 1) | REJECT → rejected
+cockpit doctor                                  check claude / codex / git and logins
+cockpit daemon [--detach] · stop                start / stop the orchestrator
+cockpit run "<request>" | --file brief.md  --repo <path> [--test "<cmd>"] [--base <branch>] [--repo …]
+            [--council <agent>[:<effort>],…] [--leads <agent>[:<effort>][@<area>],…] [--follow]
+cockpit status [<runId>] [--json] · approvals · report <runId> · events [<runId>] [--follow]
+cockpit approve <runId|approvalId> [note] · changes <runId> "<what>" · reject <runId|approvalId> [note]
+cockpit seats <runId> [--council …] [--leads …]   re-seat a live mission
+cockpit team <runId> '<json>'                     revise a mission's worker team
+cockpit retry <runId>                             re-enter a failed mission where it failed
+cockpit agents · dashboard [<runId>]
+```
+
+(`cockpit` is `node bin/cockpit.mjs`; `npm link` puts it on your PATH.)
+
+## Under the hood
+
+### Mission lifecycle
+
+```
+created → architecting (chair; council reviews) → proposing (head lead challenges with evidence)
+        ⇄ deciding (council rules: accept / amend / reject / request analysis / escalate to you)
+        → planning (head lead: task graph, owning leads, the team) → awaiting your team approval
+        → executing (parallel, conflict-aware, leased, isolated)
+        → integrating (merge queue per repo + integration tests; conflicts → lead, else back to the worker)
+        → validating (council) → awaiting your approval
+        → merging → completed          | changes → planning (round + 1) | reject → rejected
 ```
 
 ### Task lifecycle
 
 ```
-pending → ready → running ─► needs_input ─► (Codex answers; may escalate to Opus) ─► running
+pending → ready → running ─► needs_input ─► (its lead answers; may escalate to the council) ─► running
                     │
                     ▼ commit in worktree
                validating (leases re-checked on the real diff; test command run)
-                    │                          └► lease_conflict ─► Codex: wait / transfer / serialize / escalate
+                    │                          └► lease_conflict ─► lead: wait / transfer / serialize / escalate
                     ▼
-               in_review (Codex, read-only) ─► changes_requested ─► running (same worker session resumed)
-                    │                                  └ after N iterations ─► escalated ─► Opus ─► (human)
+               in_review (its lead, read-only) ─► changes_requested ─► running (same worker session resumed)
+                    │                                  └ after N rounds ─► escalated ─► council ─► (you)
                     ▼
                approved ─► integrated
 ```
 
-Hierarchy rules are structural, not prompt-level: workers' questions, blockers and submissions
-are routed only to the lead; only the lead's escalations reach the supervisor; only the
-supervisor (or a high-risk operation) reaches the human.
+### Guarantees enforced by the orchestrator, not by model judgement
 
-### Guarantees enforced by the orchestrator (not by model judgement)
-
-- Every implementation task gets its own worktree + branch (`agent/<run>/<TASK>-<slug>`) under
-  `<dataDir>/worktrees`; the human's working tree is never touched until the approved final merge.
+- Every implementation task gets its own worktree and branch (`agent/<run>/<TASK>-<slug>`) under
+  `<dataDir>/worktrees`; your working tree is untouched until the approved final merge.
 - Predicted scope is leased before a task starts; the actual diff is re-leased at submission.
-- A code task cannot be approved while its validation command fails, or without adequate tests —
-  even if the reviewer approves.
-- Failing integration tests are never presented as accepted.
-- Final merge into the base branch happens only after human approval; a dirty or diverged
-  base branch blocks the merge and asks again.
-- High-risk commands (destructive shell, pushes, production, migrations, secrets, cloud, external
-  side effects) are classified by `permissions.yaml` and require approval.
+- A code task cannot be approved while its tests fail, or without adequate tests — even if the
+  reviewer approves. Failing integration tests are never presented as accepted.
+- The final merge happens only after your approval; a dirty or diverged base branch blocks it and
+  asks again.
+- High-risk commands are classified by `permissions.yaml` and require approval.
 - The review → retry loop is bounded (`review.maxIterations`, default 3), then escalates
-  Worker → Codex → Opus → human.
+  worker → lead → council → you.
 
-### Persistence and resumability
+### Keeping tokens down
+
+- **The council rules at the end, not per task:** proposals raised in task reviews are deferred to
+  final validation and ruled on there in one call (`decisions.duringTasks: defer`).
+- **Narrow hand-offs:** leads review from the diff and the test result (diffs past 60k characters
+  are cut and opened on demand); the council validates from the report.
+- **Parallel by default:** tasks that name the same package but disjoint files run side by side
+  (`maxParallelTasks`, default 4).
+
+### Persistence, events and telemetry
 
 SQLite (`<dataDir>/cockpit.db`) holds projects, repositories, runs, tasks, dependencies, agents,
-agent sessions (with provider session ids for resume), worktrees, leases, reviews, proposals,
-decisions, approvals, events and model usage. Every step reads persisted status, so restarting
-Claude Code, the cockpit or the orchestrator resumes active runs (`recover()` on daemon start).
-`cockpit retry <run>` re-enters a failed run at the phase it failed in.
+sessions (with provider session ids for resume), worktrees, leases, reviews, proposals, decisions,
+approvals, events and usage. Every state change is a structured event, persisted in order and
+streamed over SSE (`GET /events`). OpenTelemetry spans cover every phase, agent call, test,
+integration and approval wait; they go to `<dataDir>/traces/*.jsonl` and, with
+`telemetry.otlpEndpoint`, to any OTLP backend (Tempo, Jaeger…).
 
-### Events and telemetry
+### Adapters
 
-All state changes are structured events (`run.started`, `proposal.created`, `task.assigned`,
-`file.lease.conflict`, `review.issue_found`, `test.failed`, `escalation.requested`,
-`approval.requested`, `integration.completed`, …) persisted in order and streamed over SSE
-(`GET /events`). OpenTelemetry spans cover every phase, every agent call (role, model, tokens,
-retries), tests, integration and human-approval waits; spans go to
-`<dataDir>/traces/*.jsonl` and, if `telemetry.otlpEndpoint` is set, to any OTLP backend.
+`AgentAdapter` has Claude, Codex and Fake implementations; roles bind to profiles in
+`agents.yaml`, never to model names. Verified against the installed CLIs:
 
-### Adapters and routing
-
-`AgentAdapter` (`capabilities / startSession / execute / cancel / resume`) has Claude, Codex and
-Fake implementations. Roles are bound to profiles in `agents.yaml`, not to model names; add a
-provider by registering an adapter factory. The router scores workers from task metadata
-(kind, specialty, risk, complexity) against capability profiles, routing rules and load; the
-supervisor can switch the strategy for a run (`prefer_quality / prefer_cost / prefer_speed`).
-
-## Integration notes (verified against the installed CLIs)
-
-- Claude Code 2.1.x: `claude -p --output-format stream-json --json-schema …`, `--session-id` /
-  `--resume`; read-only roles run with `--permission-mode dontAsk` and read-only tools; workers
-  with `acceptEdits` plus the allow/deny lists in `permissions.yaml`.
-- Codex CLI 0.15x/0.16x: `codex exec --json --output-schema …`, `-c sandbox_mode=…`,
-  `codex exec resume <thread>`. The binary is found on PATH (npm `.cmd` shims are resolved to
-  `node <script>` on Windows) or in the desktop app bundle; override with `COCKPIT_CODEX_BIN`.
+- **Claude Code 2.1.x** — `claude -p --output-format stream-json --json-schema …`, `--session-id` /
+  `--resume`; read-only roles run with read-only tools, workers with `acceptEdits` and the
+  allow / deny lists from `permissions.yaml`.
+- **Codex CLI 0.15x–0.16x** — `codex exec --json --output-schema …`, `-c sandbox_mode=…`,
+  `codex exec resume <thread>`. Found on PATH (npm `.cmd` shims resolve to `node <script>` on
+  Windows) or in the desktop app; override with `COCKPIT_CODEX_BIN`.
 - Headless agents cannot ask mid-turn, so a worker ends its turn with `needs_input`; the
-  orchestrator routes the question to Codex and resumes the worker's session with the answer.
-- The Claude Code mod runtime has no Node or network access; the cockpit therefore renders a
-  snapshot file the orchestrator writes and acts through the CLI.
+  orchestrator routes the question to its lead and resumes the worker's session with the answer.
+- The Claude Code plugin runtime has no Node or network access; the cockpit renders a snapshot the
+  orchestrator writes and acts through the CLI.
+
+### Repository layout
+
+```
+packages/
+  core/          domain model, events, state machines, task + conflict graphs, agent contracts, config schemas
+  persistence/   SQLite store (node:sqlite) — the authoritative workflow state
+  telemetry/     OpenTelemetry tracer; local JSONL export, optional OTLP
+  workspace/     process layer, git worktrees, file / module / resource leases
+  agents/        adapters (Claude, Codex, Fake), router, role prompts
+  transport/     127.0.0.1 HTTP + SSE with a per-daemon token (and a read-only one for the dashboard)
+  orchestrator/  engine, task pipeline, council, scheduler, service, CLI, dashboard
+  claude-plugin/ the cockpit: pane, /cockpit command, raster painters, blit scheduler, theme
+config/          agents.yaml · cockpit.yaml · routing.yaml · permissions.yaml
+scripts/         adapter smoke test, dashboard demo
+```
 
 ## Development
 
 ```bash
 npm run typecheck
-npm test                                  # unit + end-to-end (fake agents, real git worktrees)
-node --import tsx scripts/smoke-adapters.ts   # exercises the real claude/codex CLIs
+npm test                                     # unit + end-to-end (fake agents, real git worktrees)
+node --import tsx scripts/smoke-adapters.ts  # exercises the real claude / codex CLIs
+node scripts/demo-dashboard.mjs              # the dashboard with demo data, no daemon
 
 cd packages/claude-plugin
-npm run check                             # palette (colours live in theme.ts only), typecheck, pane tests
-npm run bench                             # painter cost per frame (budget: mean < 4 ms)
-npm run blitrate                          # blits per second under the mock clock
+npm run check                                # palette, typecheck, pane tests (claude plugin test)
+npm run bench                                # painter cost per frame (budget: mean < 4 ms)
 ```
 
-What still needs a live terminal (frame rate, input latency, CPU) is listed in
-`packages/claude-plugin/GATE0.md`.
+The pane tests render the cockpit against recorded snapshots at 60, 100 and 140 columns and fail
+on any row wider than the pane or split across lines. What still needs a live terminal (frame
+rate, input latency, CPU) is listed in `packages/claude-plugin/GATE0.md`.
+
+## Contributing
+
+Issues and pull requests are welcome. Before opening a PR, run `npm run typecheck`, `npm test`
+and `npm run check` in `packages/claude-plugin`. Colours live only in
+`packages/claude-plugin/hooks/theme.ts` (the palette check enforces it); keep the dashboard's
+palettes in step with it. For UI changes, a screenshot of the cockpit or the dashboard helps.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © 2026 anilized

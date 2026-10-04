@@ -1,12 +1,14 @@
 # Roles are bound to agent profiles here, never to model names in code.
-# `hierarchy` is the default seating. Per run you pick the Supervisor and the Lead
-# yourself (cockpit composer, `cockpit run --supervisor X --lead Y`) and can hand a
-# seat to another agent mid-run (`cockpit roles <runId> --lead X`) when a limit runs
+# `hierarchy` is the default seating. Per mission you pick a council of supervisors (the first
+# chairs) and one or more leads (the first is the head lead), each at its own effort: in the
+# cockpit's NEW MISSION screen, or `cockpit run --council opus:high,codex --leads codex:high@backend`.
+# A live mission can be re-seated (cockpit CREW, or `cockpit seats <runId> ...`) when a limit runs
 # out. An agent may sit in a seat only if that role is in its `roles` list.
-# Workers are staffed by the Lead in its plan (falling back to routing.yaml).
+# Workers are staffed by the head lead as a named team (backend-dev, tester, ...) that you approve;
+# a task the plan leaves unstaffed falls back to routing.yaml.
 # `effort` is each agent's default reasoning effort (null = the CLI's own default);
-# claude: low|medium|high|xhigh|max, codex: minimal|low|medium|high|xhigh. Per run
-# you change it in the cockpit (f / g / w) or with `cockpit run --effort opus=max`.
+# claude: low|medium|high|xhigh|max, codex: minimal|low|medium|high|xhigh. Every seat and every
+# worker can override it on its own: efforts are never shared.
 hierarchy:
   supervisor: opus          # architecture, decisions, final validation
   lead: codex               # decomposition, worker staffing, review, integration
