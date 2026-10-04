@@ -81,31 +81,67 @@ export async function boot(env: BootEnv): Promise<Page> {
     return page;
   }
 
-  let runId = run;
-  if (!runId) {
-    try {
-      const res = await env.fetch('/snapshot', {
-        method: 'GET',
-        headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
-        signal: new AbortController().signal,
-      });
-      if (res.status === 401) {
-        overlays.authExpired();
-        return page;
+  // Wiring starts once a run is known. With no run given, finding one is itself visibility-aware: it is deferred while the tab is
+  // hidden, its request is aborted on hide, a stale answer is ignored, and it resumes when the tab is visible again.
+  let discovery: AbortController | null = null;
+  let discovering = false;
+  const onVisibility = (): void => {
+    if (env.doc.visibilityState === 'hidden') {
+      discovery?.abort();
+      discovery = null;
+    } else discover();
+  };
+  const stopDiscovery = (): void => {
+    discovering = false;
+    discovery?.abort();
+    discovery = null;
+    env.doc.removeEventListener('visibilitychange', onVisibility);
+  };
+  function discover(): void {
+    if (!discovering || discovery || env.doc.visibilityState === 'hidden') return;
+    const ctl = (discovery = new AbortController());
+    void (async () => {
+      try {
+        const res = await env.fetch('/snapshot', {
+          method: 'GET',
+          headers: { authorization: `Bearer ${token}`, accept: 'application/json' },
+          signal: ctl.signal,
+        });
+        if (discovery !== ctl) return;
+        if (res.status === 401) {
+          stopDiscovery();
+          return overlays.authExpired();
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const id = selectRun(((await res.json()) as Snapshot).runs, null);
+        if (discovery !== ctl) return;
+        discovery = null;
+        stopDiscovery();
+        if (!id) return overlays.banner(NO_RUNS_MESSAGE);
+        overlays.banner(null); // a retry after a failed attempt
+        wire(id);
+      } catch {
+        if (discovery !== ctl) return; // aborted by a hide: the next show starts over
+        discovery = null;
+        overlays.banner(LOAD_FAILED_MESSAGE); // stays listening: showing the tab again retries
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      runId = selectRun(((await res.json()) as Snapshot).runs, null);
-    } catch {
-      overlays.banner(LOAD_FAILED_MESSAGE);
-      return page;
-    }
-    if (!runId) {
-      overlays.banner(NO_RUNS_MESSAGE);
-      return page;
-    }
+    })();
   }
-  page.runId = runId;
 
+  page.dispose = () => {
+    stopDiscovery();
+    overlays.dispose();
+  };
+  if (run) wire(run);
+  else {
+    discovering = true;
+    env.doc.addEventListener('visibilitychange', onVisibility);
+    discover();
+  }
+  return page;
+
+  function wire(runId: string): void {
+  page.runId = runId;
   const renderer = (env.createRenderer ?? ((c) => createRenderer({ canvas: c })))(env.canvas);
   page.renderer = renderer;
   const fitCanvas = (): void => {
@@ -176,7 +212,7 @@ export async function boot(env: BootEnv): Promise<Page> {
     overlays.dispose();
   };
   lifecycle.start();
-  return page;
+  }
 }
 
 // Browser entry: runs only where there is a real page (tests import this module under node and call `boot` with stubs).
