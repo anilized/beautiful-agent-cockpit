@@ -128,6 +128,17 @@ describe('integer zoom', () => {
     expect(fitZoom(100, 100, 0, 0)).toBe(1);
   });
 
+  it('normalises the cap to a whole zoom of at least 1', () => {
+    expect(fitZoom(1000, 600, 200, 100, 3.7)).toBe(3);
+    expect(fitZoom(1000, 600, 200, 100, 4.99)).toBe(4);
+    expect(fitZoom(1000, 600, 200, 100, 0.5)).toBe(1);
+    expect(fitZoom(1000, 600, 200, 100, 0)).toBe(1);
+    expect(fitZoom(1000, 600, 200, 100, -2)).toBe(1);
+    expect(fitZoom(1000, 600, 200, 100, Number.NaN)).toBe(1);
+    expect(fitZoom(1000, 600, 200, 100, Infinity)).toBe(5);
+    for (const max of [0.3, 1.5, 2.5, 7.9]) expect(Number.isInteger(fitZoom(10_000, 10_000, 10, 10, max))).toBe(true);
+  });
+
   it('blits at whole-pixel positions and sizes with smoothing off', () => {
     const { factory } = stubCanvas();
     const sprite = createSpriteCache({ canvas: factory, theme: createTheme() }).character(worker);
@@ -278,6 +289,53 @@ describe('sprite cache', () => {
       }
     }
     expect(surfaces.length).toBeGreaterThan(100);
+  });
+
+  it('lights both facings from the top left: the dark side of torso and head stays on screen-right', () => {
+    const { factory } = stubCanvas();
+    const cache = createSpriteCache({ canvas: factory, theme: createTheme() });
+    const pal = PALETTES.phosphor;
+    /** The final colour at origin-relative (x, y): later rectangles paint over earlier ones. */
+    const pixel = (sprite: Sprite, x: number, y: number) => {
+      let color: string | null = null;
+      for (const r of (sprite.surface as StubSurface).rects) {
+        const px = x + sprite.anchorX, py = y + sprite.anchorY;
+        if (px >= r.x && px < r.x + r.w && py >= r.y && py < r.y + r.h) color = r.color;
+      }
+      return color;
+    };
+    const skin = pal.scene.skin[0]!, hair = pal.scene.hair[0]!;
+    const shirt = roleColor(pal, 'worker', 'frontend');
+    // [pose, how far it sits lower than standing]
+    for (const [pose, drop] of [['stand', 0], ['walkA', 0], ['walkB', 0], ['cheer', 0], ['sit', 2], ['workA', 2]] as const) {
+      for (const facing of ['right', 'left'] as const) {
+        const parts: CharacterParts = { role: 'worker', specialty: 'frontend', skin: 0, hairColor: 0, hairStyle: 'bald', pose, facing };
+        const sprite = cache.character(parts);
+        const ty = -12 + drop, hy = -18 + drop;
+        // torso: bright on the left, dark on the right
+        expect(pixel(sprite, -3, ty + 3), `${pose} ${facing} torso left`).toBe(shirt);
+        expect(pixel(sprite, 2, ty + 3), `${pose} ${facing} torso right`).toBe(shade(shirt, LIGHT.right));
+        // head: the same
+        expect(pixel(sprite, -3, hy + 3), `${pose} ${facing} head left`).toBe(skin);
+        expect(pixel(sprite, 2, hy + 3), `${pose} ${facing} head right`).toBe(shade(skin, LIGHT.right));
+        // the shirt's top edge is its brightest row on both facings
+        expect(pixel(sprite, -3, ty)).toBe(shade(shirt, LIGHT.top));
+        expect(pixel(sprite, 2, ty)).toBe(shade(shirt, LIGHT.top));
+      }
+      // long hair carries the same split
+      for (const facing of ['right', 'left'] as const) {
+        const sprite = cache.character({ role: 'worker', specialty: 'frontend', skin: 0, hairColor: 0, hairStyle: 'long', pose, facing });
+        expect(pixel(sprite, -3, -18 + drop + 4), `${pose} ${facing} hair left`).toBe(hair);
+        expect(pixel(sprite, 2, -18 + drop + 4), `${pose} ${facing} hair right`).toBe(shade(hair, LIGHT.right));
+      }
+    }
+    // direction still shows in the geometry: a seated character's legs and shoes point the way it faces
+    const bounds = (sprite: Sprite) => {
+      const rs = (sprite.surface as StubSurface).rects.filter(r => r.color === pal.scene.shoe && r.y + r.h > sprite.anchorY - 2 && r.y < sprite.anchorY);
+      return { min: Math.min(...rs.map(r => r.x)) - sprite.anchorX, max: Math.max(...rs.map(r => r.x + r.w)) - sprite.anchorX };
+    };
+    expect(bounds(cache.character({ role: 'worker', pose: 'sit', facing: 'right' })).max).toBe(6);
+    expect(bounds(cache.character({ role: 'worker', pose: 'sit', facing: 'left' })).min).toBe(-6);
   });
 
   it('puts the role colour on the shirt', () => {

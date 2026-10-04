@@ -66,10 +66,11 @@ export function integerZoom(zoom: number): number {
   return Number.isFinite(zoom) ? Math.max(1, Math.floor(zoom + 1e-9)) : 1;
 }
 
-/** The largest integer zoom (1..max) at which `content` still fits `avail`. */
+/** The largest integer zoom (1..max) at which `content` still fits `avail`; `max` is itself floored to a whole number >= 1. */
 export function fitZoom(availW: number, availH: number, contentW: number, contentH: number, max = 8): number {
   if (!(contentW > 0 && contentH > 0)) return 1;
-  return Math.min(max, integerZoom(Math.min(availW / contentW, availH / contentH)));
+  const cap = max === Infinity ? Infinity : integerZoom(max);
+  return Math.min(cap, integerZoom(Math.min(availW / contentW, availH / contentH)));
 }
 
 export interface Sprite {
@@ -240,7 +241,11 @@ const POSE_SHAPE: Record<Pose, PoseShape> = {
   slump: { drop: 2, legs: 'sit', arms: 'down', headDy: 1 },
 };
 
-/** Origin at the feet, 20 px tall, facing right (left is the mirror image). */
+/**
+ * Origin at the feet, 20 px tall. Facing only mirrors the geometry that points somewhere (legs, swinging, raised and
+ * typing arms, the cap brim); `p` draws that. Everything that carries light (torso, head, hair, shadow) is drawn
+ * straight to the screen with `out`, so both facings stay lit from the top left.
+ */
 function drawCharacter(out: Painter, pal: GaragePalette, c: NormalCharacter): void {
   const p: Painter = c.facing === 'left' ? { rect: (x, y, w, h, col) => out.rect(-x - w, y, w, h, col) } : out;
   const b = pal.base, s = pal.scene;
@@ -250,7 +255,7 @@ function drawCharacter(out: Painter, pal: GaragePalette, c: NormalCharacter): vo
   const { drop, legs, arms, headDy } = POSE_SHAPE[c.pose];
   const hd = drop + headDy;
 
-  p.rect(-4, 0, 8, 1, s.shadow);
+  out.rect(-4, 0, 8, 1, s.shadow);
 
   // legs and shoes
   const leg = (x: number, h: number) => p.rect(x, -6, 2, h, s.pants);
@@ -269,10 +274,10 @@ function drawCharacter(out: Painter, pal: GaragePalette, c: NormalCharacter): vo
 
   // torso, lit from the left
   const ty = -12 + drop;
-  p.rect(-3, ty, 4, 6, shirt);
-  p.rect(1, ty, 2, 6, shade(shirt, LIGHT.right));
-  p.rect(-3, ty, 6, 1, shade(shirt, LIGHT.top));
-  if (c.role === 'lead') p.rect(-1, ty + 1, 1, 4, b.ink);
+  out.rect(-3, ty, 4, 6, shirt);
+  out.rect(1, ty, 2, 6, shade(shirt, LIGHT.right));
+  out.rect(-3, ty, 6, 1, shade(shirt, LIGHT.top));
+  if (c.role === 'lead') out.rect(-1, ty + 1, 1, 4, b.ink);
 
   // arms
   const sleeve = (x: number, y: number, h: number) => {
@@ -298,29 +303,29 @@ function drawCharacter(out: Painter, pal: GaragePalette, c: NormalCharacter): vo
 
   // head, hair, face
   const hy = -18 + hd;
-  p.rect(-3, hy, 6, 6, skin);
-  p.rect(2, hy + 2, 1, 4, shade(skin, LIGHT.right));
-  p.rect(-2, hy + 4, 1, 1, s.shoe);
-  p.rect(1, hy + 4, 1, 1, s.shoe);
+  out.rect(-3, hy, 6, 6, skin);
+  out.rect(2, hy + 2, 1, 4, shade(skin, LIGHT.right));
+  out.rect(-2, hy + 4, 1, 1, s.shoe);
+  out.rect(1, hy + 4, 1, 1, s.shoe);
   switch (c.hairStyle) {
     case 'short': case 'long': case 'bun':
-      p.rect(-3, hy, 6, 2, hair);
-      p.rect(-3, hy + 2, 1, 1, hair);
-      p.rect(2, hy + 2, 1, 1, hair);
+      out.rect(-3, hy, 6, 2, hair);
+      out.rect(-3, hy + 2, 1, 1, hair);
+      out.rect(2, hy + 2, 1, 1, hair);
       if (c.hairStyle === 'long') {
-        p.rect(-3, hy + 2, 1, 5, hair);
-        p.rect(2, hy + 2, 1, 5, shade(hair, LIGHT.right));
+        out.rect(-3, hy + 2, 1, 5, hair);
+        out.rect(2, hy + 2, 1, 5, shade(hair, LIGHT.right));
       }
-      if (c.hairStyle === 'bun') p.rect(-1, hy - 2, 2, 2, hair);
+      if (c.hairStyle === 'bun') out.rect(-1, hy - 2, 2, 2, hair);
       break;
     case 'cap':
-      p.rect(-3, hy, 6, 2, shade(shirt, LIGHT.left));
+      out.rect(-3, hy, 6, 2, shade(shirt, LIGHT.left));
       p.rect(1, hy + 2, 3, 1, shade(shirt, LIGHT.right));
       break;
     case 'bald':
       break;
   }
-  if (c.role === 'supervisor') for (const x of [-3, -1, 1]) p.rect(x, hy - 1, 1, 1, b.yellow);
+  if (c.role === 'supervisor') for (const x of [-3, -1, 1]) out.rect(x, hy - 1, 1, 1, b.yellow);
 }
 
 // ---------- props ----------
