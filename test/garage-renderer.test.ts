@@ -542,6 +542,126 @@ describe('syncState diffs logical state and animates the differences', () => {
     expect(s[s.length - 1]!.x).toBeCloseTo(goal.screen.x);
   });
 
+  it('keeps everyone where they are drawn when a reconcile re-lays the room, then eases onto the new projection', () => {
+    const t = rig();
+    const lead = ch('lead-1', 'lead', 'desk:lead-1');
+    t.r.syncState(stateOf([lead, ch('w1', 'worker', 'crate:api'), ch('w2', 'worker', 'entrance')]));
+    t.frame(0);
+    t.frame(1000);
+    const first = t.r.layout;
+    const spots = Object.fromEntries(['lead-1', 'w1', 'w2'].map((id) => [id, t.r.inspect(id)!.device]));
+    // the first council seat raises the loft and the room grows: the projection's origin moves
+    t.r.syncState(stateOf([lead, ch('sup-1', 'council', 'loft:sup-1'), ch('w1', 'worker', 'crate:api'), ch('w2', 'worker', 'entrance'), ch('w3', 'worker', 'crate:docs'), ch('w4', 'worker', 'bay:B')]));
+    expect(t.r.layout).not.toBe(first);
+    expect(t.r.layout.toScreen(3, 3)).not.toEqual(first.toScreen(3, 3));
+    // immediately after the sync, before any frame: nobody has moved on the canvas
+    for (const id of ['lead-1', 'w1', 'w2']) expect(t.r.inspect(id)!.device, id).toEqual(spots[id]);
+    t.frame(1016);
+    for (const id of ['lead-1', 'w1', 'w2']) {
+      const d = t.r.inspect(id)!.device;
+      expect(Math.hypot(d.x - spots[id]!.x, d.y - spots[id]!.y), id).toBeLessThan(14 * t.r.zoom);
+    }
+  });
+
+  it('a re-laid room never shifts a character on the canvas between the frame before and the frame after', () => {
+    const t = rig();
+    const lead = ch('lead-1', 'lead', 'desk:lead-1');
+    t.r.syncState(stateOf([lead, ch('w1', 'worker', 'crate:api')]));
+    t.frame(0);
+    t.frame(1000);
+    const was = t.r.inspect('w1')!.device;
+    const oldOrigin = t.r.layout.toScreen(0, 0);
+    t.r.syncState(stateOf([lead, ch('sup-1', 'council', 'loft:sup-1'), ch('w1', 'worker', 'crate:api'), ch('x', 'worker', 'crate:docs')]));
+    expect(t.r.layout.toScreen(0, 0)).not.toEqual(oldOrigin);
+    expect(t.r.inspect('w1')!.device).toEqual(was);
+    const samples: Array<{ x: number; y: number }> = [was];
+    for (let now = 1016; now <= 6000; now += 16) {
+      t.frame(now);
+      samples.push(t.r.inspect('w1')!.device);
+    }
+    expect(maxStep(samples)).toBeLessThan(14 * t.r.zoom);
+    const goal = t.r.layout.resolve('crate:api')!;
+    expect(t.r.inspect('w1')!.moving).toBe(false);
+    expect(t.r.inspect('w1')!.x).toBeCloseTo(goal.screen.x);
+    expect(t.r.inspect('w1')!.y).toBeCloseTo(goal.screen.y);
+  });
+
+  it('a new order near the peak of a hop keeps the hop height and eases down from it', () => {
+    const t = rig({ hopTiles: 3 });
+    t.r.spawnAgent('w1', 'worker', 'entrance');
+    t.frame(0);
+    t.r.moveAgent('w1', 'loft:sup-1');
+    for (let now = 100; now <= 100 + 330; now += 16) t.frame(now);
+    expect(t.r.inspect('w1')!.hopping).toBe(true);
+    const before = t.r.inspect('w1')!;
+    t.r.moveAgent('w1', 'desk:lead-1');
+    // the order itself moves nothing on screen
+    expect(t.r.inspect('w1')!.device).toEqual(before.device);
+    expect(t.r.inspect('w1')!.y).toBeCloseTo(before.y);
+    const samples: Array<{ x: number; y: number }> = [before];
+    for (let now = 446; now <= 5000; now += 16) {
+      t.frame(now);
+      samples.push(t.r.inspect('w1')!);
+    }
+    // no drop of the whole hop lift (24 px) in one frame
+    expect(maxStep(samples)).toBeLessThan(20);
+    const goal = t.r.layout.resolve('desk:lead-1')!;
+    expect(t.r.inspect('w1')!.x).toBeCloseTo(goal.screen.x);
+    expect(t.r.inspect('w1')!.y).toBeCloseTo(goal.screen.y);
+  });
+
+  it('a hop redirected mid-air is drawn at the same height on the next frame (no lift reset)', () => {
+    const t = rig({ hopTiles: 3 });
+    t.r.spawnAgent('w1', 'worker', 'entrance');
+    t.frame(0);
+    t.r.moveAgent('w1', 'loft:sup-1');
+    for (let now = 100; now <= 100 + 320; now += 16) t.frame(now);
+    const air = t.r.inspect('w1')!;
+    expect(air.hopping).toBe(true);
+    t.r.moveAgent('w1', 'crate:api');
+    // the same instant again: the new motion has only just begun, so nothing but the offset is in play
+    t.frame(100 + 320);
+    const next = t.r.inspect('w1')!;
+    expect(Math.abs(next.y - air.y)).toBeLessThan(1);
+    expect(Math.abs(next.x - air.x)).toBeLessThan(1);
+  });
+
+  it('removes a character that leaves while already standing at the entrance, and stops asking for frames', () => {
+    const t = rig();
+    t.r.syncState(stateOf([ch('w1', 'worker', 'entrance'), ch('w2', 'worker', 'lab')]));
+    t.frame(0);
+    t.frame(1000);
+    t.r.syncState(stateOf([ch('w2', 'worker', 'lab')]));
+    expect(t.r.inspect('w1')!.leaving).toBe(true);
+    expect(t.r.inspect('w1')!.moving).toBe(false);
+    expect(t.r.needsFrame()).toBe(true);
+    let now = 1016;
+    for (; now < 3000 && t.r.inspect('w1'); now += 16) t.frame(now);
+    expect(t.r.inspect('w1')).toBeNull();
+    expect(now).toBeLessThan(1016 + 800);
+    t.frame(now);
+    expect(t.r.inspect('w2')).not.toBeNull();
+    expect(t.r.needsFrame()).toBe(false);
+  });
+
+  it('keeps asking for frames while an awaiting-human lamp blinks, once the spawn fade is over', () => {
+    const t = rig();
+    t.r.syncState(stateOf([ch('w1', 'worker', 'bay:A', { state: 'awaitingHuman' })]));
+    for (const now of [0, 200, 400, 600, 800, 1000]) t.frame(now);
+    expect(t.r.inspect('w1')!.alpha).toBe(1);
+    expect(t.r.needsFrame()).toBe(true);
+    const yellow = (now: number) => {
+      t.frame(now);
+      return t.canvas.ops.some((o) => o.op === 'fill' && o.color === PALETTES.phosphor.base.yellow);
+    };
+    expect(new Set([yellow(1800), yellow(2250)])).toEqual(new Set([true, false]));
+    expect(t.r.needsFrame()).toBe(true);
+    // a steady lamp does not
+    t.r.syncState(stateOf([ch('w1', 'worker', 'bay:A', { state: 'failed' })]));
+    t.frame(3000);
+    expect(t.r.needsFrame()).toBe(false);
+  });
+
   it('sets poses from the resolved state: typing needs a seat, a failure slumps', () => {
     const t = rig();
     const at = (state: CharacterStateName, station: StationId = 'bay:A') => stateOf([ch('w1', 'worker', station, { state })]);

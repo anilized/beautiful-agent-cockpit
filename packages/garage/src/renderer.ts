@@ -118,9 +118,11 @@ export interface AgentView {
   gy: number;
   /** Raised floors (the loft), in layout pixels. */
   elevation: number;
-  /** Layout pixels at zoom 1 (feet), hop lift included. */
+  /** Layout pixels at zoom 1 (feet), hop lift and any settling offset included. */
   x: number;
   y: number;
+  /** The same point on the canvas, in device pixels. */
+  device: { x: number; y: number };
   moving: boolean;
   hopping: boolean;
   facing: 'left' | 'right';
@@ -167,6 +169,8 @@ export const HOP_MAX_MS = 900;
 /** Peak height of a hop, in layout pixels. */
 const HOP_LIFT = 24;
 export const SPAWN_FADE_MS = 350;
+/** How long a displaced character takes to settle onto its new trajectory (a layout change, a mid-hop order). */
+export const SLIP_MS = 400;
 export const STAMP_MS = 2600;
 export const CELEBRATE_MS = 2400;
 const MAX_STAMPS = 32;
@@ -289,6 +293,12 @@ interface Agent {
   slot: number;
   pos: Waypoint;
   lift: number;
+  /**
+   * A screen-space offset (layout pixels) that eases to zero: what keeps the picture continuous when the trajectory
+   * underneath changes (the room was re-laid, or a new order arrived mid-hop). `slipK` is its current weight, 1 to 0.
+   */
+  slip: { x: number; y: number; t0: number | null } | null;
+  slipK: number;
   facing: 'left' | 'right';
   anim: AnimationName;
   celebrate: { t0: number | null } | null;
@@ -404,7 +414,7 @@ class Renderer implements CanvasRenderer {
     const t = this.targetFor(station, slot);
     const wp: Waypoint = t ? { ...t.wp } : { gx: 0, gy: 0, elev: 0 };
     this.agents.set(id, {
-      id, kind, specialty: look?.specialty ?? null, task: look?.task ?? null, at: station, slot, pos: wp, lift: 0,
+      id, kind, specialty: look?.specialty ?? null, task: look?.task ?? null, at: station, slot, pos: wp, lift: 0, slip: null, slipK: 0,
       facing: 'right', anim: 'idle', celebrate: null, motion: null, born: null, alpha: 0, leaving: false, fadeOut: null,
       pose: 'stand', state: null,
     });
@@ -538,11 +548,26 @@ class Renderer implements CanvasRenderer {
 
   setLayout(layout: Layout): void {
     if (this.disposed) return;
+    // Where everyone is drawn now, on the canvas; the new projection must not move them.
+    const drawn = new Map<CharacterId, { x: number; y: number }>();
+    for (const a of this.agents.values()) {
+      const s = this.screenOf(a);
+      drawn.set(a.id, this.dev(s.x, s.y));
+    }
     this.layout = layout;
     this.layerKey = '';
     this.fit();
-    // The furniture moved, so everyone walks to where their station is now, from where they stand.
-    for (const a of this.agents.values()) this.reroute(a);
+    // The furniture moved: everyone keeps their drawn spot, settles onto the new projection, and walks to where
+    // their station is now, from where they stand.
+    for (const a of this.agents.values()) {
+      const was = drawn.get(a.id)!;
+      const s = this.layout.toScreen(a.pos.gx, a.pos.gy, a.pos.elev);
+      const now = this.dev(s.x, s.y);
+      a.lift = 0;
+      a.slip = { x: (was.x - now.x) / this.zoom, y: (was.y - now.y) / this.zoom, t0: null };
+      a.slipK = 1;
+      this.reroute(a);
+    }
     this.dirty = true;
   }
 
@@ -578,9 +603,9 @@ class Renderer implements CanvasRenderer {
   inspect(id: CharacterId): AgentView | null {
     const a = this.agents.get(id);
     if (!a) return null;
-    const s = this.layout.toScreen(a.pos.gx, a.pos.gy, a.pos.elev);
+    const s = this.screenOf(a);
     return {
-      id, kind: a.kind, station: a.at, gx: a.pos.gx, gy: a.pos.gy, elevation: a.pos.elev, x: s.x, y: s.y - a.lift,
+      id, kind: a.kind, station: a.at, gx: a.pos.gx, gy: a.pos.gy, elevation: a.pos.elev, x: s.x, y: s.y, device: this.dev(s.x, s.y),
       moving: !!a.motion, hopping: !!a.motion?.hop, facing: a.facing, pose: a.pose, alpha: a.alpha, anim: a.anim, leaving: a.leaving,
     };
   }
@@ -588,9 +613,9 @@ class Renderer implements CanvasRenderer {
   anchorOf(id: CharacterId | StationId): Anchor | null {
     const a = this.agents.get(id);
     if (a) {
-      const s = this.layout.toScreen(a.pos.gx, a.pos.gy, a.pos.elev);
+      const s = this.screenOf(a);
       const sprite = this.sprites.character({ ...this.partsOf(a), pose: a.pose, facing: a.facing });
-      return this.cssAnchor(s.x, s.y - a.lift - sprite.anchorY * ART);
+      return this.cssAnchor(s.x, s.y - sprite.anchorY * ART);
     }
     const st = this.layout.resolve(id as StationId);
     if (!st) return null;
@@ -614,7 +639,7 @@ class Renderer implements CanvasRenderer {
     if (this.disposed) return false;
     if (this.dirty || this.stamps.length > 0 || this.extras.size > 0) return true;
     for (const a of this.agents.values()) {
-      if (a.motion || a.celebrate || a.fadeOut || a.alpha < 1 || a.anim === 'implementing') return true;
+      if (a.motion || a.celebrate || a.fadeOut || a.leaving || a.slip || a.alpha < 1 || a.anim === 'implementing' || a.anim === 'awaitingHuman') return true;
     }
     for (const [id, st] of this.stationStates) if (st === 'alert' || (st === 'failed' && id === 'bench')) return true;
     return false;
@@ -669,10 +694,31 @@ class Renderer implements CanvasRenderer {
     return { tile, wp: { gx: tile.gx + ox, gy: tile.gy + oy, elev } };
   }
 
+  /** Where a character is drawn, in layout pixels: its tile, minus any hop lift, plus the settling offset. */
+  private screenOf(a: Agent): { x: number; y: number } {
+    const s = this.layout.toScreen(a.pos.gx, a.pos.gy, a.pos.elev);
+    const k = a.slip ? a.slipK : 0;
+    return { x: s.x + (a.slip ? a.slip.x * k : 0), y: s.y - a.lift + (a.slip ? a.slip.y * k : 0) };
+  }
+
+  /**
+   * Fold the hop lift and the current settling offset into a fresh offset, so that whatever replaces the trajectory
+   * starts exactly where the character is drawn now and eases from there.
+   */
+  private captureSlip(a: Agent): void {
+    const k = a.slip ? a.slipK : 0;
+    const x = a.slip ? a.slip.x * k : 0;
+    const y = (a.slip ? a.slip.y * k : 0) - a.lift;
+    a.lift = 0;
+    a.slip = Math.abs(x) < 1e-6 && Math.abs(y) < 1e-6 ? null : { x, y, t0: null };
+    a.slipK = 1;
+  }
+
   /** Walk (or hop) from wherever it stands now to where its station is. Never moves the character itself. */
   private reroute(a: Agent): void {
     const t = this.targetFor(a.at, a.slot);
     if (!t) return;
+    this.captureSlip(a);
     const L = this.layout;
     const from = a.pos;
     const start: Point = { gx: clampInt(Math.round(from.gx), 0, L.cols - 1), gy: clampInt(Math.round(from.gy), 0, L.rows - 1) };
@@ -743,11 +789,19 @@ class Renderer implements CanvasRenderer {
         else if (dx < -1e-6) a.facing = 'left';
         a.pos = u >= 1 ? { ...m.pts[m.pts.length - 1]! } : { gx: p.gx + (q.gx - p.gx) * f, gy: p.gy + (q.gy - p.gy) * f, elev: p.elev + (q.elev - p.elev) * f };
         a.lift = m.hop && u < 1 ? Math.sin(Math.PI * u) * HOP_LIFT : 0;
+        if (u >= 1) a.motion = null;
+      }
+      if (a.slip) {
+        if (a.slip.t0 === null) a.slip.t0 = now;
+        const u = clamp01((now - a.slip.t0) / SLIP_MS);
+        a.slipK = 1 - easeInOutSine(u);
         if (u >= 1) {
-          a.motion = null;
-          if (a.leaving) a.fadeOut = { t0: null };
+          a.slip = null;
+          a.slipK = 0;
         }
       }
+      // A character that is leaving fades once it has nowhere left to walk, including when it was already at the door.
+      if (a.leaving && !a.motion && !a.fadeOut) a.fadeOut = { t0: null };
       if (a.fadeOut) {
         if (a.fadeOut.t0 === null) a.fadeOut.t0 = now;
         const u = clamp01((now - a.fadeOut.t0) / SPAWN_FADE_MS);
@@ -819,7 +873,8 @@ class Renderer implements CanvasRenderer {
         key: a.pos.gx + a.pos.gy, tie: 1, id: `char|${a.id}`,
         draw: () => {
           ctx.globalAlpha = a.alpha;
-          this.blit(ctx, this.sprites.character({ ...this.partsOf(a), pose: a.pose, facing: a.facing }), a.pos.gx, a.pos.gy, a.pos.elev, 0, -a.lift);
+          const k = a.slip ? a.slipK : 0;
+          this.blit(ctx, this.sprites.character({ ...this.partsOf(a), pose: a.pose, facing: a.facing }), a.pos.gx, a.pos.gy, a.pos.elev, a.slip ? a.slip.x * k : 0, (a.slip ? a.slip.y * k : 0) - a.lift);
           ctx.globalAlpha = 1;
         },
       });
@@ -872,7 +927,7 @@ class Renderer implements CanvasRenderer {
       if (!a.celebrate || a.celebrate.t0 === null) continue;
       const t = (now - a.celebrate.t0) / 1000;
       if (t < 0 || t * 1000 > CONFETTI_MS) continue;
-      const s = this.layout.toScreen(a.pos.gx, a.pos.gy, a.pos.elev);
+      const s = this.screenOf(a);
       for (let i = 0; i < CONFETTI_PER_AGENT; i++) {
         const h = fnv(`${a.id}:${i}`);
         const vx = ((h & 255) / 255 - 0.5) * 60;
@@ -893,8 +948,8 @@ class Renderer implements CanvasRenderer {
     if (!color || a.alpha <= 0) return;
     if (a.anim === 'awaitingHuman' && !beat(now, BLINK_MS)) return;
     const sprite = this.sprites.character({ ...this.partsOf(a), pose: a.pose, facing: a.facing });
-    const s = this.layout.toScreen(a.pos.gx, a.pos.gy, a.pos.elev);
-    const d = this.dev(s.x - ART, s.y - a.lift - (sprite.anchorY + 4) * ART);
+    const s = this.screenOf(a);
+    const d = this.dev(s.x - ART, s.y - (sprite.anchorY + 4) * ART);
     const size = ART * this.zoom;
     ctx.globalAlpha = a.alpha;
     ctx.fillStyle = color;
