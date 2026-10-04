@@ -112,26 +112,37 @@ flowchart TD
 
 ## Install
 
+### From the plugin marketplace (recommended)
+
+Inside Claude Code:
+
+```
+/plugin marketplace add anilized/beautiful-agent-cockpit
+/plugin install agent-cockpit@beautiful-agent-cockpit
+```
+
+Restart Claude Code (or `/reload-plugins`), type `/cockpit`, and press **`i`** once: the cockpit
+installs the orchestrator's dependencies (`npm install` in the marketplace's copy of this
+repository). Then press **`s`** to start it. `/plugin marketplace update beautiful-agent-cockpit`
+pulls new versions.
+
+### From a clone (for development)
+
 ```bash
 git clone https://github.com/anilized/beautiful-agent-cockpit.git
 cd beautiful-agent-cockpit
 npm install
-node bin/cockpit.mjs doctor      # finds claude, codex and git, and checks the logins
+claude --plugin-dir ./packages/claude-plugin
 ```
 
-Load the cockpit into Claude Code by pointing it at the plugin directory:
-
-```bash
-claude --plugin-dir /path/to/beautiful-agent-cockpit/packages/claude-plugin
-```
-
-(Or add the directory to your Claude Code plugin settings so it loads every time.)
+Either way, `node bin/cockpit.mjs doctor` in the repository checks that `claude`, `codex` and
+`git` are found and logged in. (`COCKPIT_ROOT` points the cockpit at another checkout.)
 
 ## Your first mission
 
 Inside Claude Code, in the repository you want to work on (it needs at least one commit):
 
-1. Type `/cockpit`. The cockpit opens; press **`s`** to start the orchestrator.
+1. Type `/cockpit`. The cockpit opens; press **`s`** to start the orchestrator (**`i`** first, once, after a marketplace install).
 2. Press **`n`** for a new mission. Write the brief — line by line, or press **`e`** to write it in
    your editor and **`l`** to load it back. Below it, pick the **council** and the **leads**
    (press a model to change it, ⚡ for its effort, `@` for a lead's area; `+ add` seats another).

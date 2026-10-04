@@ -295,13 +295,63 @@ function closeLife() {
 const seenApprovals = new Set<string>()
 let paths: { root: string; dataDir: string } | null = null
 
+const exists = async ($: EngineInterface, path: string) => {
+  try {
+    await $.fs.read(path)
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** The marketplace this repository publishes (.claude-plugin/marketplace.json). */
+const MARKETPLACE = 'beautiful-agent-cockpit'
+
+/**
+ * Where the orchestrator's checkout is. A marketplace install copies only this plugin into
+ * Claude Code's cache, but keeps the whole repository as the marketplace's own clone; a
+ * --plugin-dir load sits inside the checkout. COCKPIT_ROOT overrides both.
+ */
+async function findRoot($: EngineInterface, home: string): Promise<string> {
+  const tries: (string | null | undefined)[] = [COCKPIT_ROOT, await $.env.get('COCKPIT_ROOT'), `${$.plugin.root}/../..`]
+  const config = (await $.env.get('CLAUDE_CONFIG_DIR')) ?? `${home}/.claude`
+  try {
+    const known = JSON.parse(await $.fs.read(`${config}/plugins/known_marketplaces.json`)) as Record<string, { installLocation?: string }>
+    tries.push(known[MARKETPLACE]?.installLocation, ...Object.values(known).map(m => m?.installLocation))
+  } catch {
+    /* no marketplaces registered */
+  }
+  for (const t of tries) if (t && (await exists($, `${t}/bin/cockpit.mjs`))) return t
+  return tries.find(Boolean) ?? `${$.plugin.root}/../..`
+}
+
 async function locate($: EngineInterface) {
   if (paths) return paths
-  const root = COCKPIT_ROOT || `${$.plugin.root}/../..`
   const home = (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? '.'
+  const root = await findRoot($, home)
   const dataDir = (await $.env.get('COCKPIT_DATA_DIR')) ?? `${home}/.agent-cockpit`
   paths = { root, dataDir }
   return paths
+}
+
+/** Whether the checkout's dependencies are installed (a fresh marketplace install has none). */
+let depsReady: boolean | null = null
+async function checkDeps($: EngineInterface) {
+  const { root } = await locate($)
+  depsReady = await exists($, `${root}/node_modules/zod/package.json`)
+  return depsReady
+}
+
+async function installDeps($: EngineInterface) {
+  const { root } = await locate($)
+  const win = (await $.env.get('OS')) === 'Windows_NT'
+  const res = await busy($, 'installing the orchestrator (npm install, about a minute)…', () =>
+    $.process.run(win ? ['cmd', '/c', 'npm', 'install', '--no-audit', '--no-fund'] : ['npm', 'install', '--no-audit', '--no-fund'], { cwd: root, timeoutMs: 600_000 }),
+  )
+  await checkDeps($)
+  await say($, res.exitCode === 0 && depsReady ? 'Installed. Press s to start the orchestrator.' : `npm install failed in ${root}: ${`${res.stdout}${res.stderr}`.trim().split('\n').slice(-3).join(' ')}`)
+  lastGenerated = ''
+  await refresh($)
 }
 
 async function cli($: EngineInterface, args: string[], timeoutMs = 60_000) {
@@ -1003,18 +1053,23 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     // ── offline ──
 
     if (!s || !online) {
+      if (depsReady === null) void checkDeps($).then(ok => { if (!ok) void update($, tickAtom, x => x + 1) })
+      const fresh = depsReady === false
       return out(
         <Box flexDirection="column">
           {hero}
           <Box flexDirection="column" alignItems="center" paddingY={1}>
-            <Text color={C.text} bold>The orchestrator is asleep.</Text>
-            <Text color={C.dim}>Wake it and Opus, Codex and the workers report for duty.</Text>
+            <Text color={C.text} bold>{fresh ? 'One step before the first mission.' : 'The orchestrator is asleep.'}</Text>
+            <Text color={C.dim}>{fresh ? "The orchestrator's dependencies are not installed yet (npm install, once)." : 'Wake it and Opus, Codex and the workers report for duty.'}</Text>
             <Text> </Text>
-            <Button variant="primary" hotkey="s" label="  s · Start orchestrator  " autoFocus onPress={() => void daemon($, true)} />
+            {fresh
+              ? <Button variant="primary" hotkey="i" key="install-deps" label="  i · Install the orchestrator  " autoFocus onPress={() => void installDeps($)} />
+              : <Button variant="primary" hotkey="s" label="  s · Start orchestrator  " autoFocus onPress={() => void daemon($, true)} />}
+            {u.busy ? <Text color={C.cyan}>{SPIN[n % SPIN.length]} {u.busy}</Text> : v.message ? <Text color={C.mute} wrap="truncate-end">↳ {firstLine(v.message)}</Text> : null}
             <Text> </Text>
             {s && s.runs.length ? <Text color={C.dim}>{s.runs.length} past run{s.runs.length > 1 ? 's' : ''} on record</Text> : null}
           </Box>
-          {keybar([['s', 'start']])}
+          {keybar([fresh ? ['i', 'install'] : ['s', 'start']])}
         </Box>
       )
     }
