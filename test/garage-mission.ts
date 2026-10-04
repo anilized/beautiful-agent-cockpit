@@ -10,7 +10,10 @@
 // The cast: council sup-1 (chair) and sup-2; leads lead-1 (head) and lead-2 (area: frontend); worker
 // personas backend-dev, frontend-dev, test-engineer and docs-writer; repositories `api` and `web`.
 // Repository ids equal their names here, so a task's repo reads the same in an event (`repoId`) and in the
-// snapshot (`repo`).
+// snapshot (`repo`). The real daemon differs: `repoId` is opaque and the snapshot's `repo` is the name, and
+// events carry no id-to-name map. Mapper authors must not rely on `repoId === repo` outside this fixture.
+// Likewise `blockedReason` is cleared here when a task leaves `lease_conflict`; this is assumed, not confirmed
+// against the engine.
 //
 // What happens, in seq order (the `marks` export names the moments):
 //   council architecture -> lead review + proposals -> decisions (accept / reject) -> plan, team proposed,
@@ -789,7 +792,7 @@ export function snapshotAt(upToSeq: number, opts: SnapshotOptions = {}): Snapsho
     };
   });
 
-    const view: RunView = {
+  const view: RunView = {
     id: MISSION_RUN_ID, request: MISSION_REQUEST, status, round, error, createdAt: iso(MISSION_START_MS + 1200),
     roles: { supervisor, lead }, efforts,
     leadership: { supervisor: roleState(supervisor, 'supervisor'), lead: roleState(lead, 'lead') },
