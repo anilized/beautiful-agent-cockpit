@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; connect-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:">
+<title>Pixel Garage</title>
+<style>
+  /* Colours come only from the --g-* custom properties that palette.ts writes onto :root. */
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--g-bg-deep); color: var(--g-text); font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; }
+  #stage { position: relative; width: 100%; height: 100%; }
+  #g-canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+  #g-bubbles { position: absolute; inset: 0; pointer-events: none; }
+  .g-bubble { position: absolute; max-width: 240px; padding: 4px 6px; transform: translate(-50%, -100%); background: var(--g-chip); border: 1px solid var(--g-border); color: var(--g-text); }
+  .g-bubble-title { color: var(--g-accent); font-weight: bold; }
+  .g-bubble-narration { color: var(--g-text); }
+  .g-bubble-tool { color: var(--g-cyan); }
+  [hidden] { display: none !important; }
+  #g-hud { position: absolute; left: 0; right: 0; bottom: 0; display: grid; grid-template-columns: 1.4fr 1.4fr 1fr; gap: 4px 12px; padding: 6px 10px; background: var(--g-bg-deep); border-top: 1px solid var(--g-border); }
+  .g-status { grid-column: 1 / -1; color: var(--g-accent); }
+  .g-queue-row, .g-log-row, .g-spend-row, .g-limits-row { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .g-log-row { color: var(--g-mute); }
+  .g-limits-row { color: var(--g-yellow); }
+  #g-detail { position: absolute; top: 10px; right: 10px; width: 300px; padding: 8px; background: var(--g-chip); border: 1px solid var(--g-border); }
+  .g-detail-title { color: var(--g-accent); font-weight: bold; margin-bottom: 4px; }
+  .g-detail-row { word-break: break-all; }
+  #g-approval { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); max-width: 460px; padding: 8px 10px; background: var(--g-alert-tint); border: 1px solid var(--g-yellow); }
+  .g-approval-title { color: var(--g-yellow); font-weight: bold; }
+  .g-approval-hint { margin-top: 4px; color: var(--g-mint); }
+  #g-banner { position: absolute; top: 0; left: 0; right: 0; padding: 8px 12px; text-align: center; background: var(--g-red-deep); border-bottom: 1px solid var(--g-red); color: var(--g-ink); }
+  #g-theme { position: absolute; top: 10px; left: 10px; font: inherit; color: var(--g-text); background: var(--g-chip); border: 1px solid var(--g-border); cursor: pointer; }
+  #g-fps { position: absolute; top: 40px; left: 10px; color: var(--g-mute); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <canvas id="g-canvas"></canvas>
+  <div id="g-bubbles"></div>
+  <button id="g-theme" type="button"></button>
+  <div id="g-fps" hidden></div>
+  <div id="g-approval" hidden></div>
+  <div id="g-detail" hidden></div>
+  <div id="g-hud"></div>
+  <div id="g-banner" hidden></div>
+</div>
+<script type="module" src="/garage/main.js"></script>
+</body>
+</html>
