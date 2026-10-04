@@ -1001,9 +1001,9 @@ async function drawPane($: EngineInterface, e: PaneRender) {
             <Box justifyContent="space-between">
               <Text><Text color={C.accent} bold>✦ NEW MISSION</Text><Text color={C.dim}>  brief · markdown · {lines} lines{u.draftInEditor ? ' · open in your editor' : ''}</Text></Text>
               <Box gap={2}>
-                <Button plain hotkey="e" key="brief-edit" label="e · editor" onPress={() => void openDraft($)} />
-                <Button plain hotkey="l" key="brief-load" label="l · load" onPress={() => void loadDraft($)} />
-                <Button plain dimColor hotkey="u" key="brief-undo" label="u · undo line" onPress={undo} />
+                <Button plain hotkey="e" key="brief-edit" label="editor" onPress={() => void openDraft($)} />
+                <Button plain hotkey="l" key="brief-load" label="load" onPress={() => void loadDraft($)} />
+                <Button plain dimColor hotkey="u" key="brief-undo" label="undo line" onPress={undo} />
                 <Button plain dimColor key="brief-clear" label="clear" onPress={() => void patchUi($, { draft: '', draftInEditor: false })} />
               </Box>
             </Box>
@@ -1043,7 +1043,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           </Box>
           <Box paddingX={1} gap={2}>
             <Button variant="primary" hotkey="s" key="brief-start" label="  s · Start mission  " onPress={() => void launchMission($)} />
-            <Button plain dimColor hotkey="q" key="cancel-run" label="q · back (the brief is kept)" onPress={() => void patchUi($, { composing: null })} />
+            <Button plain dimColor hotkey="q" key="cancel-run" label="back (the brief is kept)" onPress={() => void patchUi($, { composing: null })} />
             {u.busy ? <Text color={C.cyan}>{SPIN[n % SPIN.length]} {u.busy}</Text> : v.message ? <Text color={C.mute} wrap="truncate-end">↳ {firstLine(v.message)}</Text> : null}
           </Box>
         </Box>,
@@ -1101,20 +1101,20 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         const dn = r.tasks.filter(isDone).length
         const bar = smoothBar(r.status === 'completed' ? 1 : r.tasks.length ? dn / r.tasks.length : 0, barW)
         const waits = s.pendingApprovals.some(a => a.runId === r.id)
-        const age = r.createdAt ? ago(now - Date.parse(r.createdAt)) : ''
+        const age = r.createdAt ? short(now - Date.parse(r.createdAt)) : ''
         const meta = `${r.status.replace(/_/g, ' ').padEnd(16).slice(0, 16)}`
         return (
           <Box key={`home-row-${r.id}`} justifyContent="space-between" hover={{ backgroundColor: C.hover }}>
             <Box flexShrink={1}>
               <Text color={MOVING.has(r.status) ? pulse(n, rc, C.white, 0.4) : rc}>{glyph(r.status, n)} </Text>
-              <Button plain hotkey={i < 9 ? String(i + 1) : undefined} key={`home-open-${r.id}`} label={clip(firstLine(r.request).replace(/^#+\s*/, ''), Math.max(10, leftW - 48))} onPress={() => openRun(r.id)} />
+              <Button plain hotkey={i < 9 ? String(i + 1) : undefined} key={`home-open-${r.id}`} label={clip(firstLine(r.request).replace(/^#+\s*/, ''), Math.max(10, leftW - 56))} onPress={() => openRun(r.id)} />
             </Box>
-            <Text>
+            <Box flexShrink={0} marginLeft={1}><Text>
               {waits ? <Text color={pulse(n, C.yellow, C.accent, 0.5)}>● </Text> : null}
               <Text color={rc}>{meta}</Text>
               <Text color={C.faint}>▕</Text><Text color={r.status === 'failed' ? C.red : C.accent}>{bar.fill}</Text><Text color={C.track}>{bar.rest}</Text><Text color={C.faint}>▏</Text>
               <Text color={C.dim}> {`${dn}/${r.tasks.length}`.padStart(5)} {age.padStart(4)}</Text>
-            </Text>
+            </Text></Box>
           </Box>
         )
       }

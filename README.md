@@ -146,6 +146,8 @@ Inside Claude Code, in the repository you want to work on (it needs at least one
 2. Press **`n`** for a new mission. Write the brief — line by line, or press **`e`** to write it in
    your editor and **`l`** to load it back. Below it, pick the **council** and the **leads**
    (press a model to change it, ⚡ for its effort, `@` for a lead's area; `+ add` seats another).
+   ![The NEW MISSION screen: the brief, the crew and the options](docs/images/cockpit-new-mission.png)
+
 3. Press **`s`** to start. Watch the architecture form and the debate run.
 4. When the plan is ready, **NEEDS YOU** shows the proposed team. Adjust it and press **`a`**.
 5. Follow the work: the log, each agent's stream, the code preview, the team. Press **`d`** for the
@@ -166,6 +168,10 @@ node bin/cockpit.mjs approve <runId>
 
 A dense command center in a Claude Code pane, built after lazygit and agent managers like Claude
 Squad: every agent, task and change is on screen at once, in the same place every time.
+
+![The cockpit's home: missions, recent milestones, the team, plan left and the next crew](docs/images/cockpit-home.png)
+
+<sub>Home, between missions. While a mission runs, the cockpit is the grid below.</sub>
 
 ```
 ◎ ANILDEV  // MULTI-AGENT CODING COCKPIT       ⎇ api  ● executing  3 agents  $2.72  ◔ claude 79% · codex 91%
