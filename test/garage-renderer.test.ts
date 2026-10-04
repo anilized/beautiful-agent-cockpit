@@ -680,6 +680,22 @@ describe('syncState diffs logical state and animates the differences', () => {
     expect(t.r.inspect('w1')!.pose).toBe('stand');
   });
 
+  it('a reconcile corrects an animation an intent started: idle, then implementing, then idle again', () => {
+    const t = rig();
+    const idle = stateOf([ch('w1', 'worker', 'bay:A', { state: 'idle' })]);
+    t.r.syncState(idle);
+    t.r.applyIntent({ type: 'animate', character: 'w1', animation: 'implementing' });
+    for (const now of [0, 200, 400, 1000]) t.frame(now);
+    expect(t.r.inspect('w1')!.anim).toBe('implementing');
+    t.r.syncState(idle);
+    expect(t.r.inspect('w1')!.anim).toBe('idle');
+    for (const now of [1200, 1400, 1600]) {
+      t.frame(now);
+      expect(t.r.inspect('w1')!.pose).toBe('sit');
+    }
+    expect(t.r.needsFrame()).toBe(false);
+  });
+
   it('lights stations from the state and puts them out when they leave it', () => {
     const t = rig();
     t.r.syncState(stateOf([], stations({ lab: 'ok' })));

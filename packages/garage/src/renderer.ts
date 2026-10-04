@@ -308,8 +308,6 @@ interface Agent {
   leaving: boolean;
   fadeOut: { t0: number | null } | null;
   pose: Pose;
-  /** The state last diffed in (for the mood pip and to detect changes). */
-  state: CharacterStateName | null;
 }
 
 interface Stamp {
@@ -416,7 +414,7 @@ class Renderer implements CanvasRenderer {
     this.agents.set(id, {
       id, kind, specialty: look?.specialty ?? null, task: look?.task ?? null, at: station, slot, pos: wp, lift: 0, slip: null, slipK: 0,
       facing: 'right', anim: 'idle', celebrate: null, motion: null, born: null, alpha: 0, leaving: false, fadeOut: null,
-      pose: 'stand', state: null,
+      pose: 'stand',
     });
     this.dirty = true;
   }
@@ -521,10 +519,8 @@ class Renderer implements CanvasRenderer {
         if (known.at !== c.station) this.moveAgent(c.id, c.station);
       }
       const a = this.agents.get(c.id)!;
-      if (a.state !== c.state) {
-        a.state = c.state;
-        this.playAnimation(c.id, c.state);
-      }
+      // Reconcile against what is playing now, not what the last sync said: an intent may have changed it since.
+      if (a.anim !== c.state) this.playAnimation(c.id, c.state);
     }
     for (const a of this.agents.values()) if (!state.characters[a.id] && !a.leaving) this.retire(a);
 
