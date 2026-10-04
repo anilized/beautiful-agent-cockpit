@@ -1636,7 +1636,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       const active = followed.status === 'active'
       const end = followed.endedAt ? Date.parse(followed.endedAt) : now
       const width = Math.max(20, rightIn - 14)
-      const cap = { thinking: 4, text: 6, tool: 1, result: 10 } as const
+      const cap = { thinking: 12, text: 12, tool: 1, result: 14 } as const
       const entryId = (e: CockpitMind['activity'][number]) => `mind-${followed.sessionId}-${e.ts}-${e.kind}-${e.text.length}`
       const allEntries = [...followed.activity].reverse()
       const skip = Math.min(u.scroll.output ?? 0, Math.max(0, allEntries.length - 1))
@@ -1770,7 +1770,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           const at = a.text.indexOf(': ')
           const name = at > 0 ? a.text.slice(0, at) : a.text
           logLines.push({ ts: a.ts, tag, color, tone: 'tool', text: `${toolIcon(name)} ${name} ${toolDetail(at > 0 ? a.text.slice(at + 2) : '')}` })
-        } else logLines.push({ ts: a.ts, tag, color, tone: a.kind, text: a.text.trim().replace(/\s*\n\s*/g, ' ⏎ ') })
+        } else logLines.push({ ts: a.ts, tag, color, tone: a.kind, text: a.text.trim().replace(/\n{3,}/g, '\n\n') })
       }
     }
     for (const ev of run.recentEvents) {
@@ -1780,18 +1780,33 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     }
     logLines.sort((a, b) => b.ts.localeCompare(a.ts))
     const tagW = Math.max(8, ...logLines.slice(0, 200).map(l => l.tag.length))
-    const LogView = ({ max, skip = 0 }: { max: number; skip?: number }) => (
+    // The log in rows: a long thought, a message or an outcome wraps whole under its own text (nothing is cut
+    // to "…"); a tool call keeps its one line. The box windows rows, so scrolling walks every line.
+    type LogRow = { ln: LogLine; first: boolean; text: string; top: boolean }
+    const logRowsFor = (w: number): LogRow[] => {
+      const out: LogRow[] = []
+      logLines.forEach((ln, k) => {
+        const mark = ln.tone === 'ok' || ln.tone === 'result' ? '✔ ' : ln.tone === 'bad' ? '✗ ' : ln.tone === 'thinking' ? '∴ ' : ''
+        const textW = Math.max(12, w - 9 - (tagW + 2) - 1 - mark.length)
+        const parts = ln.tone === 'tool' ? [ln.text] : wrapWords(ln.text, textW)
+        parts.forEach((text, j) => out.push({ ln, first: j === 0, text: j === 0 ? `${mark}${text}` : text, top: k === 0 }))
+      })
+      return out
+    }
+    const LogView = ({ rows: list, max, skip = 0 }: { rows: LogRow[]; max: number; skip?: number }) => (
       <Box flexDirection="column">
-        {logLines.length ? logLines.slice(skip, skip + max).map((ln, i) => {
+        {list.length ? list.slice(skip, skip + max).map(({ ln, first, text, top }) => {
           const fresh = Math.max(0, 1 - (now - Date.parse(ln.ts)) / 8000)
-          const mark = ln.tone === 'ok' || ln.tone === 'result' ? '✔ ' : ln.tone === 'bad' ? '✗ ' : ln.tone === 'thinking' ? '∴ ' : ''
           const color = ln.tone === 'ok' || ln.tone === 'result' ? C.green : ln.tone === 'bad' ? C.red : ln.tone === 'thinking' ? C.thinkDim : ln.tone === 'tool' ? C.mute : ln.tone === 'sys' ? C.text : mix(C.text, C.white, fresh)
-          return (
+          const lead = 9 + tagW + 2 + 1 + (ln.tone === 'thinking' || ln.tone === 'result' || ln.tone === 'ok' || ln.tone === 'bad' ? 2 : 0)
+          return first ? (
             <Text wrap="truncate-end">
-              <Text color={i === 0 && live ? C.accent : C.dim}>{ln.ts.slice(11, 19)} </Text>
+              <Text color={top && live ? C.accent : C.dim}>{ln.ts.slice(11, 19)} </Text>
               <Text color={ln.color}>[{ln.tag.padEnd(tagW)}]</Text>
-              <Text color={color} italic={ln.tone === 'thinking'} bold={ln.tone === 'result'}> {mark}{ln.text}</Text>
+              <Text color={color} italic={ln.tone === 'thinking'} bold={ln.tone === 'result'}> {text}</Text>
             </Text>
+          ) : (
+            <Text wrap="truncate-end" color={color} italic={ln.tone === 'thinking'}>{' '.repeat(lead)}{text || ' '}</Text>
           )
         }) : <Text color={C.dim}>{live ? `${SPIN[n % SPIN.length]} waiting for the first move…` : 'Nothing logged for this mission.'}</Text>}
       </Box>
@@ -1969,11 +1984,12 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       u.tab === 'task' ? (selTask ? taskRows(selTask) : [{ text: 'No task selected.', color: C.dim }]).map(r => <RowLine r={r} />)
       : u.tab === 'events' ? (run.recentEvents.length ? eventRows() : [<Text color={C.dim}>No events yet.</Text>])
       : u.tab === 'report' ? (u.report?.runId === run.id ? mdRows(u.report.text).map(r => <RowLine r={r} />) : [<Text color={C.cyan}>{SPIN[n % SPIN.length]} fetching report…</Text>])
-      : [<LogView max={1000} />]
+      : []
     // The log is one element of one-row lines: window it by entries; the other views by rows.
     const centreRows = Math.max(4, topH - 9)
     const logMode = u.tab === 'live'
-    const centreTotal = logMode ? logLines.length : centreItems.length
+    const logRows = logMode ? logRowsFor(lineW + 1) : []
+    const centreTotal = logMode ? logRows.length : centreItems.length
     const centreMax = Math.max(0, centreTotal - centreRows + 1)
     const centreOff = sized ? Math.min(u.scroll.centre ?? 0, centreMax) : 0
     const upMore = centreOff
@@ -1983,7 +1999,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const centreBody: RenderChildren = (
       <Box flexDirection="column">
         {upMore ? <Text color={C.dim}>↑ {upMore} more{u.focus === 'centre' ? ' (k)' : ''}</Text> : null}
-        {logMode ? <LogView max={sized ? take : 1000} skip={centreOff} /> : (sized ? centreItems.slice(centreOff, centreOff + take) : centreItems)}
+        {logMode ? <LogView rows={logRows} max={sized ? take : 2000} skip={centreOff} /> : (sized ? centreItems.slice(centreOff, centreOff + take) : centreItems)}
         {downMore ? <Text color={C.dim}>↓ {downMore} more{u.focus === 'centre' ? ' (j)' : ' (scroll)'}</Text> : null}
       </Box>
     )

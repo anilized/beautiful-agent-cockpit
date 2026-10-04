@@ -117,7 +117,9 @@ export interface MindView {
 /** Sessions shown in the Minds view, and how much of each one's stream. */
 const MIND_SESSIONS = 8;
 const MIND_ACTIVITY = 80;
-const MIND_TEXT = 3000;
+const MIND_TEXT = 6000;
+/** All Minds text in one snapshot, kept well under the 4 MiB a plugin may read: the longest entries give way first. */
+const MIND_BUDGET = 1_500_000;
 /** Events kept in the snapshot, and the longest field an opened event row shows. */
 const RECENT_EVENTS = 40;
 const DETAIL_FIELD = 2000;
@@ -158,12 +160,18 @@ export function minds(
     const kind = d.kind ?? (/^(?:[A-Z]\w*|shell|edit): /.test(d.text) ? 'tool' : 'text');
     list.push({ ts: e.ts, kind, text: d.text.length > limits.text ? `${d.text.slice(0, limits.text)}…` : d.text });
   }
-  return chosen.map((s) => ({
+  const views = chosen.map((s) => ({
     sessionId: s.id, agentId: s.agentId, role: s.role, task: s.taskId ? keyOf(s.taskId) : null,
     contract: started.get(s.id)?.contract ?? null, effort: started.get(s.id)?.effort ?? null, seat: started.get(s.id)?.seat ?? null,
     status: s.status, startedAt: s.startedAt, endedAt: s.endedAt,
     activity: byId.get(s.id)!.slice(-limits.activity),
   }));
+  // Over budget: cap every entry lower until the whole fits.
+  const all = views.flatMap((v) => v.activity);
+  for (let cap = Math.floor(limits.text / 2); all.reduce((n, a) => n + a.text.length, 0) > MIND_BUDGET && cap >= 200; cap = Math.floor(cap / 2)) {
+    for (const a of all) if (a.text.length > cap) a.text = `${a.text.slice(0, cap)}…`;
+  }
+  return views;
 }
 
 export function describe(e: CockpitEvent, keyOf: (id: unknown) => string): string {

@@ -342,6 +342,7 @@ test('the grid shows the unified log, the agent focus files, a code preview and 
     activity: [
       { ts: '2026-10-03T13:23:40.000Z', kind: 'text', text: 'Writing the slugify edge cases first.' },
       { ts: '2026-10-03T13:23:41.000Z', kind: 'tool', text: 'Edit: src/strings.js' },
+      { ts: '2026-10-03T13:00:42.000Z', kind: 'thinking', text: `${'weighing the slug rules against unicode input, '.repeat(14)}\nso THE-END-OF-THOUGHT` },
     ],
   }]
   on('fs.read', async () => ({ value: JSON.stringify(snap) }))
@@ -367,6 +368,13 @@ test('the grid shows the unified log, the agent focus files, a code preview and 
     await has(/◇ LEADS/)
     await has(/1 decision waiting/)
     expect([cols, !!(await ui.find({ type: 'Text', text: /object Object/ }))]).toEqual([cols, false])
+    // a long thought wraps whole in the log; where the box is shorter, scrolling reaches its last words
+    if (cols === 140) {
+      await ui.press({ key: 'tab-live' })
+      for (let i = 0; i < 20 && !(await ui.find({ type: 'Text', text: /THE-END-OF-THOUGHT/ })); i++) await ui.press({ key: 'nav-j' })
+    }
+    await has(/THE-END-OF-THOUGHT/)
+    expect([cols, !!(await ui.find({ type: 'Text', text: /unicode input, weighing/ }))]).toEqual([cols, true])
     await has(/1 codex/)
     await ui.unmount()
   }

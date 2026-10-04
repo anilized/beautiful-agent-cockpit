@@ -7,7 +7,7 @@ import { describeOutcome } from './outcome';
 import { claudeLimits } from './limits';
 
 /** Longest model message or reasoning block kept per event. */
-const MAX_OUTPUT = 4000;
+const MAX_OUTPUT = 8000;
 
 export interface AgentCall<N extends ContractName> {
   runId: string;
