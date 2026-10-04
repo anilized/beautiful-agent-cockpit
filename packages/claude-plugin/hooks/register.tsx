@@ -14,7 +14,7 @@ import { createTweens, type Tweens } from './tween'
 
 const PANE = 'agent-cockpit'
 const EMPTY: CockpitView = { snapshot: null, error: null, message: null }
-const UI0: CockpitUi = { selectedRun: null, tab: 'live', composing: null, nonce: 0, busy: null, report: null, failure: null, crew: null, draft: '', draftFlags: '', draftInEditor: false, mind: null, open: [], focus: 'tasks', task: null, scroll: {} }
+const UI0: CockpitUi = { selectedRun: null, tab: 'live', composing: null, nonce: 0, busy: null, report: null, failure: null, crew: null, draft: '', draftFlags: '', draftInEditor: false, seatDraft: null, teamDraft: null, mind: null, open: [], focus: 'tasks', task: null, scroll: {} }
 const view = atom({ plugin: 'agent-cockpit', key: 'view' } as const, EMPTY)
 const ui = atom({ plugin: 'agent-cockpit', key: 'ui' } as const, UI0)
 const tickAtom = atom({ plugin: 'agent-cockpit', key: 'tick' } as const, 0)
@@ -440,6 +440,7 @@ async function refresh($: EngineInterface) {
   }
   if (snapshot.generatedAt === lastGenerated) return
   lastGenerated = snapshot.generatedAt
+  await settleDrafts($, snapshot)
   await update($, view, v => ({ ...v, snapshot, error: null }))
 
   for (const a of snapshot.pendingApprovals) {
@@ -531,19 +532,58 @@ async function startRun($: EngineInterface, text: string, file?: string) {
 /** Seats as the CLI takes them: agent[:effort][@area], comma-separated. */
 const crewArg = (seats: CockpitSeatPick[]) => seats.map(x => `${x.agent}${x.effort ? `:${x.effort}` : ''}${x.area ? `@${x.area}` : ''}`).join(',')
 
-async function setSeats($: EngineInterface, runId: string, crew: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }) {
-  const res = await busy($, 'reseating the council and leads…', () => cli($, ['seats', runId, '--council', crewArg(crew.council), '--leads', crewArg(crew.leads)]))
-  await say($, res.text)
+type Crew = { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }
+
+/**
+ * A live mission's crew and team edits: each click updates a draft in the pane state (shown at
+ * once), and the draft is sent to the daemon one call at a time. Clicks made while a call is in
+ * flight fold into the next call, which sends the latest draft, so the last choice always wins.
+ */
+const sending = new Set<'seats' | 'team'>()
+const resend = new Set<'seats' | 'team'>()
+async function sendDraft($: EngineInterface, kind: 'seats' | 'team') {
+  if (sending.has(kind)) return void resend.add(kind)
+  sending.add(kind)
+  try {
+    do {
+      resend.delete(kind)
+      const u = await readUi($)
+      const args = kind === 'seats'
+        ? (u.seatDraft ? ['seats', u.seatDraft.runId, '--council', crewArg(u.seatDraft.crew.council), '--leads', crewArg(u.seatDraft.crew.leads)] : null)
+        : (u.teamDraft ? ['team', u.teamDraft.runId, JSON.stringify(u.teamDraft.team.map(p => ({ id: p.id, title: p.title, specialty: p.specialty, agent: p.agent, effort: p.effort })))] : null)
+      if (!args) break
+      const res = await busy($, kind === 'seats' ? 'reseating the council and leads…' : 'revising the team…', () => cli($, args))
+      await say($, res.text)
+      if (!res.ok) {
+        // Refused (a seat the agent may not take, a finished mission): show the mission as it is.
+        await patchUi($, kind === 'seats' ? { seatDraft: null } : { teamDraft: null })
+        resend.delete(kind)
+      }
+    } while (resend.has(kind))
+  } finally {
+    sending.delete(kind)
+  }
   lastGenerated = ''
   await refresh($)
 }
 
-async function setTeam($: EngineInterface, runId: string, team: CockpitPersona[]) {
-  const body = team.map(p => ({ id: p.id, title: p.title, specialty: p.specialty, agent: p.agent, effort: p.effort }))
-  const res = await busy($, 'revising the team…', () => cli($, ['team', runId, JSON.stringify(body)]))
-  await say($, res.text)
-  lastGenerated = ''
-  await refresh($)
+const sameCrew = (a: Crew, r: CockpitRun) => {
+  const key = (xs: { agent: string; effort: string | null; area?: string | null }[], areas: boolean) => xs.map(x => `${x.agent}:${x.effort ?? ''}:${areas ? x.area ?? '' : ''}`).join(',')
+  return !!r.council && !!r.leads && key(a.council, false) === key(r.council, false) && key(a.leads, true) === key(r.leads, true)
+}
+const sameTeam = (a: CockpitPersona[], r: CockpitRun) => (r.team ?? []).map(p => `${p.id}:${p.agent}:${p.effort ?? ''}`).join(',') === a.map(p => `${p.id}:${p.agent}:${p.effort ?? ''}`).join(',')
+
+/** Drops a draft once the snapshot shows it (or its mission is gone or finished). */
+async function settleDrafts($: EngineInterface, s: CockpitSnapshot) {
+  const u = await readUi($)
+  const done = (runId: string, same: (r: CockpitRun) => boolean) => {
+    const r = s.runs.find(x => x.id === runId)
+    return !r || TERMINAL.includes(r.status) || same(r)
+  }
+  const patch: Partial<CockpitUi> = {}
+  if (u.seatDraft && !sending.has('seats') && done(u.seatDraft.runId, r => sameCrew(u.seatDraft!.crew, r))) patch.seatDraft = null
+  if (u.teamDraft && !sending.has('team') && done(u.teamDraft.runId, r => sameTeam(u.teamDraft!.team, r))) patch.teamDraft = null
+  if (Object.keys(patch).length) await patchUi($, patch)
 }
 
 async function initialCommitAndRetry($: EngineInterface) {
@@ -835,22 +875,33 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       const at = level ? levels.indexOf(level) : -1
       return at < 0 ? C.dim : gradient([C.cyan, C.violet, C.pink, C.accent], at / Math.max(1, levels.length - 1))
     }
-    const CrewRows = ({ crew, states, keys, onChange, stacked }: { crew: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }; states?: Record<string, string>; keys: boolean; onChange: (next: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }) => void; stacked?: boolean }) => {
+    // Every change is a function of the latest crew (not of the one drawn), so quick clicks add up.
+    const CrewRows = ({ crew, states, keys, onChange, stacked }: { crew: Crew; states?: Record<string, string>; keys: boolean; onChange: (change: (latest: Crew) => Crew) => void; stacked?: boolean }) => {
       const row = (kind: Kind) => {
         const role = kind === 'council' ? 'supervisor' : 'lead'
         const seats = crew[kind]
         const ids = eligible(role).map(a => a.id)
         const tone = kind === 'council' ? C.violet : C.cyan
-        const put = (i: number, seat: CockpitSeatPick | null) => {
-          const list = seats.slice()
-          if (seat) list[i] = seat
-          else list.splice(i, 1)
-          onChange({ ...crew, [kind]: list })
+        const put = (i: number, change: (seat: CockpitSeatPick) => CockpitSeatPick | null) =>
+          onChange(c => {
+            const list = c[kind].slice()
+            if (!list[i]) return c
+            const next = change(list[i]!)
+            if (next) list[i] = next
+            else if (list.length > 1) list.splice(i, 1)
+            return { ...c, [kind]: list }
+          })
+        const nextAgent = (x: CockpitSeatPick): CockpitSeatPick => {
+          const agent = cycle(ids, x.agent)
+          return agent === x.agent ? x : { ...x, agent, effort: levelsOf(agent).includes(x.effort ?? '') ? x.effort : null }
         }
-        const add = () => {
-          const fresh = ids.find(id => !seats.some(x => x.agent === id)) ?? ids[0]
-          if (fresh) onChange({ ...crew, [kind]: [...seats, { agent: fresh, effort: null, area: null }] })
-        }
+        const nextEffort = (x: CockpitSeatPick): CockpitSeatPick => ({ ...x, effort: cycle([null, ...levelsOf(x.agent)], x.effort) })
+        const nextArea = (x: CockpitSeatPick): CockpitSeatPick => ({ ...x, area: cycle(AREAS, x.area) })
+        const add = () =>
+          onChange(c => {
+            const fresh = ids.find(id => !c[kind].some(x => x.agent === id)) ?? ids[0]
+            return fresh ? { ...c, [kind]: [...c[kind], { agent: fresh, effort: null, area: null }] } : c
+          })
         if (stacked) {
           // A narrow column: the role on its line, then one seat per line, no hotkey prefixes to push it over.
           return (
@@ -862,15 +913,14 @@ async function drawPane($: EngineInterface, e: PaneRender) {
               {seats.map((x, i) => {
                 const state = states?.[`${kind === 'council' ? 'sup' : 'lead'}-${i + 1}`]
                 const busyNow = !!state && state !== 'idle'
-                const nextAgent = cycle(ids, x.agent)
                 const levels = levelsOf(x.agent)
                 return (
                   <Box key={`crew-${kind}-${i}`} hover={{ backgroundColor: C.baseline }}>
                     <Text color={busyNow ? pulse(n, tone, C.white, 0.35) : tone}>{i === 0 ? ' ★ ' : ` ${i + 1} `}</Text>
-                    <Button plain key={`seat-${kind}-${i}`} label={x.agent} onPress={() => { if (nextAgent !== x.agent) put(i, { ...x, agent: nextAgent, effort: levelsOf(nextAgent).includes(x.effort ?? '') ? x.effort : null }) }} />
-                    {levels.length ? <Box marginLeft={1}><Text color={heat(x.agent, x.effort)}>⚡</Text><Button plain dimColor={!x.effort} key={`effort-${kind}-${i}`} label={x.effort ?? 'def'} onPress={() => put(i, { ...x, effort: cycle([null, ...levels], x.effort) })} /></Box> : null}
-                    {kind === 'leads' ? <Box marginLeft={1}><Button plain dimColor={!x.area} key={`area-${i}`} label={`@${(x.area ?? 'any').slice(0, 5)}`} onPress={() => put(i, { ...x, area: cycle(AREAS, x.area) })} /></Box> : null}
-                    {seats.length > 1 ? <Box marginLeft={1}><Button plain dimColor key={`drop-${kind}-${i}`} label="×" onPress={() => put(i, null)} /></Box> : null}
+                    <Button plain key={`seat-${kind}-${i}`} label={x.agent} onPress={() => put(i, nextAgent)} />
+                    {levels.length ? <Box marginLeft={1}><Text color={heat(x.agent, x.effort)}>⚡</Text><Button plain dimColor={!x.effort} key={`effort-${kind}-${i}`} label={x.effort ?? 'def'} onPress={() => put(i, nextEffort)} /></Box> : null}
+                    {kind === 'leads' ? <Box marginLeft={1}><Button plain dimColor={!x.area} key={`area-${i}`} label={`@${(x.area ?? 'any').slice(0, 5)}`} onPress={() => put(i, nextArea)} /></Box> : null}
+                    {seats.length > 1 ? <Box marginLeft={1}><Button plain dimColor key={`drop-${kind}-${i}`} label="×" onPress={() => put(i, () => null)} /></Box> : null}
                   </Box>
                 )
               })}
@@ -883,17 +933,16 @@ async function drawPane($: EngineInterface, e: PaneRender) {
             {seats.map((x, i) => {
               const state = states?.[`${kind === 'council' ? 'sup' : 'lead'}-${i + 1}`]
               const busyNow = !!state && state !== 'idle'
-              const nextAgent = cycle(ids, x.agent)
               const levels = levelsOf(x.agent)
               return (
                 <Box key={`crew-${kind}-${i}`} marginRight={2} backgroundColor={i === 0 ? (kind === 'council' ? C.seatSupervisor : C.seatLead) : undefined} paddingX={i === 0 ? 1 : 0} hover={{ backgroundColor: C.baseline }}>
                   <Text color={busyNow ? pulse(n, tone, C.white, 0.35) : tone}>{i === 0 ? '★' : `${i + 1}`} </Text>
-                  <Button plain hotkey={keys && i === 0 ? (kind === 'council' ? 'v' : 'b') : undefined} key={`seat-${kind}-${i}`} label={x.agent} onPress={() => { if (nextAgent !== x.agent) put(i, { ...x, agent: nextAgent, effort: levelsOf(nextAgent).includes(x.effort ?? '') ? x.effort : null }) }} />
+                  <Button plain hotkey={keys && i === 0 ? (kind === 'council' ? 'v' : 'b') : undefined} key={`seat-${kind}-${i}`} label={x.agent} onPress={() => put(i, nextAgent)} />
                   {levels.length ? (
-                    <Box marginLeft={1}><Text color={heat(x.agent, x.effort)}>⚡</Text><Button plain dimColor={!x.effort} hotkey={keys && i === 0 ? (kind === 'council' ? 'f' : 'g') : undefined} key={`effort-${kind}-${i}`} label={x.effort ?? 'default'} onPress={() => put(i, { ...x, effort: cycle([null, ...levels], x.effort) })} /></Box>
+                    <Box marginLeft={1}><Text color={heat(x.agent, x.effort)}>⚡</Text><Button plain dimColor={!x.effort} hotkey={keys && i === 0 ? (kind === 'council' ? 'f' : 'g') : undefined} key={`effort-${kind}-${i}`} label={x.effort ?? 'default'} onPress={() => put(i, nextEffort)} /></Box>
                   ) : null}
-                  {kind === 'leads' ? <Box marginLeft={1}><Button plain dimColor={!x.area} key={`area-${i}`} label={`@${x.area ?? 'any'}`} onPress={() => put(i, { ...x, area: cycle(AREAS, x.area) })} /></Box> : null}
-                  {seats.length > 1 ? <Box marginLeft={1}><Button plain dimColor key={`drop-${kind}-${i}`} label="×" onPress={() => put(i, null)} /></Box> : null}
+                  {kind === 'leads' ? <Box marginLeft={1}><Button plain dimColor={!x.area} key={`area-${i}`} label={`@${x.area ?? 'any'}`} onPress={() => put(i, nextArea)} /></Box> : null}
+                  {seats.length > 1 ? <Box marginLeft={1}><Button plain dimColor key={`drop-${kind}-${i}`} label="×" onPress={() => put(i, () => null)} /></Box> : null}
                 </Box>
               )
             })}
@@ -908,7 +957,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         </Box>
       )
     }
-    const pickCrew = (crew: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }) => void patchUi($, { crew })
+    const pickCrew = (change: (latest: Crew) => Crew) => void patchUi($, x => ({ crew: change(x.crew ?? defaultCrew()) }))
     const SPEC_COLOR: Record<string, string> = {
       backend: C.orange, frontend: C.blue, test: C.pink, database: C.yellow, security: C.red, performance: C.yellow,
       documentation: C.text, refactoring: C.violet, research: C.cyan, generalist: C.mint,
@@ -1259,17 +1308,21 @@ async function drawPane($: EngineInterface, e: PaneRender) {
 
     // ── approval: the NEEDS YOU strip ──
 
-    const team = run.team ?? []
+    const team = (u.teamDraft?.runId === run.id ? u.teamDraft.team : run.team) ?? []
     const TeamCard = ({ a }: { a: CockpitApproval }) => {
       const writing = u.composing?.kind === 'changes' && u.composing.approvalId === a.id
       const workers = eligible('worker').map(w => w.id)
-      const edit = (next: CockpitPersona[]) => void setTeam($, run.id, next)
-      const put = (i: number, p: CockpitPersona | null) => {
-        const list = team.slice()
-        if (p) list[i] = p
-        else list.splice(i, 1)
-        edit(list)
-      }
+      const edit = (change: (latest: CockpitPersona[]) => CockpitPersona[]) =>
+        void patchUi($, x => ({ teamDraft: { runId: run.id, team: change(x.teamDraft?.runId === run.id ? x.teamDraft.team : run.team ?? []) } })).then(() => sendDraft($, 'team'))
+      const put = (i: number, change: (p: CockpitPersona) => CockpitPersona | null) =>
+        edit(list => {
+          const next = list.slice()
+          if (!next[i]) return list
+          const p = change(next[i]!)
+          if (p) next[i] = p
+          else if (next.length > 1) next.splice(i, 1)
+          return next
+        })
       const nameW = Math.min(18, Math.max(8, ...team.map(p => p.id.length)) + 1)
       return (
         <Box flexDirection="column" borderStyle="round" borderColor={pulse(n, C.yellow, C.accent, 0.5)} paddingX={1}>
@@ -1286,20 +1339,23 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           {team.map((p, i) => {
             const levels = levelsOf(p.agent)
             const color = SPEC_COLOR[p.specialty] ?? C.orange
-            const clone = () => {
-              let k = 2
-              while (team.some(x => x.id === `${p.id}-${k}`)) k++
-              edit([...team.slice(0, i + 1), { ...p, id: `${p.id}-${k}`, tasks: [] }, ...team.slice(i + 1)])
-            }
+            const clone = () =>
+              edit(list => {
+                const at = list.findIndex(x => x.id === p.id)
+                if (at < 0) return list
+                let k = 2
+                while (list.some(x => x.id === `${p.id}-${k}`)) k++
+                return [...list.slice(0, at + 1), { ...list[at]!, id: `${p.id}-${k}`, tasks: [] }, ...list.slice(at + 1)]
+              })
             return (
               <Box key={`persona-${p.id}`} hover={{ backgroundColor: C.hover }}>
                 <Text color={color}>◈ </Text>
                 <Box width={nameW} flexShrink={0}><Text color={C.ink} bold wrap="truncate-end">{p.id}</Text></Box>
-                <Box flexShrink={0}><Button plain key={`team-agent-${p.id}`} label={p.agent} onPress={() => { const next = cycle(workers, p.agent); if (next !== p.agent) put(i, { ...p, agent: next, effort: levelsOf(next).includes(p.effort ?? '') ? p.effort : null }) }} /></Box>
-                {levels.length ? <Box marginLeft={1} flexShrink={0}><Text color={heat(p.agent, p.effort)}>⚡</Text><Button plain dimColor={!p.effort} key={`team-effort-${p.id}`} label={p.effort ?? 'default'} onPress={() => put(i, { ...p, effort: cycle([null, ...levels], p.effort) })} /></Box> : null}
+                <Box flexShrink={0}><Button plain key={`team-agent-${p.id}`} label={p.agent} onPress={() => put(i, x => { const next = cycle(workers, x.agent); return next === x.agent ? x : { ...x, agent: next, effort: levelsOf(next).includes(x.effort ?? '') ? x.effort : null } })} /></Box>
+                {levels.length ? <Box marginLeft={1} flexShrink={0}><Text color={heat(p.agent, p.effort)}>⚡</Text><Button plain dimColor={!p.effort} key={`team-effort-${p.id}`} label={p.effort ?? 'default'} onPress={() => put(i, x => ({ ...x, effort: cycle([null, ...levelsOf(x.agent)], x.effort) }))} /></Box> : null}
                 <Box marginLeft={2} flexShrink={1}><Text color={C.dim} wrap="truncate-end">{p.title !== p.id ? `${p.title} · ` : ''}{p.tasks.join(' ') || 'no task yet'}</Text></Box>
                 <Box marginLeft={1} flexShrink={0}><Button plain dimColor key={`team-clone-${p.id}`} label="⧉" onPress={clone} /></Box>
-                {team.length > 1 ? <Box marginLeft={1} flexShrink={0}><Button plain dimColor key={`team-drop-${p.id}`} label="×" onPress={() => put(i, null)} /></Box> : null}
+                {team.length > 1 ? <Box marginLeft={1} flexShrink={0}><Button plain dimColor key={`team-drop-${p.id}`} label="×" onPress={() => put(i, () => null)} /></Box> : null}
               </Box>
             )
           })}
@@ -1453,11 +1509,14 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       )
     }
     // The live crew, editable: a change re-seats the run (later calls use it; a call in flight finishes where it is).
-    const liveCrew = { council: council.map(x => ({ agent: x.agent, effort: x.effort, area: null })), leads: leadSeats.map(x => ({ agent: x.agent, effort: x.effort, area: x.area })) }
+    const seatedCrew: Crew = { council: council.map(x => ({ agent: x.agent, effort: x.effort, area: null })), leads: leadSeats.map(x => ({ agent: x.agent, effort: x.effort, area: x.area })) }
+    const liveCrew = u.seatDraft?.runId === run.id ? u.seatDraft.crew : seatedCrew
+    const reseat = (change: (latest: Crew) => Crew) =>
+      void patchUi($, x => ({ seatDraft: { runId: run.id, crew: change(x.seatDraft?.runId === run.id ? x.seatDraft.crew : seatedCrew) } })).then(() => sendDraft($, 'seats'))
     const seatStates = Object.fromEntries([...council, ...leadSeats].map(x => [x.id, x.state]))
     // In the grid's narrow agents column the crew stacks (no hotkey prefixes); elsewhere v/b/f/g reach it.
     const crewHere = live
-      ? <CrewRows crew={liveCrew} states={seatStates} keys={!wide} stacked={wide} onChange={next => void setSeats($, run.id, next)} />
+      ? <CrewRows crew={liveCrew} states={seatStates} keys={!wide} stacked={wide} onChange={reseat} />
       : <CrewRows crew={nextCrew} keys={!wide} stacked={wide} onChange={pickCrew} />
     // Subscription limits: what is left of each window, the tightest one first.
     const limitsOf = limits

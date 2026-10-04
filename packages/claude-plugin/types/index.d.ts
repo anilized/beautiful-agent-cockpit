@@ -132,6 +132,9 @@ export type CockpitUi = {
   draft: string
   draftFlags: string
   draftInEditor: boolean
+  /** A live mission's crew or team as just edited, shown at once and sent in order until the snapshot catches up. */
+  seatDraft: { runId: string; crew: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] } } | null
+  teamDraft: { runId: string; team: CockpitPersona[] } | null
   /** Session followed in the Minds tab; null follows the most recently active one. */
   mind: string | null
   /** Rows opened to show what their one line cuts off (tasks, events, Minds entries). */

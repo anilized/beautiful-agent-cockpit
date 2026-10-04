@@ -116,6 +116,11 @@ test('the mission form takes a council and leads at their own efforts; a live ru
   await ui.press({ key: 'team-effort-tester' }) // default -> low
   let team = JSON.parse(last('team').at(-1)!)
   expect(team.map((p: { id: string; agent: string; effort: string | null }) => `${p.id}:${p.agent}:${p.effort}`)).toEqual(['backend-dev:sonnet:high', 'tester:haiku:low'])
+  // the daemon has not rewritten the snapshot yet: the next press still steps on from what was chosen
+  await ui.press({ key: 'team-effort-tester' }) // low -> medium
+  expect((await ui.find({ key: 'team-effort-tester' }))?.props.label).toBe('medium')
+  team = JSON.parse(last('team').at(-1)!)
+  expect(team.map((p: { id: string; effort: string | null }) => `${p.id}:${p.effort}`)).toEqual(['backend-dev:high', 'tester:medium'])
   await ui.press({ key: 'team-clone-backend-dev' })
   team = JSON.parse(last('team').at(-1)!)
   expect(team.map((p: { id: string }) => p.id)).toEqual(['backend-dev', 'backend-dev-2', 'tester'])
@@ -127,6 +132,11 @@ test('the mission form takes a council and leads at their own efforts; a live ru
   const seats = last('seats')
   expect(seats.slice(seats.indexOf('--council'), seats.indexOf('--council') + 2)).toEqual(['--council', 'opus:high,codex:medium'])
   expect(seats.slice(seats.indexOf('--leads'), seats.indexOf('--leads') + 2)).toEqual(['--leads', 'codex:medium@backend'])
+  // the same live seat again, before any new snapshot: shown at once, sent in order, the last choice wins
+  await ui.press({ key: 'effort-council-1' }) // medium -> high
+  expect((await ui.find({ key: 'effort-council-1' }))?.props.label).toBe('high')
+  const again = last('seats')
+  expect(again.slice(again.indexOf('--council'), again.indexOf('--council') + 2)).toEqual(['--council', 'opus:high,codex:high'])
 
   // the next mission: two leads, each at its own level, one model in two seats
   await ui.press({ key: 'new' })
