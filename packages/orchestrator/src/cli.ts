@@ -34,6 +34,7 @@ const USAGE = `cockpit - hierarchical multi-agent coding cockpit
   cockpit reject <runId|approvalId> [note]
   cockpit report <runId>                    final engineering report
   cockpit dashboard [<runId>]               open the telemetry dashboard in the browser
+  cockpit garage [<runId>]                  open Pixel Garage, a read-only live view of the run, in the browser
   cockpit events [<runId>] [--follow]
   cockpit retry <runId>                     retry a failed run from the phase it failed in
 
@@ -245,6 +246,13 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
       openInBrowser(url);
       // The whole link, so it can be clicked when no browser opened: the token reads only, and only from this machine.
       return void console.log(`dashboard: ${url}`);
+    }
+    case 'garage': {
+      const info = readDaemonInfo(cfg.engine.dataDir);
+      if (!info?.readToken) throw new Error('the orchestrator daemon is not running (or predates the garage); start it with "cockpit daemon"');
+      const url = `http://127.0.0.1:${info.port}/garage#token=${info.readToken}${rest[0] ? `&run=${rest[0]}` : ''}`;
+      openInBrowser(url);
+      return void console.log(`garage: ${url}`);
     }
     case 'report': {
       const r = await client(cfg).request<{ report: string | null }>('GET', `/runs/${rest[0]}/report`);
