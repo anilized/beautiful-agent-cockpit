@@ -28,6 +28,7 @@ palette, team view and log live in the terminal cockpit.</sub>
 - [Your first mission](#your-first-mission)
 - [The cockpit](#the-cockpit)
 - [The dashboard](#the-dashboard)
+- [Pixel Garage](#pixel-garage)
 - [Choosing who leads](#choosing-who-leads)
 - [Configuration](#configuration)
 - [Command line](#command-line)
@@ -222,6 +223,24 @@ columns it is the grid above; narrower, two columns, then one.
 The page switches between phosphor and neon with one click. Its data needs a read-only token that
 the link carries in its fragment (never sent to a server or logged), and that token allows GETs
 only. To work on the page without a daemon: `node scripts/demo-dashboard.mjs`.
+
+## Pixel Garage
+
+A pixel-art view of the same mission, in the browser: the council sits in the loft, each lead at a
+desk, and the workers walk between their bay, their repo's crates, the lab (tests) and the terminal
+as they read, edit and run. Reviews, failed tests, escalations and the final approval card show up
+in the room as they happen.
+
+- open it with `cockpit garage [runId]`, `/cockpit garage` or `y` in the cockpit;
+- it is a **read-only observer**: it only issues `GET`s to `/snapshot` and `/events` with the
+  read-only token (carried in the link's fragment and stripped from the address bar), and has no
+  buttons that act. An approval card says to approve in the cockpit (`a`) or `/cockpit approve`;
+- everything on screen comes from structured events and snapshot fields, never from model prose,
+  and the tab does no work while it is hidden;
+- to work on it without a daemon: `node scripts/demo-garage.mjs`, then open the printed link. It
+  loops a scripted mission (add `&fps` to the fragment for frame time).
+
+![Pixel Garage during a demo mission, with the approval card up](docs/garage-screenshot.png)
 
 ## Choosing who leads
 
