@@ -15,6 +15,7 @@
     "orchestrator",
     "codex",
     "worktrees",
-    "dashboard"
+    "dashboard",
+    "garage"
   ]
 }
