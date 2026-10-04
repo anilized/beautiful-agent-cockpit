@@ -417,7 +417,7 @@ describe('resolveState', () => {
     for (const [flags, expected] of order) expect(resolveState({ ...c, flags: flagsOf(flags) }, s, now), JSON.stringify(flags)).toBe(expected);
   });
 
-  it('ranks the fine states of several live sessions: testing > implementing > researching > thinking > waiting', () => {
+  it('ranks the fine states of several live sessions: testing > implementing > researching > thinking', () => {
     const { s, c, now } = base();
     const sessions = (specs: Array<Partial<SessionInfo>>): GarageState => {
       const copy = structuredClone(s);
@@ -440,7 +440,7 @@ describe('resolveState', () => {
       [[read, edit, think, stale], 'implementing'],
       [[read, think, stale], 'researching'],
       [[think, stale], 'thinking'],
-      [[stale], 'waiting'],
+      [[stale], 'thinking'],
     ];
     for (const [specs, expected] of cases) {
       const st = sessions(specs);
@@ -449,41 +449,134 @@ describe('resolveState', () => {
     }
   });
 
-  it('applies the 20 s thinking rule: thinking until 20 s after the last record, then waiting', () => {
+  it('keeps a thinking record thinking however long ago it was, never waiting', () => {
     const sim = simAt(marks.workersRunning!).feed('agent.output', { agentId: 'codex-gpt', taskId: 'task_rate', text: 'hmm', kind: 'thinking', role: 'worker', sessionId: 'ses_rate1' });
-    expect(sim.resolved('backend-dev')).toBe('thinking');
-    expect(sim.resolved('backend-dev', THINKING_WINDOW_MS)).toBe('thinking');
-    expect(sim.resolved('backend-dev', THINKING_WINDOW_MS + 1)).toBe('waiting');
-    expect(sim.resolved('backend-dev', 10 * 60_000)).toBe('waiting');
+    for (const plus of [0, THINKING_WINDOW_MS, THINKING_WINDOW_MS + 1, 10 * 60_000]) expect(sim.resolved('backend-dev', plus), `+${plus}`).toBe('thinking');
   });
 
-  it('plays the mission silence: 45 s after the chair thought, the chair is waiting, then busy again with the next record', () => {
+  it('plays the mission silence: 45 s after the chair thought, the chair is still thinking, and still is with the next record', () => {
     const think = events.find((e) => e.seq === marks.thinkingThenSilence)!;
     const r = applyEvent(stateAt(think.seq - 1), think, tsOf(think.seq));
     const chair = r.state.characters['sup-1']!;
     expect(resolveState(chair, r.state, tsOf(think.seq) + 5_000)).toBe('thinking');
-    expect(resolveState(chair, r.state, tsOf(think.seq) + 45_000)).toBe('waiting');
+    expect(resolveState(chair, r.state, tsOf(think.seq) + 45_000)).toBe('thinking');
     const next = events.find((e) => e.seq > think.seq && e.type === 'agent.output')!;
     const after = applyEvent(r.state, next, tsOf(next.seq));
     expect(resolveState(after.state.characters['sup-1']!, after.state, tsOf(next.seq))).toBe('thinking');
   });
 
-  it('keeps a tool state however old the tool is, until something else is said', () => {
-    const sim = simAt(marks.workersRunning!).out('ses_rate1', 'codex-gpt', 'task_rate', 'tool', 'edit: api/src/middleware/rate-limit.ts');
-    expect(sim.resolved('backend-dev', 5 * 60_000)).toBe('implementing');
-    sim.out('ses_rate1', 'codex-gpt', 'task_rate', 'text', 'Done editing.');
-    expect(sim.resolved('backend-dev', 5 * 60_000)).toBe('implementing');
-    sim.out('ses_rate1', 'codex-gpt', 'task_rate', 'thinking', 'what next');
-    expect(sim.resolved('backend-dev', 5 * 60_000)).toBe('waiting');
+  describe('fine-state timing', () => {
+    const edit = 'edit: api/src/middleware/rate-limit.ts';
+    const run = (sim: Sim, kind: 'text' | 'thinking' | 'tool' | 'result', text: string, dtMs = 1000) => sim.out('ses_rate1', 'codex-gpt', 'task_rate', kind, text, dtMs);
+    const fresh = () => simAt(marks.workersRunning!);
+    /** The tool call at t0, then each later output at its offset from t0. Returns the sim and t0. */
+    const after = (tool: string, later: Array<['text' | 'thinking' | 'result', number]> = []) => {
+      const sim = run(fresh(), 'tool', tool);
+      const t0 = sim.at;
+      for (const [kind, plus] of later) run(sim, kind, kind, t0 + plus - sim.at);
+      return { sim, t0 };
+    };
+    /** Settles the state at `at` with an event that touches no session, so the state and the station are both read at `at`. */
+    const read = (sim: Sim, at: number, id = 'backend-dev') => {
+      const seq = sim.state.run.lastSeq + 1;
+      const ev = { seq, id: `syn_${seq}`, runId: RUN, type: 'usage.recorded', ts: new Date(at).toISOString(), data: { agentId: 'codex-gpt', inputTokens: 1, outputTokens: 1, costUsd: 0 } } as CockpitEvent;
+      const r = applyEvent(sim.state, ev, at);
+      const c = r.state.characters[id]!;
+      expect(c.state, 'settled state agrees with resolveState').toBe(resolveState(c, r.state, at));
+      return { state: c.state, station: c.station, home: c.home };
+    };
+
+    it('keeps the tool state while narration follows the tool inside 20 s', () => {
+      const { sim, t0 } = after(edit, [['text', 5_000]]);
+      expect(read(sim, t0 + 10_000)).toMatchObject({ state: 'implementing', station: 'bay:1' });
+    });
+
+    it('falls back to thinking at the home station once narration is the latest output and the tool is 25 s old', () => {
+      const { sim, t0 } = after(edit, [['text', 5_000]]);
+      const r = read(sim, t0 + 25_000);
+      expect(r.state).toBe('thinking');
+      expect(r.station).toBe(r.home);
+    });
+
+    it('holds the tool state through exactly THINKING_WINDOW_MS after the tool, and is thinking 1 ms later', () => {
+      const { sim, t0 } = after(edit, [['text', 5_000]]);
+      expect(read(sim, t0 + THINKING_WINDOW_MS)).toMatchObject({ state: 'implementing', station: 'bay:1' });
+      expect(read(sim, t0 + THINKING_WINDOW_MS + 1).state).toBe('thinking');
+    });
+
+    it('does not let narration extend the window: tool, text at +15 s and +19 s, thinking at +21 s', () => {
+      const { sim, t0 } = after(edit, [['text', 15_000], ['text', 19_000]]);
+      expect(sim.state.sessions['ses_rate1']!.lastToolAt).toBe(t0);
+      expect(read(sim, t0 + 19_500).state).toBe('implementing');
+      expect(read(sim, t0 + 21_000).state).toBe('thinking');
+    });
+
+    it('treats a result like text', () => {
+      const { sim, t0 } = after(edit, [['result', 5_000]]);
+      expect(read(sim, t0 + 10_000)).toMatchObject({ state: 'implementing', station: 'bay:1' });
+      expect(read(sim, t0 + 25_000).state).toBe('thinking');
+    });
+
+    it('keeps the tool state however old the tool is while no later output arrived', () => {
+      const plain = after(edit);
+      expect(read(plain.sim, plain.t0 + 120_000)).toMatchObject({ state: 'implementing', station: 'bay:1' });
+      const shell = after('shell: npm test -- rate-limit');
+      expect(read(shell.sim, shell.t0 + 120_000)).toMatchObject({ state: 'testing', station: 'lab' });
+    });
+
+    it('is thinking after a thinking record, even 1 s after a tool', () => {
+      const { sim, t0 } = after(edit, [['thinking', 2_000]]);
+      expect(read(sim, t0 + 3_000)).toMatchObject({ state: 'thinking', station: read(sim, t0 + 3_000).home });
+    });
+
+    it('is thinking when a live session has said nothing at all for 60 s', () => {
+      const sim = fresh();
+      const t0 = sim.at;
+      sim.start('ses_quiet', 'codex-gpt', 'worker', null, 'task_rate');
+      const quiet = Object.values(sim.state.sessions).find((x) => x.live && x.lastOutputKind === null);
+      expect(quiet).toBeDefined();
+      expect(read(sim, t0 + 60_000, quiet!.characterId).state).toBe('thinking');
+    });
+
+    it('never resolves waiting for a live session, however long ago the tool or the narration was', () => {
+      for (const kind of ['text', 'result', 'thinking'] as const) {
+        const { sim, t0 } = after(edit, [[kind, 5_000]]);
+        for (const plus of [0, 25_000, 10 * 60_000]) expect(read(sim, t0 + plus).state, `${kind} +${plus}`).not.toBe('waiting');
+      }
+    });
+
+    it('lets the flag states win over thinking', () => {
+      const { sim, t0 } = after(edit, [['text', 5_000]]);
+      const at = t0 + 60_000;
+      const c = sim.char('backend-dev');
+      expect(resolveState(c, sim.state, at)).toBe('thinking');
+      expect(resolveState({ ...c, flags: { ...c.flags, review: true } }, sim.state, at)).toBe('review');
+      expect(resolveState({ ...c, flags: { ...c.flags, blocked: true } }, sim.state, at)).toBe('blocked');
+      expect(resolveState({ ...c, flags: { ...c.flags, review: true, blocked: true, failed: true } }, sim.state, at)).toBe('failed');
+    });
+
+    it('has no live session, no thinking or working state, whatever the last output was', () => {
+      const { sim, t0 } = after(edit, [['thinking', 2_000]]);
+      sim.feed('agent.completed', { agentId: 'codex-gpt', sessionId: 'ses_rate1', taskId: 'task_rate' });
+      for (const plus of [0, 5_000, 60_000]) {
+        const c = sim.char('backend-dev');
+        expect(working).not.toContain(resolveState(c, sim.state, t0 + plus));
+      }
+    });
   });
 
   it('never resolves implementing, researching, testing or thinking without a live session, at any step or time', () => {
     let state = stateAt(marks.tasksCreated!);
     let checked = 0;
+    let liveChecked = 0;
     for (const e of events.filter((x) => x.seq > marks.tasksCreated!)) {
       state = applyEvent(state, e, tsOf(e.seq)).state;
       for (const c of Object.values(state.characters)) {
-        if (Object.values(state.sessions).some((x) => x.live && x.characterId === c.id)) continue;
+        if (Object.values(state.sessions).some((x) => x.live && x.characterId === c.id)) {
+          for (const plus of [0, 25_000, 10 * 60_000]) expect(resolveState(c, state, tsOf(e.seq) + plus), `${c.id} live after seq ${e.seq} +${plus}`).not.toBe('waiting');
+          liveChecked += 1;
+          continue;
+        }
         for (const plus of [0, 5_000, 25_000, 10 * 60_000]) {
           expect(working, `${c.id} after seq ${e.seq}`).not.toContain(resolveState(c, state, tsOf(e.seq) + plus));
         }
@@ -492,6 +585,7 @@ describe('resolveState', () => {
       }
     }
     expect(checked).toBeGreaterThan(500);
+    expect(liveChecked).toBeGreaterThan(100);
   });
 
   it('puts a character with a stale tool but no live session at rest, not at its tool station', () => {

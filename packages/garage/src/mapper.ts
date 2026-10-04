@@ -223,21 +223,26 @@ const ctxOfTask = (s: GarageState, key: TaskKey | null): ToolContext => ({
 });
 
 interface Fine {
-  name: 'testing' | 'implementing' | 'researching' | 'thinking' | 'waiting';
+  name: 'testing' | 'implementing' | 'researching' | 'thinking';
   station: StationId | null;
 }
 
 /**
- * What one live session is doing. A thinking record is the whole story while it is fresh (and "waiting" once stale);
- * otherwise the session's latest tool says, and a session with no usable tool is thinking while it is recently active.
+ * What one live session is doing; a live session is always at least thinking, never waiting. In order:
+ * (1) the latest output is a tool call: that tool's state and station, however old;
+ * (2) the latest output is a thinking record: thinking;
+ * (3) the latest output is text or a result: the last tool's state and station, but only for THINKING_WINDOW_MS after the
+ *     tool itself (`lastToolAt`; narration never extends that time);
+ * (4) anything else (time is up, no output yet, an unclassifiable tool, a tool beyond the snapshot's scan): thinking.
  */
 function fineOfSession(s: GarageState, x: SessionInfo, now: number): Fine {
-  const activeAt = x.lastOutputAt === null && x.lastToolAt === null ? null : Math.max(x.lastOutputAt ?? -Infinity, x.lastToolAt ?? -Infinity);
-  const fresh = activeAt === null || now - activeAt <= THINKING_WINDOW_MS;
-  if (x.lastOutputKind === 'thinking') return { name: fresh ? 'thinking' : 'waiting', station: null };
   const tool = x.lastTool === null ? null : classifyTool(x.lastTool, ctxOfTask(s, x.task));
-  if (tool) return { name: tool.state, station: tool.station };
-  return { name: fresh ? 'thinking' : 'waiting', station: null };
+  if (x.lastOutputKind === 'tool' && tool) return { name: tool.state, station: tool.station };
+  if (x.lastOutputKind === 'thinking') return { name: 'thinking', station: null };
+  if ((x.lastOutputKind === 'text' || x.lastOutputKind === 'result') && tool && x.lastToolAt !== null && now - x.lastToolAt <= THINKING_WINDOW_MS) {
+    return { name: tool.state, station: tool.station };
+  }
+  return { name: 'thinking', station: null };
 }
 
 /** The best of a character's live sessions (ties go to the later session), or null when it has none. */
@@ -250,7 +255,10 @@ function fineOf(s: GarageState, c: Character, now: number): Fine | null {
   return best;
 }
 
-/** The priority order, the 20 s thinking rule, and the hard rule: no live session, no working state. */
+/**
+ * The priority order, the 20 s tool time limit, and the hard rule: no live session, no working state. A live session always
+ * yields thinking or better, so "waiting" only comes from a task or lifecycle state (a task with no live session).
+ */
 export function resolveState(char: Character, state: GarageState, now: number): CharacterStateName {
   const candidates: CharacterStateName[] = [];
   if (char.flags.failed) candidates.push('failed');
