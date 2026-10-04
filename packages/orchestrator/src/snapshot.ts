@@ -1,6 +1,6 @@
 import { writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { ACTIVE_TASK_STATUSES, effortLevels, type AgentSessionRecord, type Approval, type CockpitEvent, type Run, type Task } from '@cockpit/core';
+import { ACTIVE_TASK_STATUSES, effortLevels, type AgentSessionRecord, type Approval, type CockpitEvent, type Proposal, type Run, type Task } from '@cockpit/core';
 import type { Store } from '@cockpit/persistence';
 import type { CockpitConfig } from '@cockpit/core';
 import { councilOf, leadsOf, type EngineContext, type RunMeta, type TaskContext } from './context';
@@ -12,6 +12,8 @@ import type { Limits } from './limits';
  * renders this; it never owns or mutates state.
  */
 export interface Snapshot {
+  /** The highest event seq at the moment the snapshot was built: where an observer resumes the event stream. */
+  lastSeq: number;
   generatedAt: string;
   daemon: { pid: number; port: number | null };
   /** The configured default Supervisor and Lead (each run carries its own in `roles`). */
@@ -44,6 +46,10 @@ export interface RunView {
   team: { id: string; title: string; specialty: string; agent: string; effort: string | null; tasks: string[]; state: string }[];
   repositories: { name: string; path: string; baseBranch: string; integration: { branch: string; passed: boolean } | null }[];
   tasks: {
+    /** The task's id, as events name it (`key` is the human-facing one). */
+    id: string;
+    /** Where the task's worktree lives, once it has started. */
+    worktree: string | null;
     key: string;
     title: string;
     status: string;
@@ -66,11 +72,39 @@ export interface RunView {
   workers: { agentId: string; role: string; task: string | null; since: string }[];
   conflicts: { task: string; pattern: string; heldBy: string; ts: string }[];
   tests: { scope: string; command: string; status: string; task: string | null; ts: string }[];
-  telemetry: { calls: number; inputTokens: number; outputTokens: number; costUsd: number; byAgent: { agentId: string; calls: number; costUsd: number }[] };
+  telemetry: { calls: number; inputTokens: number; outputTokens: number; costUsd: number; byAgent: { agentId: string; calls: number; inputTokens: number; outputTokens: number; costUsd: number }[] };
   /** `text` is the one-line summary; `detail` everything the event carries, for an opened row. */
   recentEvents: { ts: string; type: string; text: string; detail: string }[];
   /** The latest model sessions of the run and what each said, reasoned and ran: the cockpit's Minds view. */
   minds: MindView[];
+  /** Every session still active, uncapped (`minds` is capped): who is live right now and what it last did. */
+  activeSessions: ActiveSessionView[];
+  /** Pending proposals and the latest decided ones; the rationale stays out. */
+  proposals: ProposalView[];
+}
+
+/** A live model session with the structured record of its latest tool call and output (no prose beyond the tool line). */
+export interface ActiveSessionView {
+  sessionId: string;
+  agentId: string;
+  role: string;
+  seat: string | null;
+  contract: string | null;
+  effort: string | null;
+  task: string | null;
+  startedAt: string;
+  /** The latest `agent.output` of kind `tool` for this session: its `Tool: detail` line (sliced to 200 chars), when and at which seq. */
+  lastTool: { text: string; at: string; seq: number } | null;
+  /** The latest `agent.output` of any kind for this session: its kind, when and at which seq, without the text. */
+  lastOutput: { kind: 'text' | 'thinking' | 'tool' | 'result'; at: string; seq: number } | null;
+}
+
+export interface ProposalView {
+  id: string;
+  kind: string;
+  title: string;
+  status: string;
+  task: string | null;
 }
 
 export interface SeatView {
@@ -204,15 +238,19 @@ export function describe(e: CockpitEvent, keyOf: (id: unknown) => string): strin
   }
 }
 
-export function buildSnapshot(store: Store, config: CockpitConfig, daemon: { pid: number; port: number | null }, live?: (taskId: string) => TaskLive | undefined, limits: Limits = {}): Snapshot {
+export function buildSnapshot(store: Store, config: CockpitConfig, daemon: { pid: number; port: number | null }, live?: (taskId: string) => TaskLive | undefined, limits: Limits = {}, runId?: string): Snapshot {
+  // Read before anything is projected (all synchronous): an observer resuming at lastSeq misses no event the projection lacks.
+  const lastSeq = store.lastSeq();
   const runs = store.runs(10);
   const visible = runs.filter((r, i) => i < 3 || !['completed', 'rejected', 'failed'].includes(r.status));
   return {
+    lastSeq,
     generatedAt: new Date().toISOString(),
     daemon,
     hierarchy: config.agents.hierarchy,
     agents: config.agents.agents.map((a) => ({ id: a.id, adapter: a.adapter, model: a.model, roles: [...a.roles], enabled: a.enabled, effort: a.effort, efforts: effortLevels(a.adapter) })),
-    runs: visible.map((r) => runView(store, config, r, live)),
+    // A given run is shown even when older than the visible ten; an unknown one gives no runs.
+    runs: runId ? [store.runById(runId)].flatMap((r) => (r ? [runView(store, config, r, live)] : [])) : visible.map((r) => runView(store, config, r, live)),
     limits,
     pendingApprovals: store.approvals({ status: 'pending' }).map((a) => ({
       id: a.id, runId: a.runId, kind: a.kind, operation: a.operation, summary: a.summary, text: approvalText(store, a), createdAt: a.createdAt,
@@ -292,6 +330,7 @@ export function runView(store: Store, config: CockpitConfig, run: Run, live?: (t
       integration: meta.integration?.[r.id] ? { branch: meta.integration[r.id]!.branch, passed: meta.integration[r.id]!.passed } : null,
     })),
     tasks: tasks.map((t) => ({
+      id: t.id, worktree: t.worktreePath,
       key: t.key, title: t.title, status: t.status, agentId: t.agentId, repo: repos.find((r) => r.id === t.repoId)?.name ?? t.repoId,
       iteration: t.iteration, branch: t.branch, dependsOn: deps.filter((d) => d.taskId === t.id).map((d) => keyOf(d.dependsOn)), blockedReason: t.blockedReason,
       detail: taskDetail(store, t),
@@ -308,11 +347,54 @@ export function runView(store: Store, config: CockpitConfig, run: Run, live?: (t
       inputTokens: usage.reduce((a, u) => a + u.inputTokens, 0),
       outputTokens: usage.reduce((a, u) => a + u.outputTokens, 0),
       costUsd: usage.reduce((a, u) => a + u.costUsd, 0),
-      byAgent: usage.map((u) => ({ agentId: u.agentId, calls: u.calls, costUsd: u.costUsd })),
+      byAgent: usage.map((u) => ({ agentId: u.agentId, calls: u.calls, inputTokens: u.inputTokens, outputTokens: u.outputTokens, costUsd: u.costUsd })),
     },
     recentEvents: events.slice(-RECENT_EVENTS).map((e) => ({ ts: e.ts, type: e.type, text: describe(e, keyOf), detail: detailOf(e, keyOf) })),
     minds: minds(store.sessions(run.id), events, keyOf),
+    activeSessions: activeSessions(sessions, events, keyOf),
+    proposals: proposalViews(store.proposals(run.id), keyOf),
   };
+}
+
+/** Decided proposals kept in a snapshot besides the pending ones. */
+const DECIDED_PROPOSALS = 10;
+/** The longest `Tool: detail` line an active session carries. */
+const TOOL_TEXT = 200;
+
+/**
+ * Every active session (uncapped) with the structured record of its latest tool call and latest output.
+ * Only events that name their session and their kind count: nothing here is guessed from prose.
+ */
+function activeSessions(active: AgentSessionRecord[], events: CockpitEvent[], keyOf: (id: unknown) => string): ActiveSessionView[] {
+  const started = new Map<string, { contract?: string; effort?: string | null; seat?: string | null }>();
+  const lastTool = new Map<string, ActiveSessionView['lastTool']>();
+  const lastOutput = new Map<string, ActiveSessionView['lastOutput']>();
+  for (const e of events) {
+    if (e.type === 'agent.started') {
+      const d = e.data as { sessionId?: string };
+      if (d.sessionId) started.set(d.sessionId, e.data as never);
+    } else if (e.type === 'agent.output') {
+      const d = e.data as { text?: string; kind?: 'text' | 'thinking' | 'tool' | 'result'; sessionId?: string };
+      if (!d.sessionId || !d.kind) continue;
+      lastOutput.set(d.sessionId, { kind: d.kind, at: e.ts, seq: e.seq });
+      if (d.kind === 'tool') lastTool.set(d.sessionId, { text: String(d.text ?? '').slice(0, TOOL_TEXT), at: e.ts, seq: e.seq });
+    }
+  }
+  return active.map((s) => ({
+    sessionId: s.id, agentId: s.agentId, role: s.role,
+    seat: started.get(s.id)?.seat ?? null, contract: started.get(s.id)?.contract ?? null, effort: started.get(s.id)?.effort ?? null,
+    task: s.taskId ? keyOf(s.taskId) : null, startedAt: s.startedAt,
+    lastTool: lastTool.get(s.id) ?? null, lastOutput: lastOutput.get(s.id) ?? null,
+  }));
+}
+
+/** Everything still waiting on a decision, plus the latest decided ones, in the order they were made; no rationale. */
+function proposalViews(all: Proposal[], keyOf: (id: unknown) => string): ProposalView[] {
+  const decided = (p: Proposal) => p.status === 'accepted' || p.status === 'accepted_with_changes' || p.status === 'rejected';
+  const recent = new Set(all.filter(decided).slice(-DECIDED_PROPOSALS).map((p) => p.id));
+  return all
+    .filter((p) => !decided(p) || recent.has(p.id))
+    .map((p) => ({ id: p.id, kind: p.kind, title: p.title, status: p.status, task: p.taskId ? keyOf(p.taskId) : null }));
 }
 
 /** The whole text behind an approval: a task's or a decision's question, the final result, else the stored summary. */

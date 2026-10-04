@@ -519,6 +519,11 @@ export class Store {
     })) as CockpitEvent[];
   }
 
+  /** The highest event seq stored, 0 when there are none. */
+  lastSeq(): number {
+    return Number(this.get('SELECT COALESCE(MAX(seq), 0) AS m FROM events')?.m ?? 0);
+  }
+
   // ---------- usage ----------
 
   insertUsage(u: Omit<ModelUsage, 'id' | 'createdAt'>): ModelUsage {
