@@ -143,6 +143,42 @@ describe('fromSnapshot equals the event fold', () => {
     expect(Object.keys(fromSnap.characters).filter((id) => id.startsWith('session:')).length).toBeGreaterThan(0);
   });
 
+  it('agrees on state and station between the snapshot and the fold when narration follows a tool, inside and past the window', () => {
+    const base = marks.workersRunning!;
+    const t0 = tsOf(base) + 1_000;
+    const iso = (t: number) => new Date(t).toISOString();
+    const toolText = 'Edit: api/src/middleware/rate-limit.ts';
+    const cases: Array<{ textAt: number; now: number; state: string; station: string }> = [
+      { textAt: 5_000, now: t0 + 10_000, state: 'implementing', station: 'bay:1' },
+      { textAt: 5_000, now: t0 + 19_000, state: 'implementing', station: 'bay:1' },
+      { textAt: 5_000, now: t0 + 21_000, state: 'thinking', station: 'home' },
+      { textAt: 25_000, now: t0 + 26_000, state: 'thinking', station: 'home' },
+    ];
+    for (const k of cases) {
+      const toolSeq = snapshotAt(base).lastSeq + 1;
+      const textSeq = toolSeq + 1;
+      const snap: Snapshot = structuredClone(snapshotAt(base));
+      const session = snap.runs[0]!.activeSessions.find((a) => a.sessionId === 'ses_rate1')!;
+      session.lastTool = { text: toolText, at: iso(t0), seq: toolSeq };
+      session.lastOutput = { kind: 'text', at: iso(t0 + k.textAt), seq: textSeq };
+      snap.lastSeq = textSeq;
+      const fromSnap = fromSnapshot(snap, RUN, k.now);
+
+      const out = (seq: number, at: number, kind: 'tool' | 'text', text: string) =>
+        ({ seq, id: `syn_${seq}`, runId: RUN, type: 'agent.output', ts: iso(at), data: { agentId: session.agentId, taskId: 'task_rate', text, kind, role: 'worker', sessionId: 'ses_rate1' } }) as CockpitEvent;
+      let folded = fromSnapshot(snapshotAt(base), RUN, k.now);
+      for (const e of [out(toolSeq, t0, 'tool', toolText), out(textSeq, t0 + k.textAt, 'text', 'narrating')]) folded = applyEvent(folded, e, k.now).state;
+
+      const label = `text at +${k.textAt}, read at +${k.now - t0}`;
+      for (const [side, s] of [['snapshot', fromSnap], ['fold', folded]] as const) {
+        const c = s.characters['backend-dev']!;
+        expect(resolveState(c, s, k.now), `${side}: ${label}`).toBe(k.state);
+        expect(c.station, `${side}: ${label}`).toBe(k.station === 'home' ? c.home : k.station);
+      }
+      expect(durable(folded, k.now), label).toEqual(durable(fromSnap, k.now));
+    }
+  });
+
   it('gives the coarse live state when the last tool call fell outside the scan window, then the fine state at the next output', () => {
     const seq = marks.workersRunning! + 6;
     const narrow = snapshotAt(seq, { scanWindow: 1 });
@@ -153,7 +189,7 @@ describe('fromSnapshot equals the event fold', () => {
     const s = fromSnapshot(narrow, RUN, now);
     for (const a of live.filter((x) => x.lastTool === null)) {
       const c = s.characters[s.sessions[a.sessionId]!.characterId]!;
-      expect(['thinking', 'waiting'], `${c.id} with no known tool`).toContain(resolveState(c, s, now));
+      expect(resolveState(c, s, now), `${c.id} with no known tool`).toBe('thinking');
       expect(c.station).toBe(c.home);
     }
     // The next agent.output for such a session restores the fine state.
