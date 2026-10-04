@@ -315,9 +315,9 @@ test('every mission is listed and a press switches to it, at every width', async
     expect(await ui.find({ key: 'pick-run_41bbf3a0c6ee44bf' })).toBeDefined()
     expect(await ui.find({ key: 'pick-run_older0000000001' })).toBeDefined()
     await ui.press({ key: 'pick-run_older0000000001' })
-    expect([cols, !!(await ui.find({ type: 'Text', text: /mission 2\/2/ }))]).toEqual([cols, true])
+    expect([cols, !!(await ui.find({ type: 'Text', text: /MISSIONS 2\/2/ }))]).toEqual([cols, true])
     await ui.press({ key: 'pick-run_41bbf3a0c6ee44bf' })
-    expect([cols, !!(await ui.find({ type: 'Text', text: /mission 1\/2/ }))]).toEqual([cols, true])
+    expect([cols, !!(await ui.find({ type: 'Text', text: /MISSIONS 1\/2/ }))]).toEqual([cols, true])
     await ui.unmount()
   }
 })

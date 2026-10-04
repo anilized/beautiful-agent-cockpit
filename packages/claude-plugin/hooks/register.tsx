@@ -89,6 +89,8 @@ function activeRun(s: CockpitSnapshot | null): CockpitRun | null {
 
 /** Word-wrap one paragraph to `w` columns; a word longer than a line is cut. */
 function wrapWords(text: string, w: number): string[] {
+  // A newline inside the text starts a row of its own: one row is always one terminal line.
+  if (/[\r\n]/.test(text)) return text.split(/\r?\n|\r/).flatMap(part => wrapWords(part, w))
   if (w < 4) return [text]
   const out: string[] = []
   let line = ''
@@ -176,6 +178,11 @@ function ago(ms: number): string {
   if (s < 60) return `${s}s`
   if (s < 3600) return `${Math.floor(s / 60)}m${String(s % 60).padStart(2, '0')}s`
   return `${Math.floor(s / 3600)}h${String(Math.floor((s % 3600) / 60)).padStart(2, '0')}m`
+}
+/** A duration in one short unit, for tight columns: 45m, 4h, 6d. */
+function short(ms: number): string {
+  const m = Math.max(0, Math.round(ms / 60_000))
+  return m < 60 ? `${m}m` : m < 48 * 60 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`
 }
 function glyph(status: string, n: number): string {
   return MOVING.has(status) ? SPIN[n % SPIN.length]! : (ICON[status] ?? '●')
@@ -778,7 +785,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       const at = level ? levels.indexOf(level) : -1
       return at < 0 ? C.dim : gradient([C.cyan, C.violet, C.pink, C.accent], at / Math.max(1, levels.length - 1))
     }
-    const CrewRows = ({ crew, states, keys, onChange }: { crew: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }; states?: Record<string, string>; keys: boolean; onChange: (next: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }) => void }) => {
+    const CrewRows = ({ crew, states, keys, onChange, stacked }: { crew: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }; states?: Record<string, string>; keys: boolean; onChange: (next: { council: CockpitSeatPick[]; leads: CockpitSeatPick[] }) => void; stacked?: boolean }) => {
       const row = (kind: Kind) => {
         const role = kind === 'council' ? 'supervisor' : 'lead'
         const seats = crew[kind]
@@ -793,6 +800,32 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         const add = () => {
           const fresh = ids.find(id => !seats.some(x => x.agent === id)) ?? ids[0]
           if (fresh) onChange({ ...crew, [kind]: [...seats, { agent: fresh, effort: null, area: null }] })
+        }
+        if (stacked) {
+          // A narrow column: the role on its line, then one seat per line, no hotkey prefixes to push it over.
+          return (
+            <Box flexDirection="column">
+              <Box justifyContent="space-between">
+                <Text color={tone} bold>{kind === 'council' ? '◆ COUNCIL' : '◇ LEADS'}</Text>
+                {ids.length ? <Button plain dimColor key={`add-${kind}`} label="+ add" onPress={add} /> : null}
+              </Box>
+              {seats.map((x, i) => {
+                const state = states?.[`${kind === 'council' ? 'sup' : 'lead'}-${i + 1}`]
+                const busyNow = !!state && state !== 'idle'
+                const nextAgent = cycle(ids, x.agent)
+                const levels = levelsOf(x.agent)
+                return (
+                  <Box key={`crew-${kind}-${i}`} hover={{ backgroundColor: C.baseline }}>
+                    <Text color={busyNow ? pulse(n, tone, C.white, 0.35) : tone}>{i === 0 ? ' ★ ' : ` ${i + 1} `}</Text>
+                    <Button plain key={`seat-${kind}-${i}`} label={x.agent} onPress={() => { if (nextAgent !== x.agent) put(i, { ...x, agent: nextAgent, effort: levelsOf(nextAgent).includes(x.effort ?? '') ? x.effort : null }) }} />
+                    {levels.length ? <Box marginLeft={1}><Text color={heat(x.agent, x.effort)}>⚡</Text><Button plain dimColor={!x.effort} key={`effort-${kind}-${i}`} label={x.effort ?? 'def'} onPress={() => put(i, { ...x, effort: cycle([null, ...levels], x.effort) })} /></Box> : null}
+                    {kind === 'leads' ? <Box marginLeft={1}><Button plain dimColor={!x.area} key={`area-${i}`} label={`@${(x.area ?? 'any').slice(0, 5)}`} onPress={() => put(i, { ...x, area: cycle(AREAS, x.area) })} /></Box> : null}
+                    {seats.length > 1 ? <Box marginLeft={1}><Button plain dimColor key={`drop-${kind}-${i}`} label="×" onPress={() => put(i, null)} /></Box> : null}
+                  </Box>
+                )
+              })}
+            </Box>
+          )
         }
         return (
           <Box flexWrap="wrap">
@@ -1353,9 +1386,10 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     // The live crew, editable: a change re-seats the run (later calls use it; a call in flight finishes where it is).
     const liveCrew = { council: council.map(x => ({ agent: x.agent, effort: x.effort, area: null })), leads: leadSeats.map(x => ({ agent: x.agent, effort: x.effort, area: x.area })) }
     const seatStates = Object.fromEntries([...council, ...leadSeats].map(x => [x.id, x.state]))
+    // In the grid's narrow agents column the crew stacks (no hotkey prefixes); elsewhere v/b/f/g reach it.
     const crewHere = live
-      ? <CrewRows crew={liveCrew} states={seatStates} keys onChange={next => void setSeats($, run.id, next)} />
-      : <CrewRows crew={nextCrew} keys onChange={pickCrew} />
+      ? <CrewRows crew={liveCrew} states={seatStates} keys={!wide} stacked={wide} onChange={next => void setSeats($, run.id, next)} />
+      : <CrewRows crew={nextCrew} keys={!wide} stacked={wide} onChange={pickCrew} />
     // Subscription limits: what is left of each window, the tightest one first.
     const limitsOf = limits
     const limitRows = (Object.entries(limitsOf) as [string, NonNullable<CockpitLimits['claude']>][]).flatMap(([provider, l]) => l.windows.map(w => ({ provider, ...w, left: Math.max(0, 100 - w.usedPercent) })))
@@ -1366,15 +1400,16 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     }
     const limitsLine = ['claude', 'codex'].map(p => [p, tightest(p)] as const).filter(([, v]) => v !== null).map(([p, v]) => `${p} ${Math.round(v!)}%`).join(' · ')
     const limitBars = limitRows.map(r => {
-      const w = Math.max(4, Math.min(agentsW, 44) - 26)
+      // name 10 · ▕bar▏ · " 100%" 5 · " ⟳4h" 4: the bar takes what the column leaves
+      const w = Math.max(3, Math.min(agentsW, 44) - 4 - 10 - 2 - 5 - 4)
       const bar = smoothBar(r.left / 100, w)
       const resets = r.resetsAt ? Date.parse(r.resetsAt) - now : NaN
       return (
         <Text wrap="truncate-end" key={`limit-${r.provider}-${r.name}`}>
           <Text color={C.mute}>{`${r.provider} ${r.name}`.padEnd(10).slice(0, 10)}</Text>
           <Text color={C.faint}>▕</Text><Text color={leftTone(r.left)}>{bar.fill}</Text><Text color={C.track}>{bar.rest}</Text><Text color={C.faint}>▏</Text>
-          <Text color={leftTone(r.left)} bold> {Math.round(r.left)}%</Text>
-          <Text color={C.dim}>{resets > 0 ? ` ⟳${ago(resets)}` : ''}</Text>
+          <Text color={leftTone(r.left)} bold>{`${Math.round(r.left)}%`.padStart(5)}</Text>
+          <Text color={C.dim}>{resets > 0 ? ` ⟳${short(resets)}` : ''}</Text>
         </Text>
       )
     })
@@ -1398,7 +1433,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     })
     const barColors = [C.cyan, C.violet, C.green, C.yellow, C.pink]
     const meterBars = byAgent.map((a, i) => {
-      const w = Math.max(4, meterW - 15)
+      const w = Math.max(4, Math.min(agentsW, 44) - 4 - 8 - 2 - 7)
       const bar = smoothBar(meterE[i]!(anim), w)
       return (
         <Text wrap="truncate-end">
@@ -1407,7 +1442,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
           <Text color={barColors[i % barColors.length]}>{bar.fill}</Text>
           <Text color={C.track}>{bar.rest}</Text>
           <Text color={C.faint}>▏</Text>
-          <Text color={C.dim}> {a.costUsd ? `$${a.costUsd.toFixed(2)}` : `${a.calls} calls`}</Text>
+          <Text color={C.dim}>{(a.costUsd ? `$${a.costUsd.toFixed(2)}` : `${a.calls}×`).padStart(7)}</Text>
         </Text>
       )
     })
@@ -1425,10 +1460,10 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const waiting = (id: string) => s.pendingApprovals.some(a => a.runId === id)
     const missionTitle = (
       <Box justifyContent="space-between">
-        <Text color={C.mute} bold>MISSIONS <Text color={C.dim}>mission {runIdx + 1}/{s.runs.length}</Text></Text>
-        <Box gap={1}>
-          {s.runs.length > 1 ? <Button plain dimColor hotkey="m" key="next" label="next" onPress={() => select(s.runs[(runIdx + 1) % s.runs.length]!.id)} /> : null}
-          <Button plain dimColor hotkey="0" key="home" label="◂ home" onPress={() => void patchUi($, { selectedRun: HOME, scroll: {} })} />
+        <Text color={C.mute} bold wrap="truncate-end">MISSIONS <Text color={C.dim}>{runIdx + 1}/{s.runs.length}</Text></Text>
+        <Box gap={1} flexShrink={0}>
+          {s.runs.length > 1 ? <Button plain dimColor hotkey="m" key="next" label="›" onPress={() => select(s.runs[(runIdx + 1) % s.runs.length]!.id)} /> : null}
+          <Button plain dimColor hotkey="0" key="home" label="⌂" onPress={() => void patchUi($, { selectedRun: HOME, scroll: {} })} />
         </Box>
       </Box>
     )
@@ -1594,14 +1629,16 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       const entries = allEntries.slice(skip)
       return (
         <Box flexDirection="column">
-          <Box justifyContent="space-between">
-            <Text wrap="truncate-end">
-              <Pill label={followed.role.toUpperCase()} bg={color} />
-              <Text color={C.ink} bold> {followed.agentId}</Text>
-              <Text color={C.text}>  {doing(followed)}{followed.task ? ` ${followed.task}` : ''}</Text>
-              {followed.effort ? <Text color={C.dim}>  ⚡{followed.effort}</Text> : null}
-            </Text>
-            <Text color={active ? color : C.dim}>{active ? `${SPIN[n % SPIN.length]} live ` : `${followed.status} `}{ago(end - Date.parse(followed.startedAt))}</Text>
+          <Box justifyContent="space-between" flexShrink={0}>
+            <Box flexShrink={1}>
+              <Text wrap="truncate-end">
+                <Pill label={(followed.role === 'worker' && followed.seat ? followed.seat : followed.role).toUpperCase()} bg={color} />
+                <Text color={C.ink} bold> {followed.agentId}</Text>
+                {followed.effort ? <Text color={C.dim}> ⚡{followed.effort}</Text> : null}
+                <Text color={C.text}>  {doing(followed)}{followed.task ? ` ${followed.task}` : ''}</Text>
+              </Text>
+            </Box>
+            <Box flexShrink={0} marginLeft={1}><Text color={active ? color : C.dim}>{active ? `${SPIN[n % SPIN.length]} ` : '✓ '}{short(end - Date.parse(followed.startedAt))}</Text></Box>
           </Box>
           {skip ? <Text color={C.dim}>↑ {skip} newer (scroll up)</Text> : null}
           {entries.length ? entries.map((e, k) => {
@@ -1700,9 +1737,9 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const toolIcon = (name: string) => (/^(read|glob|grep|ls)$/i.test(name) ? '◎' : /^(edit|write|multiedit|apply_patch)$/i.test(name) ? '✎' : /^(bash|shell|powershell)$/i.test(name) ? '❯' : /^web/i.test(name) ? '⌕' : '•')
     const Panel = ({ title, right, children, width, height, color, grow }: { title: RenderChildren; right?: RenderChildren; children: RenderChildren; width?: number; height?: number; color?: string; grow?: boolean }) => (
       <Box flexDirection="column" borderStyle="round" borderColor={color ?? C.border} paddingX={1} width={width} height={height} flexGrow={grow ? 1 : 0} overflow="hidden">
-        <Box justifyContent="space-between">
-          {typeof title === 'string' ? <Text color={C.accent} bold>{title}</Text> : title}
-          {right ?? null}
+        <Box justifyContent="space-between" flexShrink={0}>
+          <Box flexShrink={1}>{typeof title === 'string' ? <Text color={C.accent} bold wrap="truncate-end">{title}</Text> : title}</Box>
+          {right ? <Box flexShrink={0} marginLeft={1}>{right}</Box> : null}
         </Box>
         {children}
       </Box>
@@ -1939,7 +1976,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const branch = run.repositories[0]?.integration?.branch.split('/').slice(-1)[0] ?? run.repositories[0]?.baseBranch ?? ''
     const centrePanel = (
       <Box flexDirection="column" borderStyle="round" borderColor={C.border} paddingX={1} width={wide || medium ? tasksW : undefined} height={sized ? topH : undefined} overflow="hidden">
-        <Box justifyContent="space-between">
+        <Box justifyContent="space-between" flexShrink={0}>
           <Text wrap="truncate-end"><Text color={C.accent} bold>{repoName.toUpperCase()}</Text><Text color={C.dim}>  /  </Text><Text color={C.ink} bold>{firstLine(run.request).toUpperCase()}</Text></Text>
           <Box flexShrink={0} gap={1}>
             {branch ? <Text color={C.cyan}>⎇ {branch}</Text> : null}
@@ -1948,21 +1985,21 @@ async function drawPane($: EngineInterface, e: PaneRender) {
             <Text color={C.yellow} bold>{run.createdAt ? ago(now - Date.parse(run.createdAt)) : ''}</Text>
           </Box>
         </Box>
-        {raster('pipeline', tasksIn, 2, live, t => paint.pipeline(tasksIn, 2, t, { steps: stepNames, phase, fill: fillE(t), failed, color: paint.hex(runColor) }), textStepper)}
-        <Box>
+        <Box flexShrink={0} flexDirection="column">{raster('pipeline', tasksIn, 2, live, t => paint.pipeline(tasksIn, 2, t, { steps: stepNames, phase, fill: fillE(t), failed, color: paint.hex(runColor) }), textStepper)}</Box>
+        <Box flexShrink={0}>
           {raster('progress', Math.max(8, tasksIn - 18), 1, live, t => paint.progress(Math.max(8, tasksIn - 18), 1, t, { frac: fracE(t), live }), <Text color={C.accent}>{smoothBar(fracE(anim), Math.max(8, tasksIn - 18)).fill}<Text color={C.track}>{smoothBar(fracE(anim), Math.max(8, tasksIn - 18)).rest}</Text></Text>)}
           <Text color={C.ink} bold> {String(pct).padStart(3)}%</Text>
           <Text color={C.dim}>{run.round ? `  round ${run.round}` : ''}</Text>
         </Box>
-        {divider}
-        <Box>
+        <Box flexShrink={0}>{divider}</Box>
+        <Box flexShrink={0}>
           {views.map(([id, label, badge], i) => (
             <Box backgroundColor={u.tab === id ? C.tabActive : undefined} paddingX={1}>
               <Button plain hotkey={String(i + 1)} key={`tab-${id}`} dimColor={u.tab !== id} label={`${label}${badge}`} onPress={() => showView(id)} />
             </Box>
           ))}
         </Box>
-        {underline}
+        <Box flexShrink={0}>{underline}</Box>
         {centreBody}
       </Box>
     )
@@ -2032,13 +2069,17 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       )
     }
     const agentsPanel = (
-      <Panel title={<Text color={u.focus === 'agents' ? C.accent : C.mute} bold>AGENTS</Text>} right={<Text color={C.dim}>{working} working</Text>} width={agentsW} height={Math.max(8, bodyH - missionsH)} color={u.focus === 'agents' ? C.accent : C.border}>
+      <Panel title={<Text color={u.focus === 'agents' ? C.accent : C.mute} bold>AGENTS</Text>} right={<Text color={C.dim}>{working} working</Text>} width={agentsW} height={Math.max(8, topH - missionsH)} color={u.focus === 'agents' ? C.accent : C.border}>
         {agentRows.map(r => <AgentLine r={r} />)}
         {earlier.length ? <Section title="EARLIER" right={<Text color={C.dim}>{minds.length} sessions</Text>} /> : null}
         {earlier.map(m => <EarlierRow m={m} />)}
-        {u.composing?.kind === 'run' ? null : <Section title="CREW" right={<Text color={C.dim}>{live ? 'live' : 'next run'}</Text>} />}
-        {u.composing?.kind === 'run' ? null : crewHere}
-        {limitBars.length ? <Section title="PLAN LEFT" right={<Text color={C.dim}>subscription</Text>} /> : null}
+        <Section title="CREW" right={<Text color={C.dim}>{live ? 'live' : 'next run'}</Text>} />
+        {crewHere}
+      </Panel>
+    )
+    // Usage, out of the way at the bottom left: what is left of each subscription, then this mission's spend.
+    const usagePanel = (
+      <Panel title="PLAN LEFT" right={<Text color={C.dim}>{limitRows.length ? 'subscription' : 'no reading yet'}</Text>} width={agentsW} height={sized ? botH : undefined}>
         {limitBars}
         <Section title="SPEND" right={<Text color={C.yellow} bold>{tel.costUsd ? `$${tel.costUsd.toFixed(2)}` : '—'}</Text>} />
         <Text color={C.dim} wrap="truncate-end">{tel.calls} calls · ↓{compact(tel.inputTokens)} ↑{compact(tel.outputTokens)}</Text>
@@ -2096,27 +2137,25 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       </Box>
     )
 
+    // Two bands that line up: missions + agents | mission + log | tasks + focus, then usage | code | team | output.
     const body = wide ? (
       <Box flexDirection="column">
-        <Box>
+        <Box height={topH}>
           <Box flexDirection="column" width={agentsW}>
             {missionsPanel}
             {agentsPanel}
           </Box>
-          <Box flexDirection="column">
-            <Box>
-              {centrePanel}
-              <Box flexDirection="column" width={rightW}>
-                {tasksPanel}
-                {focusPanel}
-              </Box>
-            </Box>
-            <Box>
-              {codePanel}
-              {teamPanel}
-              {outputPanel}
-            </Box>
+          {centrePanel}
+          <Box flexDirection="column" width={rightW}>
+            {tasksPanel}
+            {focusPanel}
           </Box>
+        </Box>
+        <Box height={botH}>
+          {usagePanel}
+          {codePanel}
+          {teamPanel}
+          {outputPanel}
         </Box>
       </Box>
     ) : medium ? (

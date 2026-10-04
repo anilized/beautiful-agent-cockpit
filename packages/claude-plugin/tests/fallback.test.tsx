@@ -91,9 +91,9 @@ test('hotkeys s n a c r e i m 1-4 j k h l p t x each stay bound to their action'
   await ui.press({ key: 'tab-events' })
   expect(await ui.find({ type: 'Text', text: /\d\d:\d\d:\d\d / })).toBeDefined()
   await ui.press({ key: 'next' })
-  expect(await ui.find({ type: 'Text', text: /mission 2\/2/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /MISSIONS 2\/2/ })).toBeDefined()
   await ui.press({ key: 'next' }) // wraps around
-  expect(await ui.find({ type: 'Text', text: /mission 1\/2/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /MISSIONS 1\/2/ })).toBeDefined()
   await ui.press({ key: 'report' })
   expect(lastArgs(st)).toEqual(expect.arrayContaining(['report']))
   await ui.press({ key: 'new' })

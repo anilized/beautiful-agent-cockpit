@@ -58,7 +58,7 @@ agent, task and change is on screen at once, in the same place every time.
 │ ○ opus · chair  idle││ 15:24:20 [BACKEND-DEV] ✔ completed: JobRetryController + tests     │├ AGENT: BACKEND-DEV ──── ● working 2m18s ┤
 │ ◉ codex · head think││ 15:24:12 [ORCH       ] ✔ test.passed task TASK-101                 ││ src/…/JobRetryService.java            M │
 │ ◉ backend-dev   run ││ 15:23:58 [LEAD       ] ◎ Read src/…/JobRetryService.java           ││ src/…/JobRetryRequest.java            A │
-│ CREW · PLAN LEFT   ││ 15:23:31 [BACKEND-DEV] ✎ Edit src/…/JobRetryController.java       ││                                         │
+│ CREW               ││ 15:23:31 [BACKEND-DEV] ✎ Edit src/…/JobRetryController.java       ││                                         │
 ├────────────────────┤└─────────────────────────────────────────────────────────────────────┘└─────────────────────────────────────────┘
 │                    │┌ CODE PREVIEW  …/JobRetryController.java ──┐┌ TEAM ──────── 2 workers ┐┌ AGENT OUTPUT (backend) ────────────────┐
 │                    ││   12   12   @RestController                ││ ◉ YOU                    ││ 15:24 ✦ completed: endpoint + 12 tests  │
@@ -81,8 +81,9 @@ agent, task and change is on screen at once, in the same place every time.
 - **AGENTS:** every council seat, every lead and every worker by its name (backend-dev, tester…),
   each `running`, `thinking` or `idle`; earlier sessions to read back; the **CREW** (council and
   leads with their efforts, editable live: `v`/`b` the chair / head lead, `f`/`g` their effort, or
-  press any chip); **PLAN LEFT**, each subscription window's remaining share and when it resets;
-  spend per agent.
+  press any chip).
+- **PLAN LEFT** (bottom left, out of the way): each subscription window's remaining share and when
+  it resets, then the mission's **SPEND** per agent.
 - **Centre:** the mission (repository / request, branch, run, status, elapsed), the animated
   lifecycle and progress, then `1` **Log** — one feed of every agent and the orchestrator, newest
   on top: what each model says it is doing, tools (`◎` read, `✎` edit, `❯` shell), reasoning
