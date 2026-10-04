@@ -60,29 +60,9 @@ for — **no API keys**: it drives your logged-in `claude` and (optionally) `cod
 
 ## How it works
 
-```mermaid
-flowchart TD
-    H([You]) -->|mission brief| C
-    subgraph C [Supervisor council]
-      C1[chair · opus]:::sup
-      C2[member · codex]:::sup
-    end
-    C -->|architecture| L
-    subgraph L [Leads]
-      L1[backend lead · codex]:::lead
-      L2[frontend lead · sonnet]:::lead
-    end
-    L -->|plan + team| H
-    L1 --> W1[backend-dev · sonnet]:::work
-    L1 --> W2[tester · haiku]:::work
-    L2 --> W3[ui-dev · sonnet]:::work
-    W1 & W2 & W3 -->|diff + tests| L
-    L -->|integrated branch| C
-    C -->|validated result| H
-    classDef sup fill:#2e2160,stroke:#a78bfa,color:#eafff2
-    classDef lead fill:#0c3a44,stroke:#22d3ee,color:#eafff2
-    classDef work fill:#12251a,stroke:#fb923c,color:#eafff2
-```
+![How a mission flows: you, the supervisor council, the leads and the named workers](docs/images/how-it-works.png)
+
+<sub>Source: `docs/how-it-works.html` (open it in a browser; a 2× screenshot of it is the image above).</sub>
 
 1. **Architecture.** The council's chair designs the approach, constraints and acceptance
    criteria. The other members review it; any objection makes the chair revise once.
