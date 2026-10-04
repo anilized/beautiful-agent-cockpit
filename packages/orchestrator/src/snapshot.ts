@@ -1,6 +1,6 @@
 import { writeFileSync, renameSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { ACTIVE_TASK_STATUSES, effortLevels, type AgentSessionRecord, type Approval, type CockpitEvent, type Run, type Task } from '@cockpit/core';
+import { ACTIVE_TASK_STATUSES, effortLevels, type AgentSessionRecord, type Approval, type CockpitEvent, type Proposal, type Run, type Task } from '@cockpit/core';
 import type { Store } from '@cockpit/persistence';
 import type { CockpitConfig } from '@cockpit/core';
 import { councilOf, leadsOf, type EngineContext, type RunMeta, type TaskContext } from './context';
@@ -239,10 +239,12 @@ export function describe(e: CockpitEvent, keyOf: (id: unknown) => string): strin
 }
 
 export function buildSnapshot(store: Store, config: CockpitConfig, daemon: { pid: number; port: number | null }, live?: (taskId: string) => TaskLive | undefined, limits: Limits = {}): Snapshot {
+  // Read before anything is projected (all synchronous): an observer resuming at lastSeq misses no event the projection lacks.
+  const lastSeq = store.lastSeq();
   const runs = store.runs(10);
   const visible = runs.filter((r, i) => i < 3 || !['completed', 'rejected', 'failed'].includes(r.status));
   return {
-    lastSeq: 0, // TASK-102: Store.lastSeq(), read before the runs are projected
+    lastSeq,
     generatedAt: new Date().toISOString(),
     daemon,
     hierarchy: config.agents.hierarchy,
@@ -348,9 +350,50 @@ export function runView(store: Store, config: CockpitConfig, run: Run, live?: (t
     },
     recentEvents: events.slice(-RECENT_EVENTS).map((e) => ({ ts: e.ts, type: e.type, text: describe(e, keyOf), detail: detailOf(e, keyOf) })),
     minds: minds(store.sessions(run.id), events, keyOf),
-    activeSessions: [], // TASK-102: every active session with its lastTool / lastOutput from the event scan above
-    proposals: [], // TASK-102: pending plus the last ~10 decided, from store.proposals(run.id)
+    activeSessions: activeSessions(sessions, events, keyOf),
+    proposals: proposalViews(store.proposals(run.id), keyOf),
   };
+}
+
+/** Decided proposals kept in a snapshot besides the pending ones. */
+const DECIDED_PROPOSALS = 10;
+/** The longest `Tool: detail` line an active session carries. */
+const TOOL_TEXT = 200;
+
+/**
+ * Every active session (uncapped) with the structured record of its latest tool call and latest output.
+ * Only events that name their session and their kind count: nothing here is guessed from prose.
+ */
+function activeSessions(active: AgentSessionRecord[], events: CockpitEvent[], keyOf: (id: unknown) => string): ActiveSessionView[] {
+  const started = new Map<string, { contract?: string; effort?: string | null; seat?: string | null }>();
+  const lastTool = new Map<string, ActiveSessionView['lastTool']>();
+  const lastOutput = new Map<string, ActiveSessionView['lastOutput']>();
+  for (const e of events) {
+    if (e.type === 'agent.started') {
+      const d = e.data as { sessionId?: string };
+      if (d.sessionId) started.set(d.sessionId, e.data as never);
+    } else if (e.type === 'agent.output') {
+      const d = e.data as { text?: string; kind?: 'text' | 'thinking' | 'tool' | 'result'; sessionId?: string };
+      if (!d.sessionId || !d.kind) continue;
+      lastOutput.set(d.sessionId, { kind: d.kind, at: e.ts, seq: e.seq });
+      if (d.kind === 'tool') lastTool.set(d.sessionId, { text: String(d.text ?? '').slice(0, TOOL_TEXT), at: e.ts, seq: e.seq });
+    }
+  }
+  return active.map((s) => ({
+    sessionId: s.id, agentId: s.agentId, role: s.role,
+    seat: started.get(s.id)?.seat ?? null, contract: started.get(s.id)?.contract ?? null, effort: started.get(s.id)?.effort ?? null,
+    task: s.taskId ? keyOf(s.taskId) : null, startedAt: s.startedAt,
+    lastTool: lastTool.get(s.id) ?? null, lastOutput: lastOutput.get(s.id) ?? null,
+  }));
+}
+
+/** Everything still waiting on a decision, plus the latest decided ones, in the order they were made; no rationale. */
+function proposalViews(all: Proposal[], keyOf: (id: unknown) => string): ProposalView[] {
+  const decided = (p: Proposal) => p.status === 'accepted' || p.status === 'accepted_with_changes' || p.status === 'rejected';
+  const recent = new Set(all.filter(decided).slice(-DECIDED_PROPOSALS).map((p) => p.id));
+  return all
+    .filter((p) => !decided(p) || recent.has(p.id))
+    .map((p) => ({ id: p.id, kind: p.kind, title: p.title, status: p.status, task: p.taskId ? keyOf(p.taskId) : null }));
 }
 
 /** The whole text behind an approval: a task's or a decision's question, the final result, else the stored summary. */
