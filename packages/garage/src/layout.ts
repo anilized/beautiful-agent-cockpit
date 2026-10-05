@@ -18,6 +18,17 @@ export const MIN_QUEUE_SLOTS = 6;
 /** The back wall (task board) takes this many rows above the loft. */
 const WALL_ROWS = 2;
 const CELL_H = 3;
+/** A team zone, back to front: its wall row, row A's chairs, row A's desks, row B's desks, row B's chairs, an aisle. */
+const ZONE_H = 6;
+/** A team of one or two: desks in a row against the zone's back wall, their chairs, an aisle. */
+const SMALL_ZONE_H = 4;
+/** Columns a pod of four desks takes (two desks of two tiles, and a walkway). */
+const POD_W = 5;
+const POD_SEATS = 4;
+/** The lounge, at the back right beside the loft and the lead desks, is at least this wide. */
+const LOUNGE_W = 8;
+/** Room the loft's stairs need to its right. */
+const STAIRS_W = 5;
 
 export const BOARD_COLUMNS = ['TODO', 'DOING', 'REVIEW', 'DONE'] as const;
 
@@ -27,6 +38,10 @@ export interface BaySpec {
   id: BayId;
   task?: TaskKey | null;
   repo?: RepoId | null;
+  /** The team whose zone the bay sits in (the task's persona specialty); none: a hot desk. */
+  team?: string | null;
+  /** Whose desk it is, for the things on it (the task's persona); defaults to the bay. */
+  owner?: string | null;
 }
 
 export interface LeadSpec {
@@ -75,11 +90,55 @@ export interface StationPlacement {
 }
 
 export interface Region {
-  id: 'wall' | 'board' | 'loft';
+  id: 'wall' | 'board' | 'loft' | 'lounge';
   gx: number;
   gy: number;
   w: number;
   h: number;
+}
+
+/** A team's corner: a wall row at the back (open at `door`), a wall column on the left, pods of desks inside. */
+export interface Zone {
+  id: string;
+  /** The specialty (backend, frontend ...); null for the hot desks. */
+  team: string | null;
+  label: string;
+  gx: number;
+  gy: number;
+  w: number;
+  h: number;
+  /** The gap in the back wall. */
+  door: Point;
+}
+
+export type LoungeAct = 'couch' | 'beanbag' | 'foosball' | 'coffee' | 'chat' | 'arcade' | 'phone';
+
+/** Where someone with nothing to do hangs out, and what they do there. */
+export interface LoungeSpot {
+  /** The walkable tile they walk to. */
+  tile: Point;
+  /** From that tile to where they settle (a couch seat is on blocked tiles). */
+  dx: number;
+  dy: number;
+  /** Which way they face, radians about the vertical: 0 faces the front of the room (+gy), π the back wall. */
+  yaw: number;
+  act: LoungeAct;
+}
+
+export interface LoungeProp {
+  kind: 'kitchen' | 'couch' | 'arcade' | 'foosball' | 'beanbag';
+  /** Centre, in tiles (fractional: the kitchen, couch and arcade stand against the back wall). */
+  gx: number;
+  gy: number;
+}
+
+export interface Lounge {
+  gx: number;
+  gy: number;
+  w: number;
+  h: number;
+  props: LoungeProp[];
+  spots: LoungeSpot[];
 }
 
 export interface Layout extends WalkGrid {
@@ -91,6 +150,11 @@ export interface Layout extends WalkGrid {
   width: number;
   height: number;
   regions: Region[];
+  /** The team zones the bays are grouped into, back to front, left to right. */
+  zones: Zone[];
+  lounge: Lounge;
+  /** The `i`th place in the lounge (never throws; wraps past the last). */
+  loungeSpot(i: number): LoungeSpot;
   boardColumns: readonly string[];
   stations: Record<string, StationPlacement>;
   /** Every registered station id, in registration order. */
@@ -144,18 +208,59 @@ export function padBays(bays: BaySpec[]): BaySpec[] {
   return out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
+/** A persona's team: the head of its id (backend-dev -> backend), as the cockpit names specialties. */
+export function teamOf(persona: string | null | undefined): string | null {
+  const head = persona ? persona.split('-')[0] : '';
+  return head ? head : null;
+}
+
+const TEAM_ORDER = ['backend', 'api', 'database', 'db', 'frontend', 'ui', 'test', 'qa', 'docs', 'documentation', 'research'];
+const TEAM_LABEL: Record<string, string> = {
+  backend: 'BACKEND', api: 'API', database: 'DATABASE', db: 'DATABASE', frontend: 'FRONTEND', ui: 'FRONTEND', test: 'QA', qa: 'QA',
+  docs: 'DOCS', documentation: 'DOCS', research: 'RESEARCH', security: 'SECURITY', performance: 'PERF', refactoring: 'REFACTOR', generalist: 'GENERAL',
+};
+/** What a team's sign says. */
+export const teamLabel = (team: string | null): string => (team === null ? 'HOT DESKS' : (TEAM_LABEL[team] ?? team.toUpperCase()));
+const teamRank = (team: string | null): number => (team === null ? 1e6 : TEAM_ORDER.includes(team) ? TEAM_ORDER.indexOf(team) : 1e3);
+
+/**
+ * Bays grouped by team, in a fixed order (hot desks last). Placeholder bays (no task, no team) first fill the teams'
+ * half-empty pods, then sit together as hot desks.
+ */
+function teamGroups(bays: BaySpec[]): Array<{ team: string | null; bays: BaySpec[] }> {
+  const free = bays.filter((b) => !b.task && !b.team);
+  const byTeam = new Map<string | null, BaySpec[]>();
+  for (const b of bays) {
+    if (free.includes(b)) continue;
+    const t = b.team ?? null;
+    (byTeam.get(t) ?? byTeam.set(t, []).get(t)!).push(b);
+  }
+  const teams = [...byTeam.keys()].sort((a, b) => teamRank(a) - teamRank(b) || String(a).localeCompare(String(b)));
+  const out = teams.map((team) => ({ team, bays: byTeam.get(team)! }));
+  for (const g of out) {
+    if (g.team === null) continue;
+    while (free.length && g.bays.length % POD_SEATS) g.bays.push(free.shift()!);
+  }
+  if (free.length) {
+    const hot = out.find((g) => g.team === null);
+    if (hot) hot.bays.push(...free);
+    else out.push({ team: null, bays: free });
+  }
+  return out;
+}
+
 function bayLabel(b: BaySpec, index: number): string {
   const letter = /^[A-Za-z]$/.test(b.id) ? b.id.toUpperCase() : letterOf(index);
   return ['BAY ' + letter, b.task ?? null, b.repo ?? null].filter((p): p is string => !!p).join(' — ');
 }
 
-/** Lay items left to right, wrapping at the room width. Returns each item's top-left cell and the next free row. */
-function flow(items: Item[], y0: number, cols: number): { at: Array<{ item: Item; x: number; y: number }>; endY: number } {
+/** Lay items left to right, wrapping before column `right`. Returns each item's top-left cell and the next free row. */
+function flow(items: Item[], y0: number, right: number): { at: Array<{ item: Item; x: number; y: number }>; endY: number } {
   const at: Array<{ item: Item; x: number; y: number }> = [];
   let x = 1;
   let y = y0;
   for (const item of items) {
-    if (x > 1 && x + item.w > cols - 1) {
+    if (x > 1 && x + item.w > right) {
       x = 1;
       y += CELL_H;
     }
@@ -176,6 +281,43 @@ const tableItem = (id: StationId, kind: StationKind, label: string, w: number, t
   meta: {},
 });
 
+/**
+ * The lounge's furniture and its places, in a region whose back edge is the back wall. Blocks the foosball table's tiles.
+ * The kitchen, couch and arcade stand on the wall rows (already blocked); their users reach them from the first floor row.
+ */
+function buildLounge(gx: number, gy: number, w: number, h: number, block: (gx: number, gy: number) => void): Lounge {
+  const props: LoungeProp[] = [];
+  const spots: LoungeSpot[] = [];
+  const wallZ = gy - 1.3;
+  const arcade = w >= 8;
+  const couchX = gx + w - (arcade ? 3.8 : 2.4);
+  props.push({ kind: 'kitchen', gx: gx + 0.9, gy: wallZ }, { kind: 'couch', gx: couchX, gy: wallZ });
+  if (arcade) props.push({ kind: 'arcade', gx: gx + w - 1.1, gy: wallZ });
+  const seat = (x: number): LoungeSpot => {
+    const t = Math.round(x);
+    return { tile: { gx: t, gy }, dx: x - t, dy: wallZ + 0.15 - gy, yaw: 0, act: 'couch' };
+  };
+  spots.push(seat(couchX - 0.55));
+  if (arcade) spots.push({ tile: { gx: gx + w - 1, gy }, dx: -0.1, dy: -0.2, yaw: Math.PI, act: 'arcade' });
+  if (h >= 4 && w >= 6) {
+    // Foosball across two tiles, a player at each end.
+    const fy = gy + 2;
+    block(gx + 2, fy);
+    block(gx + 3, fy);
+    props.push({ kind: 'foosball', gx: gx + 2.5, gy: fy });
+    spots.push({ tile: { gx: gx + 1, gy: fy }, dx: 0.25, dy: 0, yaw: Math.PI / 2, act: 'foosball' }, { tile: { gx: gx + 4, gy: fy }, dx: -0.25, dy: 0, yaw: -Math.PI / 2, act: 'foosball' });
+  }
+  spots.push({ tile: { gx: gx + 1, gy }, dx: 0, dy: -0.25, yaw: Math.PI, act: 'coffee' });
+  spots.push(seat(couchX + 0.55));
+  spots.push({ tile: { gx: gx + 2, gy }, dx: -0.2, dy: 0.25, yaw: Math.atan2(-0.8, -0.5), act: 'chat' });
+  if (h >= 4) {
+    const bx = gx + w - 2;
+    props.push({ kind: 'beanbag', gx: bx, gy: gy + 2 });
+    spots.push({ tile: { gx: bx, gy: gy + 2 }, dx: 0, dy: 0, yaw: -0.5, act: 'beanbag' });
+  }
+  return { gx, gy, w, h, props, spots };
+}
+
 export function buildLayout(input: Partial<LayoutSpec> = {}): Layout {
   const spec: LayoutSpec = {
     council: input.council ?? [],
@@ -192,6 +334,8 @@ export function buildLayout(input: Partial<LayoutSpec> = {}): Layout {
   const head = spec.head && spec.leads.some((l) => l.id === spec.head) ? spec.head : (spec.leads[0]?.id ?? null);
 
   const cols = Math.max(MIN_COLS, spec.council.length * 2 + 3);
+  // The loft and the lead desks keep to the left; the lounge takes the back right.
+  const backRight = cols - LOUNGE_W - 1;
 
   // Sections, back to front: wall (board), loft, lead desks + outbox, bays, lab/bench/terminal, crates, entrance.
   const loftItems: Item[] = spec.council.map((seat) => {
@@ -212,11 +356,6 @@ export function buildLayout(input: Partial<LayoutSpec> = {}): Layout {
   }
   if (!deskItems.some((i) => i.id === 'outbox')) deskItems.push(tableItem('outbox', 'outbox', 'OUTBOX', 2, 1));
 
-  const bayItems: Item[] = spec.bays.map((b, i) => {
-    const it = tableItem(`bay:${b.id}`, 'bay', bayLabel(b, i), 3, 2);
-    it.meta = { bay: b.id, task: b.task ?? null, repo: b.repo ?? null };
-    return it;
-  });
 
   const serviceItems: Item[] = [
     tableItem('lab', 'lab', 'TEST LAB', 4, 3),
@@ -231,11 +370,38 @@ export function buildLayout(input: Partial<LayoutSpec> = {}): Layout {
   });
 
   const loftY = WALL_ROWS;
-  const loft = flow(loftItems, loftY, cols);
-  const desks = flow(deskItems, Math.max(loft.endY, loftY), cols);
-  const bays = flow(bayItems, desks.endY, cols);
-  const services = flow(serviceItems, bays.endY, cols);
-  const crates = flow(crateItems, services.endY, cols);
+  const loft = flow(loftItems, loftY, backRight - STAIRS_W + 1);
+  const desks = flow(deskItems, Math.max(loft.endY, loftY), backRight);
+
+  // Team zones: each a block of pods, flowed left to right and wrapped like everything else.
+  const maxPods = Math.max(1, Math.floor((cols - 1) / POD_W));
+  const blocks: Array<{ team: string | null; bays: BaySpec[]; part: number }> = [];
+  for (const g of teamGroups(spec.bays)) {
+    for (let i = 0, part = 0; i < g.bays.length; i += maxPods * POD_SEATS, part++) blocks.push({ team: g.team, bays: g.bays.slice(i, i + maxPods * POD_SEATS), part });
+  }
+  const zones: Zone[] = [];
+  const zoneBays: Array<{ zone: Zone; bays: BaySpec[] }> = [];
+  let zonesEndY = desks.endY;
+  {
+    let x = 0;
+    let y = desks.endY;
+    for (const b of blocks) {
+      const small = b.bays.length <= 2;
+      const w = small ? 2 + b.bays.length * 2 : 1 + Math.ceil(b.bays.length / POD_SEATS) * POD_W;
+      const h = small ? SMALL_ZONE_H : ZONE_H;
+      if (x > 0 && x + w > cols) {
+        x = 0;
+        y = zonesEndY;
+      }
+      const zone: Zone = { id: `zone:${b.team ?? 'hot'}:${b.part}`, team: b.team, label: teamLabel(b.team), gx: x, gy: y, w, h, door: { gx: x + w - 1, gy: y } };
+      zones.push(zone);
+      zoneBays.push({ zone, bays: b.bays });
+      zonesEndY = Math.max(zonesEndY, y + h);
+      x += w;
+    }
+  }
+  const services = flow(serviceItems, zonesEndY, cols - 1);
+  const crates = flow(crateItems, services.endY, cols - 1);
 
   const entranceY = crates.endY;
   const entranceX = Math.floor(cols / 2);
@@ -277,16 +443,57 @@ export function buildLayout(input: Partial<LayoutSpec> = {}): Layout {
     return p;
   };
 
-  for (const section of [loft, desks, bays, services, crates]) {
+  const placeFlow = (section: { at: Array<{ item: Item; x: number; y: number }> }) => {
     for (const { item, x, y } of section.at) {
       const footprint = item.blocked.map(([dx, dy]): Point => ({ gx: x + dx, gy: y + dy }));
       for (const t of footprint) block(t.gx, t.gy);
       place(item.id, item.kind, item.label, x + item.stand[0], y + item.stand[1], item.elevation, footprint, item.meta);
     }
+  };
+  placeFlow(loft);
+  placeFlow(desks);
+
+  // The zones: walls (the back row but its door, the left column but the aisle), then the desks, each two tiles wide with
+  // its sitter centred on it. In a pod row A sits facing the front of the room and row B faces the back; a small team sits
+  // in one row facing its back wall.
+  let bayIndex = 0;
+  for (const { zone: z, bays } of zoneBays) {
+    for (let gx = z.gx; gx < z.gx + z.w - 1; gx++) block(gx, z.gy);
+    for (let gy = z.gy; gy < z.gy + z.h - 1; gy++) block(z.gx, gy);
+    const small = z.h === SMALL_ZONE_H;
+    bays.forEach((b, k) => {
+      const s = k % POD_SEATS;
+      const deskX = small ? z.gx + 1 + k * 2 : z.gx + 1 + Math.floor(k / POD_SEATS) * POD_W + (s % 2) * 2;
+      const rowA = !small && s < 2;
+      const deskY = small ? z.gy + 1 : z.gy + (rowA ? 2 : 3);
+      const footprint: Point[] = [{ gx: deskX, gy: deskY }, { gx: deskX + 1, gy: deskY }];
+      for (const t of footprint) block(t.gx, t.gy);
+      place(`bay:${b.id}`, 'bay', bayLabel(b, bayIndex++), deskX, rowA ? deskY - 1 : deskY + 1, 0, footprint, {
+        bay: b.id, task: b.task ?? null, repo: b.repo ?? null, team: z.team, owner: b.owner ?? `bay:${b.id}`, zone: z.id, face: rowA ? 1 : -1, seatDx: 0.5,
+      });
+    });
   }
+
+  placeFlow(services);
+  placeFlow(crates);
+
+  // The lounge: whatever the loft (and its stairs) and the lead desks leave at the back right, between the back wall and
+  // the zones. Kitchen, couch and arcade stand against the back wall; foosball on the floor.
+  const rightOf = (section: { at: Array<{ item: Item; x: number }> }, extra: number) => Math.max(0, ...section.at.map(({ item, x }) => x + item.w + extra));
+  const lx = Math.min(cols - LOUNGE_W, Math.max(rightOf(loft, STAIRS_W - 1), rightOf(desks, 0)));
+  const lounge = buildLounge(lx, WALL_ROWS, cols - lx, Math.max(CELL_H, desks.endY - WALL_ROWS), block);
   place('entrance', 'entrance', 'ENTRANCE', entranceX, entranceY, 0, [], {});
 
   const walkable = (gx: number, gy: number): boolean => gx >= 0 && gy >= 0 && gx < cols && gy < rows && blockedTiles[gy * cols + gx] === 0;
+  // The rest of the lounge floor: people stand there with their phones.
+  const taken = new Set(lounge.spots.map((p) => `${p.tile.gx},${p.tile.gy}`));
+  for (let gy = lounge.gy + 1; gy < lounge.gy + lounge.h; gy++) {
+    for (let gx = lounge.gx; gx < lounge.gx + lounge.w - 1; gx++) {
+      if (!walkable(gx, gy) || taken.has(`${gx},${gy}`)) continue;
+      const k = lounge.spots.length;
+      lounge.spots.push({ tile: { gx, gy }, dx: k % 2 ? 0.2 : -0.2, dy: 0, yaw: [0.4, -0.5, 0.9, -0.2][k % 4]!, act: 'phone' });
+    }
+  }
 
   const slotAt = (i: number): Point => {
     // Past the last slot the queue wraps, so the answer is always a real, walkable tile.
@@ -338,7 +545,11 @@ export function buildLayout(input: Partial<LayoutSpec> = {}): Layout {
       { id: 'wall', gx: 0, gy: 0, w: cols, h: WALL_ROWS },
       { id: 'board', gx: 1, gy: 0, w: cols - 2, h: WALL_ROWS },
       { id: 'loft', gx: 0, gy: loftY, w: cols, h: Math.max(loft.endY - loftY, 0) },
+      { id: 'lounge', gx: lounge.gx, gy: lounge.gy, w: lounge.w, h: lounge.h },
     ],
+    zones,
+    lounge,
+    loungeSpot: (i) => lounge.spots[Math.max(0, Math.floor(i)) % lounge.spots.length]!,
     boardColumns: BOARD_COLUMNS,
     stations,
     queueSlots,
@@ -390,7 +601,8 @@ export function layoutSpecFromState(state: GarageState, extras: Pick<LayoutSpec,
 
   const bays: BaySpec[] = uniqSorted(bayIds).map((id) => {
     const key = Object.keys(state.bayOf).sort().find((k) => state.bayOf[k] === id);
-    return { id, task: key ?? null, repo: key ? (state.crateOf[key] ?? state.taskIndex.tasks[key]?.repo ?? null) : null };
+    const persona = key ? (state.taskIndex.tasks[key]?.persona ?? null) : null;
+    return { id, task: key ?? null, repo: key ? (state.crateOf[key] ?? state.taskIndex.tasks[key]?.repo ?? null) : null, team: teamOf(persona), owner: persona };
   });
   return {
     council: uniqSorted(council),

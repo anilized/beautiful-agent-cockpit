@@ -157,6 +157,48 @@ describe('the 3D garage', () => {
     expect(r.anchorOf('entrance' as StationId)!.visible).toBe(true);
   });
 
+  it('someone with nothing to do walks to the lounge and does what the spot is for; leaving still goes out the door', () => {
+    const { r } = make();
+    const s = stateAt('workersRunning');
+    r.syncState(s);
+    let t = play(r, 1_000, 300);
+    const worker = Object.values(s.characters).find((c) => c.kind === 'worker')!;
+    r.moveAgent(worker.id, 'entrance');
+    t = play(r, t, 20_000);
+    const v = r.inspect(worker.id)!;
+    expect([v.station, v.moving, v.leaving]).toEqual(['entrance', false, false]);
+    const lg = r.layout.lounge;
+    expect(v.gx).toBeGreaterThanOrEqual(lg.gx - 1);
+    expect(v.gy).toBeLessThan(lg.gy + lg.h);
+    expect(lg.spots.map((p) => p.act)).toContain(v.act);
+
+    // Gone from the state: off to the door and out.
+    const gone = { ...s, characters: { ...s.characters } };
+    delete gone.characters[worker.id];
+    r.syncState(gone);
+    t = play(r, t, 30_000);
+    expect(r.inspect(worker.id)).toBeNull();
+  });
+
+  it('a worker idle at their desk picks up a habit: the phone, perching on the desk, a stretch', () => {
+    const { r } = make();
+    const s = stateAt('workersRunning');
+    r.syncState(s);
+    let t = play(r, 1_000, 300);
+    const worker = Object.values(s.characters).find((c) => c.kind === 'worker' && c.station.startsWith('bay:'))!;
+    r.playAnimation(worker.id, 'idle');
+    const seen = new Set<string>();
+    for (let i = 0; i < 12; i++) {
+      t = play(r, t, 40_000 / 4);
+      seen.add(String(r.inspect(worker.id)!.act));
+    }
+    for (const a of seen) expect(['phoneChair', 'perch', 'stretch']).toContain(a);
+    // Back to work: no habit.
+    r.playAnimation(worker.id, 'implementing');
+    play(r, t, 100);
+    expect(r.inspect(worker.id)!.act).toBeNull();
+  });
+
   it('webglAvailable says no without a context, and never throws', () => {
     expect(webglAvailable(() => ({ getContext: () => null }))).toBe(false);
     expect(webglAvailable(() => ({ getContext: (id: string) => (id === 'webgl2' ? {} : null) }))).toBe(true);

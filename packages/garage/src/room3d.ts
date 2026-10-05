@@ -2,10 +2,11 @@
 // decor that makes it an indie dev's garage, and the light. Built from a layout (where things are) and a palette (what they
 // are made of); a station's look follows its state through `stations`. One world unit is one layout tile: x = gx, z = gy.
 import type * as THREE from 'three';
-import { LOFT_ELEVATION, type Layout, type StationPlacement } from './layout.js';
+import { LOFT_ELEVATION, type Layout, type LoungeAct, type StationPlacement, type Zone } from './layout.js';
 import type { BoardCard, BoardColumn, StationId, StationStateName } from './model.js';
 import { mix, roleColor, type GaragePalette } from './palette.js';
 import { hash01, type Kit } from './kit3d.js';
+import { chair as makeChair, monitor as makeMonitor, personalDesk, personalThings, screen, teamColor, type Screen } from './decor3d.js';
 
 // ---------- dimensions ----------
 
@@ -23,6 +24,8 @@ export interface StationVisual {
   id: StationId;
   set(state: StationStateName): void;
   tick(now: number, dt: number): void;
+  /** A chair someone can push back (to perch on the desk); `home` and `away` (where it slides) are in its parent's frame. */
+  seat?: { chair: THREE.Object3D; home: THREE.Vector3; away: THREE.Vector3 };
 }
 
 export interface RoomBuild {
@@ -31,6 +34,8 @@ export interface RoomBuild {
   /** Ambient life: steam, twinkling bulbs, the clock, the neon's flicker. */
   tick(now: number, dt: number): void;
   setBoard(cards: BoardCard[]): void;
+  /** What the lounge is up to (the foosball rods spin while someone plays). */
+  setLounge(acts: ReadonlySet<LoungeAct>): void;
   /** The room's extent, for the camera. */
   bounds: { x0: number; x1: number; z0: number; z1: number; y0: number; y1: number };
 }
@@ -211,69 +216,14 @@ export function buildRoom(kit: Kit, L: Layout, pal: GaragePalette): RoomBuild {
     add(rug);
   }
 
-  // ---------- the back strip: kitchen corner, couch, shelf, guitar, plants ----------
+  // ---------- the back strip: a bookshelf and a guitar at the left; the lounge takes the right ----------
 
   const stripZ = 0.05; // the two wall rows: z from -0.5 to 1.5
-  // Fridge and coffee corner (under the mezzanine when there is one: a nook).
-  const fridge = kit.group(
-    kit.box(0.72, 1.45, 0.66, R.mug, 0, 0, 0, { rough: 0.4 }),
-    kit.box(0.72, 0.012, 0.67, R.metal, 0, 0.98, 0.0),
-    kit.box(0.04, 0.38, 0.04, R.metal, 0.28, 1.04, 0.35, { metal: 0.8, rough: 0.3 }),
-    kit.box(0.04, 0.5, 0.04, R.metal, 0.28, 0.3, 0.35, { metal: 0.8, rough: 0.3 }),
-  );
-  // Magnets and stickers on the door.
-  [B.cyan, B.pink, B.yellow, B.green].forEach((c, i) => fridge.add(kit.box(0.1, 0.07, 0.01, c, -0.2 + (i % 2) * 0.16, 1.1 + Math.floor(i / 2) * 0.12, 0.335)));
-  fridge.position.set(0.0, 0, stripZ - 0.12);
-  add(fridge);
-  const counter = kit.group(
-    kit.box(1.2, 0.86, 0.6, R.plywood, 0, 0, 0),
-    kit.box(1.24, 0.05, 0.64, R.woodDark, 0, 0.86, 0),
-    // The espresso machine: body, group head, a cup under it.
-    kit.box(0.34, 0.36, 0.3, R.metalDark, -0.25, 0.91, -0.05, { metal: 0.5, rough: 0.4 }),
-    kit.box(0.08, 0.05, 0.08, R.metal, -0.25, 1.05, 0.12, { metal: 0.8 }),
-    kit.cyl(0.04, 0.07, R.mug, -0.25, 0.91, 0.12),
-    kit.cyl(0.05, 0.11, R.mug, 0.18, 0.91, 0.05),
-    kit.cyl(0.05, 0.11, B.accent, 0.34, 0.91, -0.08),
-  );
-  counter.position.set(1.15, 0, stripZ - 0.15);
-  add(counter);
-  puffs(root, 1.15 - 0.25, 1.03, stripZ - 0.03, R.paper, () => true, { n: 5, rise: 0.6, size: 0.1, period: 3200, opacity: 0.25 });
+  const LG = L.lounge;
+  const boardX0 = Math.max(3.2, mezzX1 + 1);
+  const boardX1 = Math.max(boardX0 + 3, LG.gx - 0.8);
 
-  const boardX0 = Math.max(2.5, mezzX1 + 1);
-  const boardX1 = Math.max(boardX0 + 4, cols - 4.6);
-  // The couch under the board, facing the room, with a coffee table and a pizza box.
-  const couchX = Math.min(boardX0 + 1.4, cols - 6);
-  const couch = kit.group(
-    kit.box(2.3, 0.42, 0.85, R.fabric, 0, 0.08, 0),
-    kit.box(2.3, 0.55, 0.2, R.fabric, 0, 0.35, -0.33),
-    kit.box(0.2, 0.62, 0.85, R.fabric, -1.15, 0.08, 0),
-    kit.box(0.2, 0.62, 0.85, R.fabric, 1.15, 0.08, 0),
-    kit.box(1.0, 0.1, 0.62, mix(R.fabric, R.paper, 0.08), -0.52, 0.5, 0.05),
-    kit.box(1.0, 0.1, 0.62, mix(R.fabric, R.paper, 0.08), 0.52, 0.5, 0.05),
-    kit.box(0.34, 0.3, 0.12, R.fabricAlt, -0.78, 0.6, -0.2),
-    kit.box(0.06, 0.08, 0.06, R.woodDark, -1.1, 0, 0.35),
-    kit.box(0.06, 0.08, 0.06, R.woodDark, 1.1, 0, 0.35),
-  );
-  couch.position.set(couchX, 0, stripZ);
-  add(couch);
-  const table = kit.group(
-    kit.box(1.1, 0.05, 0.5, R.wood, 0, 0.36, 0),
-    kit.box(0.05, 0.36, 0.05, R.woodDark, -0.5, 0, -0.2), kit.box(0.05, 0.36, 0.05, R.woodDark, 0.5, 0, -0.2),
-    kit.box(0.05, 0.36, 0.05, R.woodDark, -0.5, 0, 0.2), kit.box(0.05, 0.36, 0.05, R.woodDark, 0.5, 0, 0.2),
-    kit.box(0.42, 0.05, 0.42, R.cardboard, -0.22, 0.41, 0.0),
-    kit.box(0.16, 0.04, 0.1, R.plastic, 0.3, 0.41, 0.05),
-    kit.cyl(0.04, 0.13, B.red, 0.42, 0.41, -0.1),
-  );
-  table.position.set(couchX, 0, 1.15);
-  table.rotation.y = 0.05;
-  add(table);
-  // A bean bag beside it.
-  const bean = kit.ball(0.42, R.fabricAlt, couchX + 1.75, 0.26, 0.55, { rough: 1 });
-  bean.scale.set(1, 0.62, 1);
-  add(bean);
-
-  // Right end: a bookshelf, a guitar on its stand, a big plant.
-  const shelfX = cols - 2.2;
+  const shelfX = 1.0;
   const shelf = kit.group(kit.box(1.5, 2.0, 0.42, R.woodDark, 0, 0, 0));
   const bookColors = [B.cyan, B.violet, B.orange, B.green, B.pink, B.yellow, B.blue, R.paper];
   for (let s = 0; s < 4; s++) {
@@ -301,8 +251,8 @@ export function buildRoom(kit: Kit, L: Layout, pal: GaragePalette): RoomBuild {
     kit.box(0.3, 0.04, 0.2, R.metalDark, 0, 0, 0.05),
   );
   guitar.children.slice(0, 3).forEach((c) => (c.rotation.x = Math.PI / 2));
-  guitar.position.set(shelfX - 1.15, 0, stripZ + 0.1);
-  guitar.rotation.set(-0.18, 0.3, 0);
+  guitar.position.set(shelfX + 1.15, 0, stripZ + 0.1);
+  guitar.rotation.set(-0.18, -0.3, 0);
   add(guitar);
 
   const plant = (x: number, z: number, scale: number, seed: string): THREE.Group => {
@@ -322,8 +272,138 @@ export function buildRoom(kit: Kit, L: Layout, pal: GaragePalette): RoomBuild {
     tickers.push((now) => (g.rotation.z = Math.sin(now / 1900 + sway) * 0.015));
     return g;
   };
-  add(plant(cols - 0.95, stripZ + 0.5, 1.25, 'monstera'));
-  add(plant(-0.05, 1.05, 0.8, 'nook'));
+  add(plant(shelfX + 1.9, stripZ + 0.45, 0.8, 'nook'));
+
+  // ---------- the lounge: kitchen, couch, arcade, foosball, a beanbag ----------
+
+  const foosRods: THREE.Object3D[] = [];
+  let foosball = false;
+  {
+    const lx0 = LG.gx - 0.5;
+    const lx1 = LG.gx + LG.w - 0.5;
+    const lz1 = LG.gy + LG.h - 0.5;
+    const warm = R.lamp;
+    const floorTint = kit.mesh(kit.planeGeo(lx1 - lx0 - 0.1, lz1 + 0.45), kit.mat(mix(warm, R.concreteDark, 0.82), { rough: 0.95 }), (lx0 + lx1) / 2, 0.003, (lz1 - 0.5) / 2, 'receive');
+    floorTint.rotation.x = -Math.PI / 2;
+    add(floorTint);
+    const edge = kit.mat(warm, { basic: true });
+    add(kit.mesh(kit.boxGeo(lx1 - lx0 - 0.1, 0.012, 0.04), edge, (lx0 + lx1) / 2, 0.008, lz1 - 0.05, 'none'));
+    add(kit.mesh(kit.boxGeo(0.04, 0.012, lz1 + 0.45), edge, lx0 + 0.05, 0.008, (lz1 - 0.5) / 2, 'none'));
+    for (const p of LG.props) {
+      switch (p.kind) {
+        case 'kitchen': {
+          const fridge = kit.group(
+            kit.box(0.72, 1.6, 0.66, R.mug, 0, 0, 0, { rough: 0.4 }),
+            kit.box(0.72, 0.012, 0.67, R.metal, 0, 1.06, 0),
+            kit.box(0.04, 0.38, 0.04, R.metal, 0.28, 1.12, 0.35, { metal: 0.8, rough: 0.3 }),
+            kit.box(0.04, 0.5, 0.04, R.metal, 0.28, 0.35, 0.35, { metal: 0.8, rough: 0.3 }),
+          );
+          [B.cyan, B.pink, B.yellow, B.green, B.violet].forEach((c, i) => fridge.add(kit.box(0.1, 0.07, 0.01, c, -0.2 + (i % 2) * 0.16, 1.15 + Math.floor(i / 2) * 0.12, 0.335)));
+          fridge.position.set(p.gx - 0.75, 0, stripZ - 0.1);
+          add(fridge);
+          const counter = kit.group(
+            kit.box(1.2, 0.86, 0.6, R.plywood, 0, 0, 0),
+            kit.box(1.24, 0.05, 0.64, R.woodDark, 0, 0.86, 0),
+            kit.box(0.34, 0.36, 0.3, R.metalDark, -0.25, 0.91, -0.05, { metal: 0.5, rough: 0.4 }),
+            kit.box(0.08, 0.05, 0.08, R.metal, -0.25, 1.05, 0.12, { metal: 0.8 }),
+            kit.cyl(0.04, 0.07, R.mug, -0.25, 0.91, 0.12),
+            kit.cyl(0.05, 0.11, R.mug, 0.18, 0.91, 0.05),
+            kit.cyl(0.05, 0.11, B.accent, 0.34, 0.91, -0.08),
+            kit.box(0.28, 0.2, 0.2, R.cardboard, 0.3, 0.91, -0.15),
+          );
+          counter.position.set(p.gx + 0.35, 0, stripZ - 0.1);
+          add(counter);
+          puffs(root, p.gx + 0.1, 1.03, stripZ + 0.02, R.paper, () => true, { n: 5, rise: 0.6, size: 0.1, period: 3200, opacity: 0.25 });
+          break;
+        }
+        case 'couch': {
+          const couch = kit.group(
+            kit.box(2.3, 0.42, 0.85, R.fabric, 0, 0.08, 0),
+            kit.box(2.3, 0.55, 0.2, R.fabric, 0, 0.35, -0.33),
+            kit.box(0.2, 0.62, 0.85, R.fabric, -1.15, 0.08, 0),
+            kit.box(0.2, 0.62, 0.85, R.fabric, 1.15, 0.08, 0),
+            kit.box(1.0, 0.1, 0.62, mix(R.fabric, R.paper, 0.08), -0.52, 0.5, 0.05),
+            kit.box(1.0, 0.1, 0.62, mix(R.fabric, R.paper, 0.08), 0.52, 0.5, 0.05),
+            kit.box(0.34, 0.3, 0.12, R.fabricAlt, 0.78, 0.6, -0.2),
+            kit.box(0.06, 0.08, 0.06, R.woodDark, -1.1, 0, 0.35),
+            kit.box(0.06, 0.08, 0.06, R.woodDark, 1.1, 0, 0.35),
+          );
+          couch.position.set(p.gx, 0, p.gy - 0.1);
+          add(couch);
+          const rug = kit.mesh(kit.planeGeo(3.2, 2.0), kit.mat(R.rug, { rough: 1 }), p.gx, 0.006, p.gy + 0.9, 'receive');
+          rug.rotation.x = -Math.PI / 2;
+          add(rug);
+          break;
+        }
+        case 'arcade': {
+          const cab = kit.group(
+            kit.box(0.72, 1.7, 0.7, R.plastic, 0, 0, 0),
+            kit.box(0.74, 0.08, 0.72, R.neon, 0, 1.7, 0, { basic: true }),
+            kit.box(0.72, 0.18, 0.3, R.plastic, 0, 0.92, 0.42),
+            kit.box(0.02, 1.5, 0.04, R.neon, -0.37, 0.1, 0.33, { basic: true }),
+            kit.box(0.02, 1.5, 0.04, R.neon, 0.37, 0.1, 0.33, { basic: true }),
+            kit.cyl(0.04, 0.03, B.red, -0.12, 1.1, 0.42), kit.cyl(0.04, 0.03, B.yellow, 0.06, 1.1, 0.46), kit.cyl(0.04, 0.03, B.cyan, 0.2, 1.1, 0.42),
+          );
+          const s = screen(kit, pal, 'design', B.pink);
+          s.mat.color.set(B.white);
+          if (s.tex) tickers.push((_now, dt) => void (s.tex!.offset.y = (s.tex!.offset.y + dt * 0.0003) % 1));
+          const face = kit.mesh(kit.planeGeo(0.56, 0.44), s.mat, 0, 1.35, 0.352, 'none');
+          face.rotation.x = -0.2;
+          cab.add(face);
+          cab.position.set(p.gx, 0, p.gy - 0.15);
+          add(cab);
+          break;
+        }
+        case 'foosball': {
+          // An open box: the green field inside four walls, the rods across the top.
+          const ft = kit.group(
+            kit.box(1.3, 0.06, 0.75, R.woodDark, 0, 0.6, 0), kit.box(1.2, 0.01, 0.65, R.plant, 0, 0.66, 0),
+            kit.box(1.3, 0.2, 0.05, R.woodDark, 0, 0.6, -0.35), kit.box(1.3, 0.2, 0.05, R.woodDark, 0, 0.6, 0.35),
+            kit.box(0.05, 0.2, 0.75, R.woodDark, -0.63, 0.6, 0), kit.box(0.05, 0.2, 0.75, R.woodDark, 0.63, 0.6, 0),
+          );
+          for (const [a, b] of [[-0.55, -0.3], [0.55, -0.3], [-0.55, 0.3], [0.55, 0.3]] as const) ft.add(kit.box(0.08, 0.62, 0.08, R.woodDark, a, 0, b));
+          for (let i = 0; i < 4; i++) {
+            // A rod across the table (its axis is the spinner's y), three little players hanging from it.
+            const rod = new T.Group();
+            const spin = new T.Group();
+            spin.add(kit.cyl(0.012, 1.7, R.metal, 0, -0.85, 0, { metal: 0.8 }));
+            for (let k = -1; k <= 1; k++) spin.add(kit.box(0.12, 0.04, 0.04, i % 2 ? B.red : B.blue, -0.06, k * 0.2, 0));
+            rod.add(spin);
+            rod.rotation.z = Math.PI / 2;
+            rod.position.set(0, 0.8, -0.27 + i * 0.18);
+            ft.add(rod);
+            foosRods.push(spin);
+          }
+          ft.position.set(p.gx, 0, p.gy);
+          add(ft);
+          break;
+        }
+        case 'beanbag': {
+          const bean = kit.ball(0.42, R.fabricAlt, p.gx, 0.26, p.gy - 0.05, { rough: 1 });
+          bean.scale.set(1, 0.62, 1);
+          add(bean);
+          break;
+        }
+      }
+    }
+    const couch = LG.props.find((p) => p.kind === 'couch');
+    const sx = couch ? couch.gx : (lx0 + lx1) / 2;
+    const sign = kit.labelPlane('LOUNGE', 0.5, { fg: R.paper, halo: B.pink, px: 72, bold: true, font: 'mono' });
+    if (sign) {
+      const w = (sign.geometry as THREE.PlaneGeometry).parameters.width;
+      add(kit.box(w + 0.1, 0.6, 0.05, R.plastic, sx, 2.25, -0.47));
+      sign.position.set(sx, 2.55, -0.44);
+      add(sign);
+    }
+    add(new T.PointLight(new T.Color(B.pink), 2.2, 5, 1.6).translateX(sx).translateY(2.3).translateZ(0.9));
+    add(plant(lx1 - 0.4, lz1 - 0.45, 0.9, 'lounge'));
+    tickers.push((now) => {
+      for (let i = 0; i < foosRods.length; i++) {
+        const r = foosRods[i]!;
+        r.rotation.y = foosball ? Math.sin(now / (170 + i * 37)) * 0.9 : r.rotation.y * 0.95;
+      }
+    });
+  }
 
   // ---------- the back wall: the kanban board, the neon, the clock, posters ----------
 
@@ -410,7 +490,7 @@ export function buildRoom(kit: Kit, L: Layout, pal: GaragePalette): RoomBuild {
   }
 
   // The clock, on real time.
-  const clockX = Math.min(cols - 1.2, boardX1 + 1.4);
+  const clockX = LG.gx + 0.4;
   const clock = kit.group(
     kit.cyl(0.32, 0.05, R.woodDark, 0, 0, 0, { seg: 32 }),
     kit.cyl(0.29, 0.052, R.paper, 0, 0.001, 0, { seg: 32 }),
@@ -452,8 +532,10 @@ export function buildRoom(kit: Kit, L: Layout, pal: GaragePalette): RoomBuild {
     sun.castShadow = false;
     add(sun);
   };
-  if (boardX1 + 3 < cols - 2.4) poster(boardX1 + 0.9, 1.2, 0.6, 0.85, B.violetDeep, B.pink, B.yellow);
-  poster(clockX, 1.25, 0.55, 0.78, B.greenDeep, B.teal, B.mint);
+  // One over the kitchen counter's end, one between the board and the lounge when there is room.
+  const couchProp = LG.props.find((p) => p.kind === 'couch');
+  if (couchProp && couchProp.gx - 1.2 - (LG.gx + 1.2) > 0.9) poster((couchProp.gx - 1.2 + LG.gx + 1.2) / 2 + 0.15, 1.5, 0.55, 0.78, B.greenDeep, B.teal, B.mint);
+  if (LG.gx - 0.5 - boardX1 > 0.9) poster((boardX1 + LG.gx - 0.5) / 2, 1.3, 0.6, 0.85, B.violetDeep, B.pink, B.yellow);
 
   // ---------- the left wall: window, pegboard, the roll-up door ----------
 
@@ -595,25 +677,145 @@ export function buildRoom(kit: Kit, L: Layout, pal: GaragePalette): RoomBuild {
     add(p);
   }
 
+  // ---------- team zones ----------
+
+  /** A team-tinted floor from (x0, z0) to (x1, z1), with a glowing edge along the front and the right. */
+  const teamFloor = (x0: number, z0: number, x1: number, z1: number, color: string) => {
+    const f = kit.mesh(kit.planeGeo(x1 - x0 - 0.06, z1 - z0 - 0.06), kit.mat(mix(color, R.concreteDark, 0.8), { rough: 0.95 }), (x0 + x1) / 2, 0.003, (z0 + z1) / 2, 'receive');
+    f.rotation.x = -Math.PI / 2;
+    add(f);
+    const edge = kit.mat(color, { basic: true });
+    add(kit.mesh(kit.boxGeo(x1 - x0 - 0.06, 0.012, 0.04), edge, (x0 + x1) / 2, 0.008, z1 - 0.05, 'none'));
+    add(kit.mesh(kit.boxGeo(0.04, 0.012, z1 - z0 - 0.06), edge, x1 - 0.05, 0.008, (z0 + z1) / 2, 'none'));
+  };
+
+  /** A low wall along x or along z: plywood, a dark cap, and a strip of the team's colour. */
+  const lowWall = (x0: number, z0: number, x1: number, z1: number, color: string) => {
+    const alongX = Math.abs(x1 - x0) >= Math.abs(z1 - z0);
+    const len = Math.max(0.1, alongX ? x1 - x0 : z1 - z0);
+    const cx = (x0 + x1) / 2;
+    const cz = (z0 + z1) / 2;
+    const w = alongX ? len : 0.1;
+    const d = alongX ? 0.1 : len;
+    add(kit.box(w, 0.95, d, mix(R.plywood, R.woodDark, 0.25), cx, 0, cz, { rough: 0.8 }));
+    add(kit.box(alongX ? len : 0.13, 0.05, alongX ? 0.13 : len, R.woodDark, cx, 0.95, cz));
+    add(kit.mesh(kit.boxGeo(alongX ? len : 0.135, 0.025, alongX ? 0.135 : len), kit.mat(color, { basic: true }), cx, 0.9125, cz, 'none'));
+  };
+
+  /** A neon sign on a feature wall in the team's colour, its back at z, starting at x; its own light. Returns its width. */
+  const featureSign = (text: string, x: number, z: number, color: string, maxW: number): number => {
+    const sign = kit.labelPlane(text, 0.55, { fg: R.paper, halo: color, px: 72, bold: true, font: 'mono' });
+    const sw = sign ? Math.min((sign.geometry as THREE.PlaneGeometry).parameters.width, maxW - 0.4) : 1.6;
+    const fw = sw + 0.4;
+    const fx = x + fw / 2;
+    add(kit.box(fw, 1.95, 0.14, mix(color, R.plastic, 0.78), fx, 0, z, { rough: 0.9 }));
+    add(kit.box(fw, 0.05, 0.16, R.woodDark, fx, 1.95, z));
+    add(kit.mesh(kit.boxGeo(fw, 0.03, 0.15), kit.mat(color, { basic: true }), fx, 0.915, z, 'none'));
+    const light = new T.PointLight(new T.Color(color), 2.0, 5.5, 1.6);
+    light.position.set(fx, 1.5, z + 1.3);
+    add(light);
+    if (sign) {
+      sign.scale.setScalar(sw / (sign.geometry as THREE.PlaneGeometry).parameters.width);
+      sign.position.set(fx, 1.45, z + 0.075);
+      add(sign);
+      const m = sign.material as THREE.MeshBasicMaterial;
+      const s = hash01(text) * 9000;
+      tickers.push((now) => {
+        const u = (now + s) % 9000;
+        const flick = u > 8700 && u < 8850 && Math.floor(u / 40) % 2 === 0;
+        m.opacity = flick ? 0.4 : 1;
+        light.intensity = flick ? 0.8 : 2.0;
+      });
+    }
+    return fw;
+  };
+
+  /** A neon sign on a dark board, up on two posts (over the test racks, the bench). */
+  const hangingSign = (text: string, x: number, y: number, z: number, color: string) => {
+    const sign = kit.labelPlane(text, 0.42, { fg: R.paper, halo: color, px: 72, bold: true, font: 'mono' });
+    const w = sign ? (sign.geometry as THREE.PlaneGeometry).parameters.width : 1.6;
+    add(kit.box(w + 0.1, 0.5, 0.05, R.plastic, x, y - 0.25, z - 0.03));
+    add(kit.box(0.04, y - 0.25, 0.04, R.metalDark, x - w / 2 + 0.1, 0, z - 0.06), kit.box(0.04, y - 0.25, 0.04, R.metalDark, x + w / 2 - 0.1, 0, z - 0.06));
+    if (sign) {
+      sign.position.set(x, y, z + 0.001);
+      add(sign);
+    }
+    const light = new T.PointLight(new T.Color(color), 1.6, 4.5, 1.6);
+    light.position.set(x, y - 0.3, z + 1.1);
+    add(light);
+  };
+
+  const zoneVisual = (z: Zone) => {
+    const color = teamColor(pal, z.team);
+    const x1 = z.gx + z.w - 0.5;
+    const z1 = z.gy + z.h - 0.5;
+    teamFloor(z.gx, z.gy, x1, z1, color);
+    // The back wall runs to the door; the left wall stops short of the front aisle (none at the room's own wall).
+    const doorX = z.door.gx - 0.5;
+    const backX0 = z.gx === 0 ? -0.5 : z.gx;
+    const fw = featureSign(z.label, backX0 + 0.1, z.gy, color, doorX - backX0 - 0.1);
+    if (doorX - (backX0 + 0.1 + fw) > 0.1) lowWall(backX0 + 0.1 + fw, z.gy, doorX, z.gy, color);
+    if (z.gx > 0) lowWall(z.gx, z.gy, z.gx, z.gy + z.h - 1.5, color);
+  };
+  for (const z of L.zones) zoneVisual(z);
+
   // ---------- stations ----------
 
+  /** A lamp's (or an untextured screen's) colour for a station state. */
+  const colorFor = (s: StationStateName, now: number, lit: number): string => {
+    switch (s) {
+      case 'busy': return mix(R.busy, R.paper, 0.1 + 0.08 * Math.sin(now / 160 + lit));
+      case 'ok': return R.ok;
+      case 'failed': return R.failed;
+      case 'alert': return Math.floor(now / 450) % 2 ? R.alert : R.screenOff;
+      default: return mix(R.screenOff, R.busy, 0.22);
+    }
+  };
+
+  interface Indicator {
+    mat: THREE.Material;
+    set(s: StationStateName): void;
+    tick(now: number, dt: number): void;
+    readonly state: StationStateName;
+  }
+
   /** A screen or lamp whose colour follows the station's state. */
-  const indicator = (lit: number) => {
+  const indicator = (lit: number): Indicator => {
     const mat = kit.ownMat(R.screenOff, { basic: true });
     let state: StationStateName = 'idle';
-    const colorFor = (s: StationStateName, now: number): string => {
-      switch (s) {
-        case 'busy': return mix(R.busy, R.paper, 0.1 + 0.08 * Math.sin(now / 160 + lit));
-        case 'ok': return R.ok;
-        case 'failed': return R.failed;
-        case 'alert': return Math.floor(now / 450) % 2 ? R.alert : R.screenOff;
-        default: return mix(R.screenOff, R.busy, 0.22);
-      }
-    };
     return {
       mat,
       set: (s: StationStateName) => (state = s),
-      tick: (now: number) => mat.color.set(colorFor(state, now)),
+      tick: (now: number) => void mat.color.set(colorFor(state, now, lit)),
+      get state() {
+        return state;
+      },
+    };
+  };
+
+  /**
+   * A screen with something on it (decor3d): bright and scrolling while the station is busy, tinted when it is done,
+   * failed or calling, dark when idle. Without a texture (no canvas) it is a plain state-coloured panel.
+   */
+  const screenIndicator = (s: Screen, lit: number): Indicator => {
+    let state: StationStateName = 'idle';
+    const speed = 0.00005 * (1 + (lit % 3) * 0.35);
+    return {
+      mat: s.mat,
+      set: (x: StationStateName) => (state = x),
+      tick: (now: number, dt: number) => {
+        if (!s.tex) {
+          s.mat.color.set(colorFor(state, now, lit));
+          return;
+        }
+        const c = state === 'busy' ? B.white
+          : state === 'ok' ? mix(B.white, R.ok, 0.35)
+          : state === 'failed' ? mix(B.white, R.failed, 0.6)
+          : state === 'alert' ? (Math.floor(now / 450) % 2 ? R.alert : mix(B.white, R.alert, 0.3))
+          : mix(R.screenOff, B.white, 0.14);
+        s.mat.color.set(c);
+        if (state === 'busy') s.tex.offset.y = (s.tex.offset.y + dt * speed) % 1;
+      },
       get state() {
         return state;
       },
@@ -683,13 +885,13 @@ export function buildRoom(kit: Kit, L: Layout, pal: GaragePalette): RoomBuild {
     const x0 = fx.length ? Math.min(...fx) : sx;
     const x1 = fx.length ? Math.max(...fx) : sx;
     const cx = (x0 + x1) / 2;
-    const v: StationVisual & { parts: ReturnType<typeof indicator>[] } = {
+    const v: StationVisual & { parts: Indicator[] } = {
       id, parts: [],
       set(s) {
         for (const p of this.parts) p.set(s);
       },
-      tick(now) {
-        for (const p of this.parts) p.tick(now);
+      tick(now, dt) {
+        for (const p of this.parts) p.tick(now, dt);
       },
     };
     const short = st.label.split(' — ')[0]!;
@@ -699,8 +901,9 @@ export function buildRoom(kit: Kit, L: Layout, pal: GaragePalette): RoomBuild {
         const head = st.meta.head === true;
         add(desk(x0, x1, fz, y0, R.wood));
         const offs = head ? [-0.64, 0, 0.64] : [-0.34, 0.34];
+        const kinds = head ? (['graph', 'code', 'terminal'] as const) : (['code', 'merge'] as const);
         offs.forEach((o, i) => {
-          const scr = indicator(i);
+          const scr = screenIndicator(screen(kit, pal, kinds[i]!, B.cyan), i);
           v.parts.push(scr);
           const m = monitor(0.6, 0.36, scr.mat);
           m.position.set(sx + o, y0 + DESK_Y, fz - 0.16);
@@ -721,37 +924,24 @@ export function buildRoom(kit: Kit, L: Layout, pal: GaragePalette): RoomBuild {
         add(lamp);
         add(plant(x1 + 0.3, fz - 0.2, 0.35, `desk${id}`).translateY(y0 + DESK_Y));
         if (head) add(kit.box(0.24, 0.02, 0.18, R.paper, x0 + 0.15, y0 + DESK_Y, fz + 0.15), kit.box(0.24, 0.02, 0.18, B.yellow, x0 + 0.18, y0 + DESK_Y + 0.02, fz + 0.12));
+        // Their own things, like everyone's.
+        for (const o of personalThings(kit, pal, id, [[head ? x0 + 0.65 : x0 - 0.05, fz + 0.28], [x1 + 0.05, fz + 0.32]], tickers)) add(o.translateY(y0));
         add(chair(sx, sz, y0, 'office', R.plastic));
         nameplate(short, cx, y0 + DESK_Y - 0.22, fz + 0.41);
         break;
       }
       case 'bay': {
-        const idle = !st.meta.task;
-        const rug = kit.mesh(kit.planeGeo(2.7, 2.3), kit.mat(bayIndex % 2 ? R.rug : R.rugAlt, { rough: 1 }), cx + 0.1, y0 + 0.004, fz + 0.55, 'receive');
-        rug.rotation.x = -Math.PI / 2;
-        add(rug);
-        add(desk(x0, x1, fz, y0, R.plywood));
-        const scr = indicator(bayIndex);
-        v.parts.push(scr);
-        const m = monitor(0.72, 0.42, scr.mat);
-        m.position.set(sx + 0.2, y0 + DESK_Y, fz - 0.16);
-        add(m);
-        add(kit.box(0.44, 0.025, 0.15, R.plastic, sx + 0.2, y0 + DESK_Y, fz + 0.2));
-        // The tower under the right end, its RGB strip in the state's colour.
-        const glow = indicator(bayIndex + 3);
-        v.parts.push(glow);
-        add(kit.box(0.22, 0.5, 0.48, R.plastic, x1 + 0.22, y0, fz - 0.05));
-        add(kit.mesh(kit.boxGeo(0.012, 0.4, 0.03), glow.mat, x1 + 0.11, y0 + 0.27, fz + 0.18, 'none'));
-        // Headphones on the desk, a can, a notebook.
-        const phones = kit.mesh(kit.torusGeo(0.09, 0.018, Math.PI), kit.mat(R.plastic), x0 - 0.15, y0 + DESK_Y + 0.02, fz + 0.1, 'cast');
-        phones.rotation.x = -Math.PI / 2;
-        add(phones);
-        add(kit.cyl(0.035, 0.12, bayIndex % 2 ? B.cyan : B.pink, x1 + 0.35, y0 + DESK_Y, fz + 0.15));
-        add(kit.box(0.2, 0.02, 0.26, R.paper, x0 - 0.15, y0 + DESK_Y, fz - 0.15));
-        const ch = chair(sx, sz, y0, 'office', idle ? R.metalDark : R.plastic);
-        if (idle) ch.position.z -= 0.25;
-        add(ch);
-        nameplate(short, cx, y0 + DESK_Y - 0.22, fz + 0.41);
+        // A personal desk in a team's pod (decor3d), built with its sitter on +z and turned to the side its sitter is on:
+        // row A (face +1) sits behind the desk looking at the room, row B in front of it with its back to us.
+        const team = typeof st.meta.team === 'string' ? st.meta.team : null;
+        const face = st.meta.face === 1 ? 1 : -1;
+        const d = personalDesk(kit, pal, { owner: String(st.meta.owner ?? id), team, color: teamColor(pal, team), empty: !st.meta.task }, tickers);
+        d.group.position.set(cx, y0, fz);
+        d.group.rotation.y = face === 1 ? Math.PI : 0;
+        add(d.group);
+        d.screens.forEach((s, i) => v.parts.push(screenIndicator(s, bayIndex + i)));
+        if (!d.screens.length) v.parts.push(indicator(bayIndex));
+        v.seat = { chair: d.chair, home: d.chair.position.clone(), away: new T.Vector3(0, 0, 1) };
         bayIndex++;
         break;
       }
@@ -842,7 +1032,8 @@ export function buildRoom(kit: Kit, L: Layout, pal: GaragePalette): RoomBuild {
         v.parts.push(beacon);
         add(kit.cyl(0.1, 0.06, R.metalDark, cx, y0 + 1.75, fz), kit.mesh(kit.sphereGeo(0.09, 14, 10, Math.PI / 2), beacon.mat, cx, y0 + 1.81, fz, 'none'));
         add(chair(sx, sz + 0.1, y0, 'stool', R.plastic));
-        nameplate('TEST LAB', cx, y0 + 1.6, fz + 0.36);
+        teamFloor(x0 - 0.5, fz - 0.5, x0 + 3.5, fz + 2.5, roleColor(pal, 'worker', 'test'));
+        hangingSign('TEST LAB', cx, y0 + 2.15, fz, roleColor(pal, 'worker', 'test'));
         break;
       }
       case 'bench': {
@@ -878,7 +1069,8 @@ export function buildRoom(kit: Kit, L: Layout, pal: GaragePalette): RoomBuild {
         });
         puffs(root, cx + 0.2, y0 + 1.5, fz - 0.05, R.concreteDark, () => beacon.state === 'failed', { n: 6, rise: 1.2, size: 0.3, period: 1800, opacity: 0.55 });
         add(chair(sx, sz + 0.1, y0, 'stool', R.plastic));
-        nameplate('INTEGRATION', cx, y0 + 0.6, fz + 0.44);
+        teamFloor(x0 - 0.5, fz - 0.5, x0 + 3.5, fz + 2.5, B.green);
+        hangingSign('INTEGRATION', cx, y0 + 2.15, fz, B.green);
         break;
       }
       case 'terminal': {
@@ -887,8 +1079,8 @@ export function buildRoom(kit: Kit, L: Layout, pal: GaragePalette): RoomBuild {
           kit.box(0.72, 1.7, 0.7, R.plastic, 0, 0, 0),
           kit.box(0.74, 0.08, 0.72, R.neon, 0, 1.7, 0, { basic: true }),
           kit.box(0.72, 0.18, 0.3, R.plastic, 0, 0.92, 0.42),
-          kit.box(0.02, 1.5, 0.66, R.neon, -0.37, 0.1, 0, { glow: R.neon, glowK: 0.4 }),
-          kit.box(0.02, 1.5, 0.66, R.neon, 0.37, 0.1, 0, { glow: R.neon, glowK: 0.4 }),
+          kit.box(0.02, 1.5, 0.04, R.neon, -0.37, 0.1, 0.33, { basic: true }),
+          kit.box(0.02, 1.5, 0.04, R.neon, 0.37, 0.1, 0.33, { basic: true }),
           kit.cyl(0.04, 0.03, B.red, -0.12, 1.1, 0.42), kit.cyl(0.04, 0.03, B.yellow, 0.06, 1.1, 0.46), kit.cyl(0.04, 0.03, B.cyan, 0.2, 1.1, 0.42),
         );
         const scr = indicator(2);
@@ -961,6 +1153,9 @@ export function buildRoom(kit: Kit, L: Layout, pal: GaragePalette): RoomBuild {
     root,
     stations,
     setBoard,
+    setLounge(acts) {
+      foosball = acts.has('foosball');
+    },
     tick(now, dt) {
       for (const t of tickers) t(now, dt);
       for (const s of stations.values()) s.tick(now, dt);

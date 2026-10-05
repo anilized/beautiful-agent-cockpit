@@ -2,7 +2,7 @@
 // The room comes from room3d.ts, the people from people3d.ts; this file owns the camera, who walks where, stamps and
 // confetti, and the frame. three.js and the WebGL context are handed in, so a test drives it all under node.
 import type * as THREE from 'three';
-import { layoutFromState, type Layout, type LayoutSpec } from './layout.js';
+import { layoutFromState, type Layout, type LayoutSpec, type LoungeAct } from './layout.js';
 import type { AnimationName, CharacterId, CharacterKind, GarageState, SceneIntent, StampKind, StationId, StationKind, StationStateName, TaskKey } from './model.js';
 import { theme as sharedTheme, type ThemeSource } from './palette.js';
 import { DEFAULT_HOP_TILES, planWalk, type Point } from './path.js';
@@ -12,7 +12,7 @@ import {
 } from './renderer.js';
 import { Kit, hash01, type CanvasMaker, type Three } from './kit3d.js';
 import { buildRoom, ELEV_K, type RoomBuild } from './room3d.js';
-import { makeRig, pose, type Rig } from './people3d.js';
+import { actPlacement, makeRig, pose, type Act, type Rig } from './people3d.js';
 
 /** What the 3D renderer needs of the page's canvas: its size, its style, and pointer and wheel events for the camera. */
 export interface Canvas3D {
@@ -68,6 +68,8 @@ const MAX_ZOOM = 4.5;
 const MAX_STAMPS = 16;
 const CONFETTI = 26;
 const CONFETTI_MS = 1800;
+/** How long an idle habit (phone, perching, stretching) lasts before another may take its place. */
+const HABIT_MS = 40_000;
 
 const clamp01 = (u: number): number => (u < 0 ? 0 : u > 1 ? 1 : u);
 const easeInOutSine = (u: number): number => -(Math.cos(Math.PI * clamp01(u)) - 1) / 2;
@@ -107,6 +109,9 @@ interface Agent {
   fadeOut: { t0: number | null } | null;
   stride: number;
   rig: Rig;
+  /** Where the current act puts the body, eased: up, along the facing, and turned. */
+  off: { y: number; fwd: number; turn: number };
+  act: Act | null;
 }
 
 interface Stamp {
@@ -164,6 +169,8 @@ class Scene3D implements CanvasRenderer {
   private board = '';
   private lastState: GarageState | null = null;
   private synced = false;
+  /** False while the first state places everyone where they are (no walking in). */
+  private placed = false;
   private disposed = false;
   private viewCss = { w: 1, h: 1, dpr: 1 };
   /** The camera: what it looks at (fit to the room), the person's zoom and pan on top. */
@@ -270,7 +277,14 @@ class Scene3D implements CanvasRenderer {
     this.agents.set(id, {
       id, kind, specialty, task: look?.task ?? null, at: station, slot, pos: t ? { ...t.wp } : { gx: 0, gy: 0, elev: 0 }, lift: 0,
       yaw: Math.PI, anim: 'idle', celebrate: null, motion: null, born: null, alpha: 0, leaving: false, fadeOut: null, stride: 0, rig,
+      off: { y: 0, fwd: 0, turn: 0 }, act: null,
     });
+    // Someone who turns up with nothing to do comes in through the door and on to the lounge.
+    if (station === 'entrance' && this.placed) {
+      const door = this.layout.resolve('entrance')!.grid;
+      this.agents.get(id)!.pos = { gx: door.gx, gy: door.gy, elev: 0 };
+      this.reroute(this.agents.get(id)!);
+    }
     this.dirty = true;
   }
 
@@ -313,6 +327,7 @@ class Scene3D implements CanvasRenderer {
     }
     const first = !this.synced;
     this.synced = true;
+    this.placed = !first;
     for (const c of Object.values(state.characters)) {
       const look = { specialty: specialtyOf(c.persona), task: c.task };
       const known = this.agents.get(c.id);
@@ -326,6 +341,7 @@ class Scene3D implements CanvasRenderer {
       const a = this.agents.get(c.id)!;
       if (a.anim !== c.state) this.playAnimation(c.id, c.state);
     }
+    this.placed = true;
     for (const a of this.agents.values()) if (!state.characters[a.id] && !a.leaving) this.retire(a);
     for (const [id, st] of Object.entries(state.stations) as Array<[StationId, { state: StationStateName }]>) this.updateStation(id, st.state);
     for (const id of [...this.stationStates.keys()]) if (!state.stations[id]) this.updateStation(id, 'idle');
@@ -497,7 +513,8 @@ class Scene3D implements CanvasRenderer {
   // ---------- queries ----------
 
   private world(a: Agent): THREE.Vector3 {
-    return new this.T.Vector3(a.pos.gx, a.pos.elev * ELEV_K + a.lift, a.pos.gy);
+    const rest = this.restYaw(a);
+    return new this.T.Vector3(a.pos.gx + Math.sin(rest) * a.off.fwd, a.pos.elev * ELEV_K + a.lift + a.off.y, a.pos.gy + Math.cos(rest) * a.off.fwd);
   }
 
   /** A world point in CSS pixels on the canvas. */
@@ -516,7 +533,7 @@ class Scene3D implements CanvasRenderer {
     return {
       id, kind: a.kind, station: a.at, gx: a.pos.gx, gy: a.pos.gy, elevation: a.pos.elev, x: p.x, y: p.y,
       device: { x: p.x * this.viewCss.dpr, y: p.y * this.viewCss.dpr }, moving: !!a.motion, hopping: !!a.motion?.hop, facing,
-      pose: a.motion ? 'walkA' : this.isSeated(a) ? 'sit' : 'stand', alpha: a.alpha, anim: a.anim, leaving: a.leaving,
+      pose: a.motion ? 'walkA' : this.isSeated(a) ? 'sit' : 'stand', alpha: a.alpha, anim: a.anim, leaving: a.leaving, act: a.act,
     };
   }
 
@@ -555,6 +572,29 @@ class Scene3D implements CanvasRenderer {
 
   // ---------- movement ----------
 
+  /** Which way someone at rest faces: their desk (row A of a pod faces the room), their lounge spot's way, else the back. */
+  private restYaw(a: Agent): number {
+    if (a.at === 'entrance' && !a.leaving) return this.layout.loungeSpot(a.slot).yaw;
+    const st = this.layout.resolve(a.at);
+    return a.slot === 0 && st?.meta.face === 1 ? 0 : Math.PI;
+  }
+
+  /**
+   * What someone does when they are not working: in the lounge, what the spot is for; seated at their own desk with nothing
+   * on, a habit that changes every so often (lean back on the phone, perch on the desk, stretch). Null while working, on
+   * the move, celebrating or leaving.
+   */
+  private actOf(a: Agent, now: number): Act | null {
+    if (a.motion || a.leaving || a.celebrate) return null;
+    if (a.at === 'entrance') return this.layout.loungeSpot(a.slot).act;
+    if (!this.isSeated(a) || (a.anim !== 'idle' && a.anim !== 'waiting')) return null;
+    const st = this.layout.resolve(a.at);
+    const habits: Act[] = a.kind === 'council' ? [] : st?.kind === 'bay' ? ['phoneChair', 'perch', 'phoneChair', 'stretch'] : ['phoneChair', 'stretch'];
+    if (!habits.length) return null;
+    const turnOf = Math.floor((now + a.rig.seed * 97) / HABIT_MS);
+    return habits[Math.floor(hash01(`${a.id}:${turnOf}`) * habits.length)]!;
+  }
+
   private isSeated(a: Agent): boolean {
     const st = this.layout.resolve(a.at);
     return !!st && SEAT_KINDS.has(st.kind) && !a.motion && a.slot === 0 && !a.leaving;
@@ -568,9 +608,14 @@ class Scene3D implements CanvasRenderer {
     return k;
   }
 
-  private targetFor(at: StationId, slot: number): { tile: Point; wp: Waypoint } | null {
+  private targetFor(at: StationId, slot: number, leaving = false): { tile: Point; wp: Waypoint } | null {
     const st = this.layout.resolve(at);
     if (!st) return null;
+    if (at === 'entrance' && !leaving) {
+      // Nothing to do yet: the lounge (the door is only for coming and going).
+      const spot = this.layout.loungeSpot(slot);
+      return { tile: spot.tile, wp: { gx: spot.tile.gx + spot.dx, gy: spot.tile.gy + spot.dy, elev: 0 } };
+    }
     let tile = st.grid;
     let ox = 0;
     let oy = 0;
@@ -585,13 +630,16 @@ class Scene3D implements CanvasRenderer {
         oy = o[1] + 0.35;
       }
     }
-    // A seated person sits on the chair, a hand's breadth back from the stand tile's centre.
-    const seat = slot === 0 && SEAT_KINDS.has(st.kind) ? 0.08 : 0;
-    return { tile, wp: { gx: tile.gx + ox, gy: tile.gy + oy + seat, elev } };
+    // A seated person sits on the chair, a hand's breadth back from the stand tile's centre (away from the desk), and in
+    // the middle of a desk two tiles wide.
+    const sitting = slot === 0 && SEAT_KINDS.has(st.kind);
+    const face = typeof st.meta.face === 'number' ? st.meta.face : -1;
+    const seatDx = sitting && typeof st.meta.seatDx === 'number' ? st.meta.seatDx : 0;
+    return { tile, wp: { gx: tile.gx + ox + seatDx, gy: tile.gy + oy + (sitting ? -face * 0.08 : 0), elev } };
   }
 
   private reroute(a: Agent): void {
-    const t = this.targetFor(a.at, a.slot);
+    const t = this.targetFor(a.at, a.slot, a.leaving);
     if (!t) return;
     const L = this.layout;
     const from = { ...a.pos };
@@ -631,6 +679,7 @@ class Scene3D implements CanvasRenderer {
     a.leaving = false;
     a.fadeOut = null;
     a.alpha = 1;
+    this.reroute(a);
   }
 
   // ---------- stamps and confetti ----------
@@ -680,18 +729,41 @@ class Scene3D implements CanvasRenderer {
     const pal = this.theme.palette();
     this.room?.tick(now, dt);
 
+    const lounge = new Set<LoungeAct>();
+    const perched = new Set<StationId>();
+    const ease = 1 - Math.pow(0.001, Math.min(dt, 100) / 1000 * 3);
     for (const a of [...this.agents.values()]) {
       this.advance(a, now, dt);
       if (!this.agents.has(a.id)) continue;
       const seated = this.isSeated(a);
+      a.act = this.actOf(a, now);
+      if (a.act && a.at === 'entrance') lounge.add(a.act as LoungeAct);
+      if (a.act === 'perch') perched.add(a.at);
+      // Settle into (or out of) where the act puts the body: up onto the couch, forward onto the desk's edge.
+      const place = actPlacement(a.act);
+      const k = a.motion ? 1 : ease;
+      a.off.y += (place.y - a.off.y) * k;
+      a.off.fwd += (place.fwd - a.off.fwd) * k;
+      a.off.turn += (place.turn - a.off.turn) * k;
       pose(a.rig, {
-        anim: a.anim, seated, walking: !!a.motion && !a.motion.hop, hopping: !!a.motion?.hop, celebrating: !!a.celebrate,
+        anim: a.anim, act: a.act, seated, walking: !!a.motion && !a.motion.hop, hopping: !!a.motion?.hop, celebrating: !!a.celebrate,
         stride: a.stride, now, alpha: a.alpha,
       }, dt, pal);
       const p = this.world(a);
       a.rig.root.position.copy(p);
-      a.rig.root.rotation.y = a.yaw;
+      a.rig.root.rotation.y = a.yaw + a.off.turn;
     }
+    // Whoever perches on their desk pushes the chair back first.
+    for (const [id, v] of this.room?.stations ?? []) {
+      if (!v.seat) continue;
+      const want = perched.has(id) ? 0.4 : 0;
+      const c = v.seat.chair;
+      const cur = c.position.clone().sub(v.seat.home).dot(v.seat.away);
+      const next = cur + (want - cur) * ease;
+      c.position.copy(v.seat.home).addScaledVector(v.seat.away, next);
+      c.rotation.y = next * 1.2;
+    }
+    this.room?.setLounge(lounge);
 
     // Stamps rise and fade over their station; confetti falls.
     this.stamps = this.stamps.filter((s) => {
@@ -756,8 +828,7 @@ class Scene3D implements CanvasRenderer {
       a.stride += (dt / 1000) * (WALK_TILES_PER_SEC / 1.6);
       if (u >= 1) a.motion = null;
     } else {
-      // At rest everyone faces their station's furniture (it is behind the stand tile), or into the room at the door.
-      a.yaw = turn(a.yaw, Math.PI, dt);
+      a.yaw = turn(a.yaw, this.restYaw(a), dt);
     }
     if (a.leaving && !a.motion && !a.fadeOut) a.fadeOut = { t0: null };
     if (a.fadeOut) {

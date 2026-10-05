@@ -289,6 +289,103 @@ describe('layoutFromState: extensions and waiting workers', () => {
   });
 });
 
+describe('team zones', () => {
+  const inZone = (l: Layout, id: StationId) => {
+    const st = l.resolve(id)!;
+    const z = l.zones.find((x) => x.id === st.meta.zone)!;
+    return { st, z, inside: st.grid.gx >= z.gx && st.grid.gx < z.gx + z.w && st.grid.gy >= z.gy && st.grid.gy < z.gy + z.h };
+  };
+
+  it('groups bays by team, each in its own zone, the small team at one row of desks facing its wall', () => {
+    const l = buildLayout(spec({
+      bays: [
+        { id: '1', task: 'TASK-1', team: 'backend', owner: 'backend-dev' },
+        { id: '2', task: 'TASK-2', team: 'frontend', owner: 'frontend-dev' },
+        { id: '3', task: 'TASK-3', team: 'backend', owner: 'api-dev' },
+      ],
+    }));
+    expect(l.zones.map((z) => z.label)).toEqual(['BACKEND', 'FRONTEND']);
+    for (const id of ['bay:1', 'bay:3'] as StationId[]) {
+      const { st, z, inside } = inZone(l, id);
+      expect([id, z.team, inside]).toEqual([id, 'backend', true]);
+      expect(st.meta.seatDx).toBe(0.5);
+    }
+    expect(l.resolve('bay:1')!.meta.owner).toBe('backend-dev');
+    // The placeholders fill the teams' pods before anything else: backend has a full pod of four, its row A facing the room.
+    const backend = l.zones.find((z) => z.team === 'backend')!;
+    const mine = l.ids().filter((id) => l.resolve(id)!.meta.zone === backend.id);
+    expect(mine).toHaveLength(4);
+    expect(mine.map((id) => l.resolve(id)!.meta.face).sort()).toEqual([-1, -1, 1, 1]);
+    // Frontend has one of its own and the last placeholder: a small zone, both facing the back wall.
+    const front = l.zones.find((z) => z.team === 'frontend')!;
+    expect(front.h).toBeLessThan(backend.h);
+    for (const id of l.ids().filter((i) => l.resolve(i)!.meta.zone === front.id)) expect(l.resolve(id)!.meta.face).toBe(-1);
+    expect(l.ids().filter((id) => id.startsWith('bay:'))).toHaveLength(MIN_BAYS);
+    expectAllReachable(l);
+  });
+
+  it('puts bays with no team at the hot desks, and keeps every zone inside the room however many bays there are', () => {
+    const many = Array.from({ length: 30 }, (_, i) => ({ id: `B${i}`, task: `TASK-${i}`, team: ['backend', 'frontend', 'research', null][i % 4]! }));
+    const l = buildLayout(spec({ bays: many }));
+    expect(l.zones.some((z) => z.team === null && z.label === 'HOT DESKS')).toBe(true);
+    for (const z of l.zones) {
+      expect(z.gx + z.w, z.id).toBeLessThanOrEqual(l.cols);
+      expect(l.walkable(z.door.gx, z.door.gy), `${z.id} door`).toBe(true);
+    }
+    for (const b of many) expect(inZone(l, `bay:${b.id}`).inside, b.id).toBe(true);
+    expectAllReachable(l);
+  });
+
+  it('takes the team from the task persona in a state', () => {
+    const state = {
+      characters: {},
+      stations: {},
+      bayOf: { 'TASK-1': '1', 'TASK-2': '2' },
+      crateOf: {},
+      taskIndex: { keyOfId: {}, idOfKey: {}, tasks: { 'TASK-1': { persona: 'docs-writer', repo: 'web' }, 'TASK-2': { persona: null, repo: 'web' } } },
+    } as unknown as GarageState;
+    const l = layoutFromState(state);
+    expect(l.resolve('bay:1')!.meta).toMatchObject({ team: 'docs', owner: 'docs-writer' });
+    expect(l.zones.find((z) => z.id === l.resolve('bay:1')!.meta.zone)!.label).toBe('DOCS');
+    expect(l.resolve('bay:2')!.meta.team).toBeNull();
+  });
+});
+
+describe('the lounge', () => {
+  it('sits at the back right, clear of the loft and the lead desks, furnished, with reachable places to hang out', () => {
+    const l = buildLayout(spec());
+    const lg = l.lounge;
+    expect(lg.gx + lg.w).toBe(l.cols);
+    for (const id of l.ids()) {
+      const st = l.resolve(id)!;
+      if (st.kind === 'loft' || st.kind === 'desk' || st.kind === 'outbox') expect(st.grid.gx, id).toBeLessThan(lg.gx);
+    }
+    expect(lg.props.map((p) => p.kind)).toEqual(expect.arrayContaining(['kitchen', 'couch', 'arcade', 'foosball', 'beanbag']));
+    expect(new Set(lg.spots.slice(0, 8).map((s) => s.act))).toEqual(new Set(['couch', 'arcade', 'foosball', 'coffee', 'chat', 'beanbag']));
+    const door = l.resolve('entrance')!.grid;
+    const tiles = new Set<string>();
+    for (let i = 0; i < lg.spots.length; i++) {
+      const s = l.loungeSpot(i);
+      expect(l.walkable(s.tile.gx, s.tile.gy), `spot ${i}`).toBe(true);
+      expect(findPath(l, door, s.tile), `spot ${i}`).not.toBeNull();
+      tiles.add(`${s.tile.gx},${s.tile.gy}`);
+    }
+    expect(tiles.size).toBe(lg.spots.length);
+    expect(lg.spots.length).toBeGreaterThanOrEqual(12);
+    expect(l.loungeSpot(lg.spots.length + 2)).toEqual(l.loungeSpot(2));
+    expect(l.regions.map((r) => r.id)).toContain('lounge');
+  });
+
+  it('is there with no council and many leads too', () => {
+    for (const s of [spec({ council: [] }), spec({ leads: Array.from({ length: 8 }, (_, i) => ({ id: `lead-${i + 1}` })) })]) {
+      const l = buildLayout(s);
+      expect(l.lounge.spots.length).toBeGreaterThan(4);
+      for (const p of l.lounge.spots) expect(l.walkable(p.tile.gx, p.tile.gy)).toBe(true);
+      expectAllReachable(l);
+    }
+  });
+});
+
 describe('no DOM', () => {
   it('layout.ts only imports relative modules, and nothing DOM-ish', () => {
     const src = readFileSync(new URL('../packages/garage/src/layout.ts', import.meta.url), 'utf8');

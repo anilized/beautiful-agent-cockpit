@@ -291,13 +291,19 @@ only. To work on the page without a daemon: `node scripts/demo-dashboard.mjs`.
 
 The same mission as a living 3D garage in the browser, an isometric diorama drawn with three.js:
 the council on a mezzanine in armchairs, each lead at a multi-monitor desk with a headset, and the
-workers at their bays, walking to their repo's crates, the test lab, the integration bench and the
-arcade terminal as they read, edit and run. Screens and beacons light up with each station's state,
-reviews and merges stamp the room, a failed worker gets a little rain cloud, and the whole team
-cheers when the mission ships. Around them: brick, string lights, a "ship it" neon, a corkboard of
-sticky notes (the task board), a couch, a guitar, coffee steaming, and a clock on real time.
+workers in **team zones** (backend, frontend, QA, docs, research ...: one per persona specialty, each
+with its own coloured floor, low walls and a neon sign), walking to their repo's crates, the test
+lab, the integration bench and the arcade terminal as they read, edit and run. Every desk is its
+owner's: the finish, the screens, the chair and the little things on it (a cactus, a rubber duck, a
+lava lamp, energy drinks ...) follow from who sits there, and the screens show code, designs, tests
+or docs scrolling while they work. Nobody stands around like a robot: a worker with nothing on leans
+back with their phone, perches on the desk scrolling, or stretches; one with no task yet hangs out in
+the **lounge** (couch, foosball, arcade, the coffee machine). Reviews and merges stamp the room, a
+failed worker gets a little rain cloud, and the whole team cheers when the mission ships. Around
+them: brick, string lights, a "ship it" neon, a corkboard of sticky notes (the task board), a guitar,
+and a clock on real time.
 
-![Pixel Garage in 3D during a demo mission: the council on the mezzanine, leads and workers at their desks, an escalation in the bubbles](docs/images/garage-3d.png)
+![Pixel Garage in 3D during a demo mission: the council on the mezzanine, the leads at their desks, workers in their team zones, and a worker with no task on the lounge couch](docs/images/garage-3d.png)
 
 ![The same garage in the neon theme](docs/images/garage-3d-neon.png)
 

@@ -130,6 +130,8 @@ export type SpriteRole = 'supervisor' | 'lead' | 'worker';
 const SPECIALTY_COLOR: Record<string, keyof BasePalette> = {
   backend: 'orange', frontend: 'blue', test: 'pink', database: 'yellow', security: 'red', performance: 'yellow',
   documentation: 'text', refactoring: 'violet', research: 'cyan', generalist: 'mint',
+  // Persona-id heads (docs-writer, qa-engineer) that name a specialty another way.
+  docs: 'text', qa: 'pink', db: 'yellow', ui: 'blue', api: 'orange',
 };
 
 /** A role's colour in `pal`: supervisor (and the council) violet, lead cyan, workers by specialty (orange when unknown). */

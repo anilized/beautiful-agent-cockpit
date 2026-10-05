@@ -13,8 +13,11 @@ export interface WalkGrid {
   walkable(gx: number, gy: number): boolean;
 }
 
-/** A walk longer than this many steps becomes a hop (the renderer eases across instead of walking the whole way). */
-export const DEFAULT_HOP_TILES = 24;
+/**
+ * A walk longer than this many steps becomes a hop (the renderer eases across instead of walking the whole way). Team zones
+ * have walls with doors, so walks wind: this leaves room for crossing the whole garage on foot.
+ */
+export const DEFAULT_HOP_TILES = 36;
 
 export interface WalkPlan {
   /** Tiles from `from` to `to`, both included. */

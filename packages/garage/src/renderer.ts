@@ -130,6 +130,8 @@ export interface AgentView {
   alpha: number;
   anim: AnimationName;
   leaving: boolean;
+  /** 3D only: what they do while not working (on the phone, perched on the desk, at the foosball table ...). */
+  act?: string | null;
 }
 
 export interface CanvasRenderer extends GarageRenderer {

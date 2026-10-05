@@ -2,6 +2,7 @@
 // skin from the same stable parts the 2D sprites use. A rig only holds joints; `pose` moves them from what the character is
 // doing, every frame, easing toward the target so nothing snaps.
 import type * as THREE from 'three';
+import type { LoungeAct } from './layout.js';
 import type { AnimationName, CharacterKind } from './model.js';
 import { mix, roleColor, type GaragePalette } from './palette.js';
 import { characterParts, normalizeCharacter } from './sprites.js';
@@ -21,6 +22,10 @@ export interface Rig {
   pip: THREE.Mesh;
   pipMat: THREE.MeshBasicMaterial;
   cloud: THREE.Group;
+  /** Held in front of the chest while scrolling (shown only then). */
+  phone: THREE.Group;
+  /** In the left hand while sipping. */
+  mug: THREE.Group;
   /** Every material the figure owns: fading in and out sets their opacity. */
   mats: THREE.Material[];
   /** The top of the head, from the feet: where bubbles and the pip sit. */
@@ -28,8 +33,29 @@ export interface Rig {
   seed: number;
 }
 
+/**
+ * What someone does when there is nothing to do: in the lounge (the spot says), or at their own desk (the renderer picks a
+ * habit): lean back on the phone, perch on the desk with it, stretch.
+ */
+export type Act = LoungeAct | 'phoneChair' | 'perch' | 'stretch';
+
+/** Where an act puts the body, from where the character stands: up, forward (along its facing) and turned. */
+export function actPlacement(act: Act | null): { y: number; fwd: number; turn: number } {
+  switch (act) {
+    // On the desk's front edge (its top is 0.74, the hips 0.42 above the feet), turned to face away from it.
+    case 'perch': return { y: 0.32, fwd: 0.6, turn: Math.PI };
+    case 'couch': return { y: 0.13, fwd: 0, turn: 0 };
+    case 'beanbag': return { y: -0.12, fwd: 0, turn: 0 };
+    default: return { y: 0, fwd: 0, turn: 0 };
+  }
+}
+
+const SEATED_ACTS: ReadonlySet<Act> = new Set<Act>(['phoneChair', 'perch', 'stretch', 'couch', 'beanbag']);
+
 export interface PoseInput {
   anim: AnimationName;
+  /** An idle habit or a lounge activity; null while working, walking or celebrating. */
+  act?: Act | null;
   seated: boolean;
   walking: boolean;
   hopping: boolean;
@@ -188,6 +214,23 @@ export function makeRig(kit: Kit, pal: GaragePalette, id: string, kind: Characte
     head.add(mic);
   }
 
+  // A phone (its screen lit) held at the chest, and a mug for the left hand.
+  const phone = new T.Group();
+  phone.add(mesh(kit.boxGeo(0.095, 0.17, 0.016), own(sc.shoe, { rough: 0.4 }), 0, 0, 0));
+  const glass = mesh(kit.planeGeo(0.082, 0.15), own(pal.base.cyan, { basic: true }), 0, 0, 0.0085);
+  glass.castShadow = false;
+  phone.add(glass);
+  phone.position.set(0, 0.38, 0.3);
+  phone.rotation.x = -1.05;
+  phone.visible = false;
+  torso.add(phone);
+  const mug = new T.Group();
+  const mugMat = own(pal.room.mug, { rough: 0.5 });
+  mug.add(mesh(kit.cylGeo(0.04, 0.04, 0.09, 12), mugMat, 0, -0.045, 0), mesh(kit.torusGeo(0.026, 0.007), mugMat, 0.045, -0.045, 0));
+  mug.position.set(0, -0.31, 0.04);
+  mug.visible = false;
+  armL.add(mug);
+
   // The status pip: a gem over the head for what people must notice.
   const pipMat = kit.ownMat(pal.room.alert, { basic: true }) as THREE.MeshBasicMaterial;
   mats.push(pipMat);
@@ -206,7 +249,7 @@ export function makeRig(kit: Kit, pal: GaragePalette, id: string, kind: Characte
   cloud.visible = false;
   root.add(cloud);
 
-  return { root, body, torso, head, armL, armR, legL, legR, eyes, pip, pipMat, cloud, mats, height: HEAD_Y + HEAD_R, seed: hash01(id) * 1000 };
+  return { root, body, torso, head, armL, armR, legL, legR, eyes, pip, pipMat, cloud, phone, mug, mats, height: HEAD_Y + HEAD_R, seed: hash01(id) * 1000 };
 }
 
 const ease = (cur: number, target: number, k: number): number => cur + (target - cur) * k;
@@ -227,8 +270,20 @@ export function pose(r: Rig, p: PoseInput, dt: number, pal: GaragePalette): void
   let lean = 0;
   let lift = 0;
   let seatDrop = 0;
+  let legLz = 0;
+  let legRz = 0;
+  let phone = false;
+  let mug = false;
+  /** 0..1 and back, for `len` ms every `period` ms, on the figure's own clock. */
+  const every = (period: number, len: number, offset = 0): number => {
+    const u = (t + offset) % period;
+    return u < len ? Math.sin((u / len) * Math.PI) : 0;
+  };
+  /** Thumb on the glass: little flicks in bursts. */
+  const scroll = (rate: number) => Math.sin(t / rate) * 0.045 * (Math.sin(t / 1200) > 0 ? 1 : 0);
 
   const typing = p.anim === 'implementing';
+  const act = p.act ?? null;
   if (p.hopping) {
     armL = -2.6;
     armR = -2.6;
@@ -248,16 +303,136 @@ export function pose(r: Rig, p: PoseInput, dt: number, pal: GaragePalette): void
     armLz = -0.35;
     armRz = 0.35;
     headX = -0.15;
+  } else if (act) {
+    if (SEATED_ACTS.has(act)) {
+      seatDrop = act === 'perch' ? 0 : 1;
+      legL = -1.45;
+      legR = -1.45;
+    }
+    switch (act) {
+      case 'phoneChair':
+        // Leaning back, legs crossed, scrolling.
+        phone = true;
+        lean = -0.3;
+        legL = -1.25;
+        legR = -1.55;
+        legRz = -0.25;
+        armR = -1.3 + scroll(140);
+        armRz = -0.3;
+        armL = -1.3;
+        armLz = 0.3;
+        headX = 0.42;
+        headY = every(11000, 1600) * 0.5;
+        break;
+      case 'perch':
+        // On the desk's edge: legs swinging, phone in one hand, the other on the desk behind.
+        phone = true;
+        legL = -0.45 + Math.sin(t / 420) * 0.3;
+        legR = -0.45 - Math.sin(t / 420) * 0.3;
+        armR = -1.3 + scroll(140);
+        armRz = -0.22;
+        armL = 0.45;
+        armLz = -0.3;
+        lean = 0.08;
+        headX = 0.45;
+        headY = every(7000, 1500) * -0.6;
+        break;
+      case 'stretch': {
+        const u = every(8000, 2600);
+        armL = -0.9 * (1 - u) - 2.95 * u;
+        armR = -0.9 * (1 - u) - 2.95 * u;
+        armLz = -0.35 * u;
+        armRz = 0.35 * u;
+        lean = -0.25 * u;
+        headX = -0.4 * u;
+        headY = (1 - u) * Math.sin(t / 2600) * 0.25;
+        break;
+      }
+      case 'couch':
+        phone = true;
+        lean = -0.4;
+        legL = -1.2;
+        legR = -1.3;
+        armR = -1.3 + scroll(150);
+        armRz = -0.3;
+        armL = -1.3;
+        armLz = 0.3;
+        headX = 0.35;
+        break;
+      case 'beanbag':
+        phone = true;
+        lean = -0.55;
+        legL = -1.1;
+        legR = -1.25;
+        legLz = 0.15;
+        armR = -1.45 + scroll(150);
+        armRz = -0.3;
+        armL = -1.45;
+        armLz = 0.3;
+        headX = 0.3;
+        break;
+      case 'phone':
+        phone = true;
+        armR = -1.3 + scroll(130);
+        armRz = -0.3;
+        armL = -1.3;
+        armLz = 0.3;
+        headX = 0.45;
+        legR = 0.1;
+        headY = every(9000, 1400) * 0.5;
+        break;
+      case 'coffee': {
+        const sip = every(6500, 1600);
+        mug = true;
+        armL = -0.7 - sip * 1.4;
+        armLz = sip * 0.35;
+        armR = -0.15;
+        headX = -0.25 * sip;
+        lean = -0.06;
+        legR = 0.12;
+        break;
+      }
+      case 'chat':
+        armR = -0.7 + Math.sin(t / 380) * 0.35;
+        armRz = 0.2 + Math.sin(t / 520) * 0.15;
+        armL = -0.3 + Math.sin(t / 610) * 0.15;
+        headX = Math.sin(t / 700) * 0.08;
+        headY = Math.sin(t / 2100) * 0.15;
+        break;
+      case 'arcade':
+        armL = -1.15 + Math.sin(t / 45) * 0.08;
+        armR = -1.15 + Math.cos(t / 55) * 0.12;
+        armLz = 0.15;
+        armRz = -0.15;
+        headX = -0.05;
+        lift = Math.abs(Math.sin(t / 240)) * 0.02;
+        lean = 0.1;
+        break;
+      case 'foosball':
+        armL = -1.05 + Math.sin(t / 170) * 0.15;
+        armR = -1.05 - Math.sin(t / 210) * 0.15;
+        armLz = 0.25;
+        armRz = -0.25;
+        lean = 0.18;
+        headX = 0.25;
+        legL = Math.sin(t / 260) * 0.15;
+        legR = -Math.sin(t / 260) * 0.15;
+        break;
+    }
   } else if (p.seated) {
     seatDrop = 1;
     legL = -1.45;
     legR = -1.45;
     if (typing) {
-      armL = -1.15 + Math.sin(t / 70) * 0.09;
+      // Typing, with a glance at the other screen now and then, and a sip of coffee.
+      const sip = every(17000, 2400, 5000);
+      armL = -1.15 + Math.sin(t / 70) * 0.09 * (1 - sip) - sip * 1.3;
       armR = -1.15 - Math.sin(t / 70) * 0.09;
-      armLz = 0.18;
+      armLz = 0.18 + sip * 0.2;
       armRz = -0.18;
-      headX = 0.12 + Math.sin(t / 900) * 0.04;
+      mug = sip > 0.05;
+      headX = 0.12 + Math.sin(t / 900) * 0.04 - sip * 0.3;
+      headY = every(9000, 1800) * (r.seed % 2 > 1 ? 0.45 : -0.45);
     } else if (p.anim === 'thinking') {
       armR = -2.35;
       armRz = -0.55;
@@ -329,6 +504,10 @@ export function pose(r: Rig, p: PoseInput, dt: number, pal: GaragePalette): void
   r.armR.rotation.x = ease(r.armR.rotation.x, armR, k);
   r.armL.rotation.z = ease(r.armL.rotation.z, armLz, k);
   r.armR.rotation.z = ease(r.armR.rotation.z, armRz, k);
+  r.legL.rotation.z = ease(r.legL.rotation.z, legLz, k);
+  r.legR.rotation.z = ease(r.legR.rotation.z, legRz, k);
+  r.phone.visible = phone;
+  r.mug.visible = mug;
   r.head.rotation.x = ease(r.head.rotation.x, headX, k);
   r.head.rotation.y = ease(r.head.rotation.y, headY, k);
   r.torso.rotation.x = ease(r.torso.rotation.x, lean, k);
