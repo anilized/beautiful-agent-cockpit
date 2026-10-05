@@ -37,6 +37,7 @@ const USAGE = `cockpit - hierarchical multi-agent coding cockpit
   cockpit garage [<runId>]                  open Pixel Garage, a read-only live view of the run, in the browser
   cockpit events [<runId>] [--follow]
   cockpit retry <runId>                     retry a failed run from the phase it failed in
+  cockpit cancel <runId> [reason]           cancel a mission: stop its agents, end it as rejected
 
 Options: --config <dir> (default: ${join(ROOT, 'config')}; env COCKPIT_CONFIG)`;
 
@@ -305,6 +306,11 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
     case 'retry':
       await client(cfg).request('POST', `/runs/${rest[0]}/retry`);
       return void console.log('retrying');
+    case 'cancel': {
+      if (!rest[0]) throw new Error('usage: cockpit cancel <runId> [reason]');
+      await client(cfg).request('POST', `/runs/${rest[0]}/cancel`, { reason: rest.slice(1).join(' ') || null });
+      return void console.log(`mission ${rest[0]} cancelled`);
+    }
     default:
       console.log(USAGE);
       process.exitCode = 1;

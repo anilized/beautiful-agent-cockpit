@@ -22,7 +22,8 @@ export class TaskPipeline {
   constructor(
     private readonly ctx: EngineContext,
     private readonly onChange: () => void,
-    private readonly isStopping: () => boolean = () => false,
+    /** Shutdown, or the task's mission cancelled: the pipeline returns and leaves the status alone. */
+    private readonly isStopping: (runId: string) => boolean = () => false,
   ) {}
 
   private task(id: string): Task {
@@ -53,8 +54,8 @@ export class TaskPipeline {
 
   async drive(taskId: string): Promise<void> {
     for (let guard = 0; guard < 200; guard++) {
-      if (this.isStopping()) return;
       const t = this.task(taskId);
+      if (this.isStopping(t.runId)) return;
       const before = t.status;
       try {
         switch (t.status) {
@@ -86,8 +87,8 @@ export class TaskPipeline {
             return;
         }
       } catch (err) {
-        // Interrupted by shutdown: leave the persisted status alone so a restart resumes it.
-        if (this.isStopping()) return;
+        // Interrupted by shutdown (a restart resumes it) or a cancel (which set the status itself): leave it alone.
+        if (this.isStopping(t.runId)) return;
         const fresh = this.task(taskId);
         const reason = errorMessage(err);
         this.ctx.leases.release(fresh.id);

@@ -136,6 +136,7 @@ export async function startDaemon(config: CockpitConfig, opts: EngineOptions = {
     .route('POST', '/runs/:id/seats', ({ params, body }) => engine.setSeats(params.id!, (body ?? {}) as Parameters<Orchestrator['setSeats']>[1]))
     .route('POST', '/runs/:id/team', ({ params, body }) => engine.setTeam(params.id!, ((body ?? {}) as { team?: Persona[] }).team ?? []))
     .route('POST', '/runs/:id/retry', ({ params }) => (engine.retry(params.id!), { ok: true }))
+    .route('POST', '/runs/:id/cancel', ({ params, body }) => engine.cancel(params.id!, ((body ?? {}) as { reason?: string | null }).reason ?? null))
     .route('POST', '/runs/:id/decision', ({ params, body }) => {
       const d = decision(body);
       return engine.decideRun(params.id!, d.decision, d.response);

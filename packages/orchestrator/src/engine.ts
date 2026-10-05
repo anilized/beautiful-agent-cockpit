@@ -76,9 +76,11 @@ export class Orchestrator {
   private readonly approvalSpans = new Map<string, Span>();
   readonly pipeline: TaskPipeline;
   private stopping = false;
+  /** Runs the human cancelled: their drivers and pipelines return without touching the status again. */
+  private readonly halted = new Set<string>();
 
   constructor(readonly ctx: EngineContext) {
-    this.pipeline = new TaskPipeline(ctx, () => {}, () => this.stopping);
+    this.pipeline = new TaskPipeline(ctx, () => {}, (runId) => this.stopping || this.halted.has(runId));
     for (const a of ctx.config.agents.agents) ctx.store.upsertAgent({ id: a.id, adapter: a.adapter, model: a.model, roles: a.roles, profile: a });
   }
 
@@ -254,6 +256,42 @@ export class Orchestrator {
     await Promise.allSettled([...this.drivers.values()]);
   }
 
+  /**
+   * Cancel a mission in any phase: its open approvals are rejected, its unfinished tasks cancelled
+   * and the run ends as rejected; then its agent calls are aborted and its task worktrees removed
+   * once the driver has let go (the integration branch is kept, as on a rejection).
+   */
+  cancel(runId: string, reason: string | null = null): Run {
+    const { store, bus, runner, leases } = this.ctx;
+    const run = store.runById(runId);
+    if (!run) throw new Error(`unknown run ${runId}`);
+    if (isTerminalRun(run.status)) throw new Error(`run ${runId} is already ${run.status}`);
+    const why = reason?.trim() || 'cancelled by the human';
+    // Halt first, so a call the abort interrupts is not recorded as a failure.
+    this.halted.add(runId);
+    for (const a of store.approvals({ runId, status: 'pending' })) {
+      store.resolveApproval(a.id, 'rejected', why);
+      this.approvalSpans.get(a.id)?.setAttribute('cockpit.approval_status', 'rejected');
+      this.approvalSpans.get(a.id)?.end();
+      this.approvalSpans.delete(a.id);
+    }
+    for (const t of store.tasks(runId)) {
+      if (['approved', 'integrated', 'failed', 'cancelled'].includes(t.status)) continue;
+      leases.release(t.id);
+      store.updateTask(t.id, { status: 'cancelled', blockedReason: why });
+      bus.emit('task.status_changed', runId, { taskId: t.id, from: t.status, to: 'cancelled' });
+    }
+    const updated = store.updateRun(runId, { status: 'rejected', error: why });
+    bus.emit('run.status_changed', runId, { from: run.status, to: 'rejected' });
+    bus.emit('run.completed', runId, { outcome: 'rejected', reason: why });
+    runner.cancelRun(runId);
+    this.wake(runId);
+    // A driver stuck in work the abort cannot reach (a test command) gets 30 s before the worktrees go.
+    const driver = this.drivers.get(runId) ?? Promise.resolve();
+    void Promise.race([driver, new Promise((r) => setTimeout(r, 30_000).unref())]).then(() => this.cleanup(runId, true));
+    return updated;
+  }
+
   /** Retry a failed run from the phase it failed in. */
   retry(runId: string): void {
     const run = this.ctx.store.runById(runId);
@@ -340,6 +378,8 @@ export class Orchestrator {
   // ---------- driver ----------
 
   private transition(run: Run, to: RunStatus): Run {
+    // A phase that outlived its mission's cancel holds a stale run: it must not move the ended run.
+    if (this.halted.has(run.id)) throw new Error(`run ${run.id} was cancelled`);
     assertRunTransition(run.status, to);
     const updated = this.ctx.store.updateRun(run.id, { status: to });
     this.ctx.bus.emit('run.status_changed', run.id, { from: run.status, to });
@@ -349,7 +389,7 @@ export class Orchestrator {
   private async loop(runId: string): Promise<void> {
     const { store, bus, telemetry } = this.ctx;
     for (;;) {
-      if (this.stopping) return;
+      if (this.stopping || this.halted.has(runId)) return;
       const run = store.runById(runId);
       if (!run || isTerminalRun(run.status)) return;
       try {
@@ -387,7 +427,7 @@ export class Orchestrator {
             return;
         }
       } catch (err) {
-        if (this.stopping) return;
+        if (this.stopping || this.halted.has(runId)) return;
         const fresh = store.runById(runId)!;
         const message = errorMessage(err);
         store.setRunMeta(runId, { failedFrom: fresh.status } satisfies Partial<RunMeta>);
@@ -625,7 +665,7 @@ export class Orchestrator {
       inflight.set(t.id, p);
     };
     for (;;) {
-      if (this.stopping) {
+      if (this.stopping || this.halted.has(run.id)) {
         await Promise.allSettled([...inflight.values()]);
         return 'paused';
       }

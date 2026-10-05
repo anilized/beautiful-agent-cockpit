@@ -137,6 +137,8 @@ export function runRepos(ctx: EngineContext, run: Run): Repository[] {
 export type TaskPatch = Parameters<Store['updateTask']>[1];
 
 export function setTaskStatus(ctx: EngineContext, task: Task, to: TaskStatus, patch: TaskPatch = {}): Task {
+  // A step still holding the task from before its mission was cancelled cannot move it: cancelled is final.
+  if (ctx.store.task(task.id)?.status === 'cancelled') assertTaskTransition('cancelled', to);
   assertTaskTransition(task.status, to);
   const updated = ctx.store.updateTask(task.id, { ...patch, status: to });
   ctx.bus.emit('task.status_changed', task.runId, { taskId: task.id, from: task.status, to });
