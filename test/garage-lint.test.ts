@@ -137,6 +137,9 @@ function checkSpecifier(file: string, spec: string, type: boolean, out: string[]
   if (spec.startsWith('node:')) out.push(`${file}: node: import '${spec}'`);
   else if (spec.startsWith('@cockpit/')) {
     if (!type) out.push(`${file}: non-type @cockpit import '${spec}' (use import type)`);
+  } else if (spec === 'three') {
+    // three.js reaches the page as the served module `./three.js` and is handed to the 3D renderer: by name, types only.
+    if (!type) out.push(`${file}: non-type three import (load ./three.js and pass it in)`);
   } else if (spec.startsWith('./') || spec.startsWith('../')) {
     if (!spec.endsWith('.js')) out.push(`${file}: relative import '${spec}' must end in .js`);
   } else out.push(`${file}: import '${spec}' is neither relative nor type-only @cockpit`);
@@ -312,6 +315,8 @@ describe('lint rules reject violating samples', () => {
       ["import fs = require('fs');", "import 'fs' is neither"],
       ["import type { A } from 'zod';", "import 'zod' is neither"],
       ["import type { A } from './a';", "'./a' must end in .js"],
+      ["import * as THREE from 'three';", 'non-type three import'],
+      ["const T = await import('three');", 'non-type three import'],
     ];
     for (const [src, frag] of bad) {
       const v = importViolations('x.ts', src);
@@ -331,6 +336,8 @@ describe('lint rules reject violating samples', () => {
       "import type { CockpitEvent } from '@cockpit/core';",
       "export type { X } from '@cockpit/core';",
       "type T = import('@cockpit/core').CockpitEvent;",
+      "import type * as THREE from 'three';",
+      "type M = import('three').Mesh;",
       "// import fs from 'node:fs'\nconst s = \"import x from 'fs'\";",
     ];
     for (const src of good) expect(importViolations('x.ts', src), src).toEqual([]);

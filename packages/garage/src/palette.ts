@@ -19,6 +19,26 @@ export interface ScenePalette {
   skin: string[]; hair: string[];
 }
 
+/**
+ * The 3D garage's materials and light (scene3d.ts): a real room, so mostly real-world colours; the theme changes the mood
+ * (night sky, light temperature, the neon) more than the furniture.
+ */
+export interface RoomPalette {
+  /** Behind the diorama, and the fog that fades its far edge. */
+  sky: string; fog: string;
+  /** Hemisphere light, the cool key light through the window, warm lamps and string-light bulbs. */
+  hemiSky: string; hemiGround: string; sun: string; lamp: string; bulb: string;
+  concrete: string; concreteDark: string; slab: string; wall: string; wallTrim: string; brick: string;
+  plywood: string; wood: string; woodDark: string; metal: string; metalDark: string; plastic: string;
+  fabric: string; fabricAlt: string; rug: string; rugAlt: string; cork: string; paper: string;
+  screenOff: string; plant: string; plantDark: string; pot: string;
+  cardboard: string; crate: string; tape: string; tapeDark: string; window: string; moon: string; mug: string;
+  /** The sign on the back wall. */
+  neon: string;
+  /** Status lights and screens: what a station shows when busy, fine, failed, or calling for attention. */
+  busy: string; ok: string; failed: string; alert: string;
+}
+
 export type ThemeName = 'phosphor' | 'neon';
 
 export interface GaragePalette {
@@ -26,7 +46,17 @@ export interface GaragePalette {
   base: BasePalette;
   aurora: string[];
   scene: ScenePalette;
+  room: RoomPalette;
 }
+
+/** Furniture, walls and floor shared by both moods. */
+const ROOM_COMMON = {
+  concrete: '#8a8d8f', concreteDark: '#6c6f72', slab: '#3a3c40', wall: '#cbbfa8', wallTrim: '#8f8471', brick: '#8f4c38',
+  plywood: '#c9a274', wood: '#9c6b43', woodDark: '#4b3528', metal: '#9aa1a8', metalDark: '#3b4047', plastic: '#2b2f36',
+  fabricAlt: '#d0703f', rug: '#7d3c3c', rugAlt: '#2f5d6b', cork: '#b98a57', paper: '#f3eee2', screenOff: '#14171c',
+  plant: '#4a9a52', plantDark: '#2f6e3a', pot: '#b9673e', cardboard: '#bd8d58', crate: '#a8743f', tape: '#f2c230',
+  tapeDark: '#26262a', moon: '#f6f1d8', mug: '#ebe6da', ok: '#4ade80', failed: '#f87171', alert: '#fbbf24',
+} as const;
 
 const NEON: BasePalette = {
   accent: '#ff8a3d', violet: '#a78bfa', cyan: '#22d3ee', blue: '#60a5fa', green: '#34d399', yellow: '#fbbf24',
@@ -62,6 +92,11 @@ export const PALETTES: Record<ThemeName, GaragePalette> = {
       wood: '#3b5a46', metal: '#5f7a6a', cardboard: '#7c6a3a', pants: '#24402f', shoe: '#060a08',
       shadow: 'rgba(0,0,0,0.4)', skin: SKIN, hair: HAIR,
     },
+    // Late night, warm lamps, a green neon: the hacker's hours.
+    room: {
+      ...ROOM_COMMON, sky: '#0c120f', fog: '#0c120f', hemiSky: '#d9e6dc', hemiGround: '#2a2219', sun: '#a9c4ff', lamp: '#ffb46e',
+      bulb: '#ffd590', fabric: '#3f5c78', window: '#13233d', neon: '#4ade80', busy: '#7dd3fc',
+    },
   },
   neon: {
     name: 'neon',
@@ -71,6 +106,11 @@ export const PALETTES: Record<ThemeName, GaragePalette> = {
       floorA: '#101018', floorB: '#14141e', floorLine: '#26262e', wall: '#1b1b27', wallTop: '#2e2e3a',
       wood: '#5a4636', metal: '#6b7280', cardboard: '#b07a3a', pants: '#33384a', shoe: '#0b0b0f',
       shadow: 'rgba(0,0,0,0.4)', skin: SKIN, hair: HAIR,
+    },
+    // Synthwave dusk: violet sky, pink neon, the lamps a little hotter.
+    room: {
+      ...ROOM_COMMON, sky: '#130d22', fog: '#130d22', hemiSky: '#d7c8ff', hemiGround: '#24162a', sun: '#b9a2ff', lamp: '#ff9d63',
+      bulb: '#ffc58a', fabric: '#5d3f7a', window: '#2a1747', neon: '#f472b6', busy: '#a78bfa',
     },
   },
 };

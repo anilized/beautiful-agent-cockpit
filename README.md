@@ -289,12 +289,24 @@ only. To work on the page without a daemon: `node scripts/demo-dashboard.mjs`.
 
 ## Pixel Garage
 
-A pixel-art view of the same mission, in the browser: the council sits in the loft, each lead at a
-desk, and the workers walk between their bay, their repo's crates, the lab (tests) and the terminal
-as they read, edit and run. Reviews, failed tests, escalations and the final approval card show up
-in the room as they happen.
+The same mission as a living 3D garage in the browser, an isometric diorama drawn with three.js:
+the council on a mezzanine in armchairs, each lead at a multi-monitor desk with a headset, and the
+workers at their bays, walking to their repo's crates, the test lab, the integration bench and the
+arcade terminal as they read, edit and run. Screens and beacons light up with each station's state,
+reviews and merges stamp the room, a failed worker gets a little rain cloud, and the whole team
+cheers when the mission ships. Around them: brick, string lights, a "ship it" neon, a corkboard of
+sticky notes (the task board), a couch, a guitar, coffee steaming, and a clock on real time.
+
+![Pixel Garage in 3D during a demo mission: the council on the mezzanine, leads and workers at their desks, an escalation in the bubbles](docs/images/garage-3d.png)
+
+![The same garage in the neon theme](docs/images/garage-3d-neon.png)
 
 - open it with `cockpit garage [runId]`, `/cockpit garage` or `y` in the cockpit;
+- scroll to zoom, drag to pan, double-click to frame the room again; click a person for their details;
+- the theme button switches between phosphor (late night, green neon) and neon (synthwave dusk);
+  `#theme=neon` in the link opens in it;
+- three.js is served by the orchestrator itself, from the same origin, so the page's strict CSP
+  holds. Without WebGL, or with `#2d` in the link, the original pixel-art garage draws instead;
 - it is a **read-only observer**: it only issues `GET`s to `/snapshot` and `/events` with the
   read-only token (carried in the link's fragment and stripped from the address bar), and has no
   buttons that act. An approval card says to approve in the cockpit (`a`) or `/cockpit approve`;
@@ -303,7 +315,11 @@ in the room as they happen.
 - to work on it without a daemon: `node scripts/demo-garage.mjs`, then open the printed link. It
   loops a scripted mission (add `&fps` to the fragment for frame time).
 
-![Pixel Garage during a demo mission, with the approval card up](docs/garage-screenshot.png)
+<details><summary>The pixel-art garage (<code>#2d</code>)</summary>
+
+![Pixel Garage in pixel art during a demo mission, with the approval card up](docs/garage-screenshot.png)
+
+</details>
 
 ## Choosing who leads
 

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { realpath, stat, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,11 +58,41 @@ async function esbuildTransform(): Promise<Transform> {
 const cache = new Map<string, { mtimeMs: number; code: string }>();
 
 /**
+ * three.js, the 3D garage's one dependency, served from its package as built (no transpile) under fixed names: `three.js`
+ * is its module entry, which imports `./three.core.js` beside it. Same origin, so the page's CSP holds.
+ */
+const VENDOR: Record<string, string> = { 'three.js': 'three.module.js', 'three.core.js': 'three.core.js' };
+let threeBuild: string | null | undefined;
+const vendorCache = new Map<string, { mtimeMs: number; code: string }>();
+
+async function vendorModule(file: string): Promise<GarageResponse> {
+  try {
+    // `three` resolves to build/three.cjs: its build directory holds the module files.
+    threeBuild ??= dirname(createRequire(import.meta.url).resolve('three'));
+  } catch {
+    threeBuild = null;
+  }
+  if (!threeBuild) return text(404, 'not found');
+  try {
+    const path = join(threeBuild, file);
+    const { mtimeMs } = await stat(path);
+    const hit = vendorCache.get(path);
+    const code = hit && hit.mtimeMs === mtimeMs ? hit.code : await readFile(path, 'utf8');
+    vendorCache.set(path, { mtimeMs, code });
+    // A library build, not a garage source: it changes only with the package, so the browser may keep it for an hour.
+    return { status: 200, headers: { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'private, max-age=3600' }, body: code };
+  } catch {
+    return text(404, 'not found');
+  }
+}
+
+/**
  * One garage module as JavaScript. This is the single authority on module names: the name must be
  * `<name>.js`, and after resolving links the matching `<name>.ts` must sit directly in the garage
  * source directory. Anything else (traversal, links out, absolute paths, missing files) is a 404.
  */
 export async function garageModule(name: string, opts: GarageOptions = {}): Promise<GarageResponse> {
+  if (typeof name === 'string' && Object.hasOwn(VENDOR, name)) return vendorModule(VENDOR[name]!);
   if (typeof name !== 'string' || !MODULE_NAME.test(name)) return text(404, 'not found');
   let path: string;
   let mtimeMs: number;

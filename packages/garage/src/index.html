@@ -30,6 +30,14 @@
   #g-banner { position: absolute; top: 0; left: 0; right: 0; padding: 8px 12px; text-align: center; background: var(--g-red-deep); border-bottom: 1px solid var(--g-red); color: var(--g-ink); }
   #g-theme { position: absolute; top: 10px; left: 10px; font: inherit; color: var(--g-text); background: var(--g-chip); border: 1px solid var(--g-border); cursor: pointer; }
   #g-fps { position: absolute; top: 40px; left: 10px; color: var(--g-mute); }
+  #g-hint { position: absolute; right: 12px; top: 12px; color: var(--g-mute); opacity: 0.7; pointer-events: none; }
+  /* The 3D garage: the diorama floats in a soft glow; bubbles and cards get rounder. */
+  [data-garage="3d"] body { background: radial-gradient(ellipse at 50% 38%, var(--g-glow) 0%, var(--g-bg-deep) 68%); }
+  [data-garage="3d"] #g-canvas { image-rendering: auto; cursor: grab; }
+  [data-garage="3d"] .g-bubble { border-radius: 8px; padding: 5px 8px; box-shadow: 0 6px 18px var(--g-bg-deep); }
+  [data-garage="3d"] #g-detail, [data-garage="3d"] #g-approval, [data-garage="3d"] #g-theme { border-radius: 8px; }
+  [data-garage="3d"] #g-hud { left: 12px; right: 12px; bottom: 12px; border: 1px solid var(--g-border); border-radius: 10px; background: var(--g-shadow); backdrop-filter: blur(10px); padding: 8px 12px; }
+  :root:not([data-garage="3d"]) #g-hint { display: none; }
 </style>
 </head>
 <body>
@@ -38,6 +46,7 @@
   <div id="g-bubbles"></div>
   <button id="g-theme" type="button"></button>
   <div id="g-fps" hidden></div>
+  <div id="g-hint">scroll to zoom · drag to pan · double-click to reset</div>
   <div id="g-approval" hidden></div>
   <div id="g-detail" hidden></div>
   <div id="g-hud"></div>

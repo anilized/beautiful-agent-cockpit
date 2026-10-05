@@ -7,7 +7,10 @@ import type { Snapshot } from '@cockpit/orchestrator';
 import { createLifecycle, type DocLike, type Lifecycle } from './lifecycle.js';
 import type { CharacterId } from './model.js';
 import { createOverlays, type OverlayDocument, type Overlays } from './overlays.js';
+import type { Three } from './kit3d.js';
+import { setTheme } from './palette.js';
 import { createRenderer, wantsFps, type CanvasRenderer, type RenderSurface } from './renderer.js';
+import { createScene3D, webglAvailable, type Canvas3D } from './scene3d.js';
 import { AUTH_MESSAGE, type FetchLike, type GarageUpdate } from './stream.js';
 
 export { AUTH_MESSAGE };
@@ -223,11 +226,37 @@ export async function boot(env: BootEnv): Promise<Page> {
   }
 }
 
+/** True for a location hash that asks for the flat pixel garage: `#2d`, `#run=x&2d`. */
+export function wants2d(hash: string): boolean {
+  return /(^|[#&])2d(=(1|true))?(&|$)/.test(hash);
+}
+
+/**
+ * The 3D garage when the browser can draw it: three.js is loaded from the orchestrator (`./three.js`) and handed to the scene.
+ * Null when WebGL is missing, the load fails, or `#2d` asks for the pixel garage; the page then keeps the Canvas2D renderer.
+ */
+async function load3d(hash: string): Promise<((canvas: RenderSurface) => CanvasRenderer) | null> {
+  if (wants2d(hash) || !webglAvailable(() => document.createElement('canvas'))) return null;
+  try {
+    const three = (await import('./three.js')) as unknown as Three;
+    return (canvas) => createScene3D({ three, canvas: canvas as unknown as Canvas3D });
+  } catch {
+    return null;
+  }
+}
+
 // Browser entry: runs only where there is a real page (tests import this module under node and call `boot` with stubs).
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   const canvas = document.getElementById('g-canvas') as unknown as CanvasLike & HTMLCanvasElement;
-  void boot({
-    hash: location.hash,
+  const hash = location.hash;
+  // `#theme=neon` opens in that theme (the button still switches).
+  const themeParam = new URLSearchParams(hash.replace(/^#/, '')).get('theme');
+  if (themeParam) setTheme(themeParam);
+  void load3d(hash).then((make3d) => {
+    if (make3d) document.documentElement.setAttribute('data-garage', '3d');
+    return boot({
+    createRenderer: make3d ?? undefined,
+    hash,
     url: location.pathname + location.search,
     replaceUrl: (url) => history.replaceState(null, '', url),
     doc: document as unknown as BootEnv['doc'],
@@ -240,5 +269,6 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
     now: () => Date.now(),
     viewport: () => ({ width: window.innerWidth, height: window.innerHeight, dpr: window.devicePixelRatio || 1 }),
     onResize: (fn) => window.addEventListener('resize', fn),
+    });
   });
 }
