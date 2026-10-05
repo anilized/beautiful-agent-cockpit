@@ -154,20 +154,25 @@ for (const surface of ['terminal', 'desktop'] as const) {
         }
       }
       if (surface !== 'terminal') expect(await ui.find({ type: 'Raster' })).toBeUndefined()
-      if (surface === 'desktop') expect(texts.some(t => textOf(t).includes('▔'))).toBe(true) // the tab underline has a designed text form
       await ui.unmount()
     }
-    if (surface === 'desktop') expect(fallback).toBeGreaterThan(0)
+    // The terminal's text forms are cell-art; the app draws boxes instead, so it has none.
+    expect([surface, fallback > 0]).toEqual([surface, surface === 'terminal'])
   })
 }
 
-test('desktop: no raster, no blits, hero and telemetry as text', async ($, on) => {
+test('desktop: no raster, no blits, the brand as text, telemetry bars as boxes', async ($, on) => {
   const { clock, st } = await boot($, on, live())
   const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'desktop', ...pane(100) })
   await clock.advance(3000)
   expect(st.blits).toEqual([])
-  expect(await ui.find({ type: 'Text', text: /MULTI-AGENT CODING COCKPIT/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /▕/ })).toBeDefined() // telemetry bars
+  expect(await ui.find({ type: 'Text', text: /ANILDEV/ })).toBeDefined()
+  // A meter is a track box holding a fill box as wide as its share.
+  const fills: string[] = []
+  const walk = (n: string | Node) => typeof n !== 'string' && (n.type === 'Box' && /^\d+%$/.test(String(n.props?.width)) && fills.push(String(n.props!.width)), n.children?.forEach(walk))
+  walk((await ui.drawn()) as Node)
+  expect(fills.length).toBeGreaterThanOrEqual(3) // one per agent's spend
+  expect(await ui.find({ type: 'Text', text: /▕|▔/ })).toBeUndefined()
   await ui.unmount()
 })
 

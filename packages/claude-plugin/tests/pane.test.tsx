@@ -34,7 +34,7 @@ for (const [name, snap] of [['offline', OFFLINE], ['live', LIVE]] as const) {
           await ui.press({ key: 'new' })
           expect(await ui.find({ key: 'compose-0' })).toBeDefined()
           await ui.press({ key: 'cancel-run' })
-          await ui.press({ key: 'tab-live' })
+          await ui.press({ key: surface === 'terminal' ? 'tab-live' : 'tab-activity' })
         }
         await ui.unmount()
       }
@@ -365,7 +365,7 @@ test('the grid shows the unified log, the agent focus files, a code preview and 
   on('process.run', async () => ({ value: { exitCode: 0, stdout: '', stderr: '' } }) as never)
   await $.session.start({ cwd: '/repo', surface: 'terminal' } as never)
   for (const cols of [60, 140]) {
-    const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: cols === 60 ? 'desktop' : 'terminal', ...pane(cols) })
+    const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface: 'terminal', ...pane(cols) })
     const has = async (re: RegExp) => expect([String(re), cols, !!(await ui.find({ type: 'Text', text: re }))]).toEqual([String(re), cols, true])
     await has(/\[BACKEND +\]/) // the worker's tag comes from its task's specialty
     await has(/Writing the slugify edge cases/)

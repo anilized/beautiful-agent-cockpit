@@ -26,7 +26,7 @@ palette, team view and log live in the terminal cockpit.</sub>
 - [Requirements](#requirements)
 - [Install](#install)
 - [Your first mission](#your-first-mission)
-- [The cockpit](#the-cockpit)
+- [The cockpit](#the-cockpit) — [in the terminal](#in-the-terminal) · [in the Claude app](#in-the-claude-app)
 - [The dashboard](#the-dashboard)
 - [Pixel Garage](#pixel-garage)
 - [Choosing who leads](#choosing-who-leads)
@@ -136,6 +136,9 @@ Inside Claude Code, in the repository you want to work on (it needs at least one
 6. When the council has validated the result, review the report (**`4`** or **`p`**) and press
    **`a`** to merge, **`c`** to ask for changes, or **`r`** to reject.
 
+In the Claude app every step is a button instead: **Start the orchestrator**, **Start a new
+mission**, **Start mission**, **Approve team**, **Approve**. See [In the Claude app](#in-the-claude-app).
+
 Prefer the terminal? The same mission from a shell:
 
 ```bash
@@ -147,8 +150,24 @@ node bin/cockpit.mjs approve <runId>
 
 ## The cockpit
 
-A dense command center in a Claude Code pane, built after lazygit and agent managers like Claude
-Squad: every agent, task and change is on screen at once, in the same place every time.
+One cockpit, drawn for where it runs. The missions, the agents, the decisions and every action are
+the same everywhere; the look is made for the surface:
+
+| Where | Look | How you drive it |
+|---|---|---|
+| **Terminal** (`claude` CLI) | A dense command center in character cells: every agent, task and change on screen at once, animated rasters, phosphor or neon. | Keys: one key per action. |
+| **Claude app** (Code tab; also VS Code and mobile) | A calm, window-style layout: a live overview, cards, rings and plain-language activity that opens on a click. | Clicks, dropdowns and buttons; a few hotkeys. |
+
+`/cockpit` opens it in both; the plugin picks the look from the surface it is drawn on.
+
+### In the terminal
+
+Built after lazygit and agent managers like Claude Squad: every agent, task and change is on screen
+at once, in the same place every time.
+
+![The terminal cockpit during a mission: missions, agents, the log, tasks, the team, plan left and the agent's output](docs/images/cockpit-terminal.webp)
+
+<sub>A mission in the terminal, just after it was cancelled.</sub>
 
 ![The cockpit's home: missions, recent milestones, the team, plan left and the next crew](docs/images/cockpit-home.png)
 
@@ -187,15 +206,58 @@ Squad: every agent, task and change is on screen at once, in the same place ever
 
 **Keys:** `j`/`k` move in the focused list, `h`/`l` switch between agents and tasks, `1`–`4` pick
 the centre view, `o` folds finished tasks, `m` next mission, `0` home, `n` new mission, `p` report,
-`d` dashboard, `t` retry a failed mission, `s`/`x` start/stop the orchestrator. Rows that are cut
-short open with a click.
+`d` dashboard, `t` retry a failed mission, `q` twice cancel the mission (the orchestrator keeps
+running), `s`/`x` start/stop the orchestrator. Rows that are cut short open with a click.
 
 **Look:** phosphor green by default; `COCKPIT_THEME=neon` for violet / cyan / orange.
 `COCKPIT_BRAND` sets the name in the header (default `ANILDEV`). The cockpit animates at up to
 60 fps while a mission runs, idles at 1 fps, and freezes with `COCKPIT_REDUCED_MOTION=1`. From 130
 columns it is the grid above; narrower, two columns, then one.
 
-**Slash commands:**
+### In the Claude app
+
+In the Code tab of the Claude desktop app the cockpit is designed for a window rather than a cell
+grid: calm by default, detail on demand. Every line is one line until you click it; bold is kept
+for titles; progress and quota are rings; and nothing needs a key.
+
+![The cockpit's overview in the Claude app: a live hero, the mission under way, every mission, plan left and recent milestones](docs/images/cockpit-app-overview.png)
+
+<sub>The overview: a slow aurora behind the headline (it pulses LIVE while agents work), the
+mission under way in a spotlight with who is working right now, every mission as a ring with its
+status, what is left of each subscription window, and recent milestones in plain words.</sub>
+
+![A mission in the Claude app: the header with its ring and stepper, the team, the activity stream and the task inspector](docs/images/cockpit-app-mission.png)
+
+<sub>A mission: its ring turns while work moves and the step under way breathes; a cancelled or
+failed mission shows the step it stopped on. The activity reads like a conversation, one block per
+agent, oldest first inside it.</sub>
+
+![The new mission screen in the Claude app: the brief with a live Markdown preview, the crew in dropdowns, the options](docs/images/cockpit-app-new-mission.png)
+
+<sub>A new mission: the brief previews as Markdown while you write it (or open it in your editor);
+the council and leads are dropdowns of model, effort and area.</sub>
+
+| Area | What it shows |
+|---|---|
+| **Top bar** | Overview, a tab per recent mission with a live status dot, quota left, Online/Offline (Stop), and **New mission**. |
+| **Overview** | The hero, **Start a new mission** with the crew it will use (**Change** edits it), the mission under way in a spotlight (**Open** or **Review**), every mission, plan left as rings, recent milestones. |
+| **Mission header** | Progress ring, title, repository, branch and age, a plain status (*Building*, *Needs approval*, *Cancelled*), the eight-step stepper, and **Report**, **Dashboard**, **Garage**, **Retry**, **Cancel mission** (it asks first). |
+| **Decision cards** | While a decision waits: **Approve**, **Request changes**, **Reject**. A proposed team lists each worker with a model and an effort dropdown, **Duplicate** and **Remove**. |
+| **Team** | Council, leads and workers as avatars with role, model, effort and what each is doing; a click on one shows only that agent's activity. **Change crew** reseats a live mission. |
+| **Activity** | Every agent's thoughts (∴), words (›), tool calls (⚙) and results (✓), one line each; a click opens the whole text. Orchestrator milestones in plain words. Fresh lines glow for a few seconds. |
+| **Tasks · Changes · Events · Report** | The task list; each task's changed files and the biggest diff in the app's own diff view; the raw event log; the report as Markdown. |
+| **Task inspector** | The selected task: status, description, acceptance criteria, changed or planned files, tests, the worker's summary and the review, each long text cut to a glance with **Show more**. |
+| **Usage** | Every subscription window as a ring with when it refills, and the mission's spend per agent. |
+
+Hotkeys still work once the pane has the keyboard: `n` new mission, `1`–`5` the mission's views,
+`a` approve, `s` start (the orchestrator, or a mission from its form), `t` retry. The pane draws
+the same at any width: three columns when wide, two, then one.
+
+<sub>The app screenshots are rendered from the plugin's own drawing with demo data.</sub>
+
+### Slash commands
+
+They work in both looks.
 
 | Command | |
 |---|---|
@@ -203,6 +265,7 @@ columns it is the grid above; narrower, two columns, then one.
 | `/cockpit start` · `stop` | start / stop the orchestrator |
 | `/cockpit run <request> [--test "<cmd>"] [--repo <path> …]` | start a mission from the prompt |
 | `/cockpit approve [note]` · `changes <text>` · `reject [note]` | decide the pending approval |
+| `/cockpit cancel [run_id] [reason]` | cancel the mission under way (or the one named); the orchestrator keeps running |
 | `/cockpit report` · `status` · `dashboard` | the report · a text status · the dashboard link |
 
 ## The dashboard
@@ -291,6 +354,7 @@ cockpit approve <runId|approvalId> [note] · changes <runId> "<what>" · reject 
 cockpit seats <runId> [--council …] [--leads …]   re-seat a live mission
 cockpit team <runId> '<json>'                     revise a mission's worker team
 cockpit retry <runId>                             re-enter a failed mission where it failed
+cockpit cancel <runId> [reason]                   end a mission now: agents stop, open work closes
 cockpit agents · dashboard [<runId>]
 ```
 

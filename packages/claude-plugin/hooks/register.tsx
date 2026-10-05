@@ -2,6 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, InputProps, Register, RenderChildren, RenderInput } from 'claude-code'
 
 import type { CockpitApproval, CockpitLimits, CockpitMind, CockpitPersona, CockpitRun, CockpitSeat, CockpitSeatPick, CockpitSnapshot, CockpitTab, CockpitTask, CockpitUi, CockpitView } from '../types'
+import { drawDesk, type Crew as DeskCrew, type DeskKit } from './desk'
 import * as paint from './raster'
 import { COCKPIT_ROOT } from './root'
 import { createScheduler, makeClock, type RasterScheduler, type RasterSpec } from './scheduler'
@@ -14,7 +15,7 @@ import { createTweens, type Tweens } from './tween'
 
 const PANE = 'agent-cockpit'
 const EMPTY: CockpitView = { snapshot: null, error: null, message: null }
-const UI0: CockpitUi = { selectedRun: null, tab: 'live', composing: null, nonce: 0, busy: null, report: null, failure: null, crew: null, draft: '', draftFlags: '', draftInEditor: false, seatDraft: null, teamDraft: null, mind: null, open: [], focus: 'tasks', task: null, scroll: {} }
+const UI0: CockpitUi = { selectedRun: null, tab: 'live', composing: null, nonce: 0, busy: null, report: null, failure: null, crew: null, draft: '', draftFlags: '', draftInEditor: false, seatDraft: null, teamDraft: null, mind: null, open: [], focus: 'tasks', task: null, scroll: {}, confirmCancel: null, deskTab: 'activity' }
 const view = atom({ plugin: 'agent-cockpit', key: 'view' } as const, EMPTY)
 const ui = atom({ plugin: 'agent-cockpit', key: 'ui' } as const, UI0)
 const tickAtom = atom({ plugin: 'agent-cockpit', key: 'tick' } as const, 0)
@@ -497,6 +498,18 @@ async function decide($: EngineInterface, decision: 'approve' | 'reject' | 'chan
   return res.text
 }
 
+/** Ends one mission (its agents stop, its open tasks and approvals close); the orchestrator keeps running. */
+async function cancelMission($: EngineInterface, runId: string, reason = '') {
+  await patchUi($, { confirmCancel: null })
+  const res = await busy($, 'cancelling the mission…', () => cli($, ['cancel', runId, ...(reason ? [reason] : [])]))
+  // A daemon started before cancel existed answers 404: it needs a restart to learn it.
+  const text = res.ok ? res.text : /404|not found/i.test(res.text) ? 'This orchestrator predates cancel: press x then s to restart it, then cancel again.' : res.text
+  await say($, text)
+  lastGenerated = ''
+  await refresh($)
+  return text
+}
+
 async function gitRoot($: EngineInterface, dir: string) {
   const res = await $.process.run(['git', '-C', dir, 'rev-parse', '--show-toplevel'], { timeoutMs: 10_000 })
   return res.exitCode === 0 && res.stdout.trim() ? res.stdout.trim() : dir
@@ -627,7 +640,7 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'cockpit',
-      description: 'Agent cockpit: /cockpit [start|stop|run <request>|status|approve|changes <text>|reject|report|dashboard|garage]',
+      description: 'Agent cockpit: /cockpit [start|stop|run <request>|cancel [reason]|status|approve|changes <text>|reject|report|dashboard|garage]',
     })
     $.ui.status(undefined) // no text status line: the HUD band draws it
     ended = false
@@ -672,6 +685,14 @@ export const register: Register = on => {
         await openPane($)
         return { text: String(await startRun($, e.args.replace(/^\s*run\s*/, ''))) }
       }
+      case 'cancel': {
+        // The mission under way unless a run id leads the args; the rest is the reason.
+        const explicit = rest[0]?.startsWith('run_') ? rest[0] : null
+        const snap = (await read($, view)).snapshot
+        const run = explicit ?? snap?.runs.find(r => !TERMINAL.includes(r.status))?.id
+        if (!run) return { text: 'No mission is under way.' }
+        return { text: await cancelMission($, run, (explicit ? rest.slice(1) : rest).join(' ')) }
+      }
       case 'status':
         return { text: (await cli($, ['status'])).text }
       case 'report': {
@@ -695,7 +716,7 @@ export const register: Register = on => {
         return { text: await decide($, sub, target, note) }
       }
       default:
-        return { text: 'Usage: /cockpit [start|stop|run <request>|status|approve [note]|changes <text>|reject [note]|report|dashboard|garage]' }
+        return { text: 'Usage: /cockpit [start|stop|run <request>|cancel [run_id] [reason]|status|approve [note]|changes <text>|reject [note]|report|dashboard|garage]' }
     }
   })
 
@@ -741,6 +762,44 @@ export const register: Register = on => {
   })
 }
 
+/** The app's drawing gets the state as read and every action bound to `$`; it draws, the pane acts. */
+function deskKit($: EngineInterface, d: Pick<DeskKit, 's' | 'v' | 'u' | 'online' | 'limits' | 'now' | 'n' | 'brand'>): DeskKit {
+  const report = (args: string[], label: string) => void busy($, label, () => cli($, args)).then(r => say($, r.text))
+  const defaultCrew = (): DeskCrew => ({
+    council: [{ agent: d.s?.hierarchy.supervisor ?? 'opus', effort: null, area: null }],
+    leads: [{ agent: d.s?.hierarchy.lead ?? 'codex', effort: null, area: null }],
+  })
+  return {
+    ...d,
+    depsReady,
+    doing,
+    toolDetail,
+    chunks: markdownChunks,
+    act: {
+      patch: p => void patchUi($, p),
+      say: m => void say($, m),
+      daemon: start => void daemon($, start),
+      install: () => void installDeps($),
+      checkDeps: () => void checkDeps($).then(ok => { if (!ok) void update($, tickAtom, x => x + 1) }),
+      decide: (decision, id, note) => void decide($, decision, id, note),
+      cancel: id => void cancelMission($, id),
+      retry: id => void busy($, 'retrying…', () => cli($, ['retry', id])).then(r => say($, r.text)).then(() => refresh($)),
+      report: id => void loadReport($, id),
+      dashboard: id => report(['dashboard', id], 'opening the dashboard…'),
+      garage: id => report(['garage', id], 'opening the garage…'),
+      launch: () => void launchMission($),
+      editor: () => void openDraft($),
+      loadDraft: () => void loadDraft($),
+      initCommit: () => void initialCommitAndRetry($),
+      pickCrew: change => void patchUi($, x => ({ crew: change(x.crew ?? defaultCrew()) })),
+      reseat: (runId, seated, change) =>
+        void patchUi($, x => ({ seatDraft: { runId, crew: change(x.seatDraft?.runId === runId ? x.seatDraft.crew : seated) } })).then(() => sendDraft($, 'seats')),
+      editTeam: (runId, base, change) =>
+        void patchUi($, x => ({ teamDraft: { runId, team: change(x.teamDraft?.runId === runId ? x.teamDraft.team : base) } })).then(() => sendDraft($, 'team')),
+    },
+  }
+}
+
 async function drawPane($: EngineInterface, e: PaneRender) {
   {
     const T = $.ui.resolve(e)
@@ -767,6 +826,11 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const specs = new Map<string, RasterSpec>()
     regions = []
     paneOffset = e.props.scroll?.offset ?? 0
+    // The app has a design of its own (desk.tsx): no cell grid, no rasters, every action a click.
+    if (e.surface !== 'terminal') {
+      l.setMotion(online && !l.reduced && !!s?.runs.some(r => !TERMINAL.includes(r.status)))
+      return drawDesk(T, e, deskKit($, { s, v, u, online, limits, now, n, brand: l.brand }))
+    }
 
     // A Raster drawn now at the current elapsed time; `animated` ones are repainted by the scheduler afterwards.
     const raster = (key: string, columns: number, height: number, animated: boolean, fn: (t: number) => string, fallback: RenderChildren = null) => {
@@ -1257,6 +1321,19 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     const fillE = ease('fill', run.tasks.length ? done / run.tasks.length : 0)
     const pct = Math.round(fracE(anim) * 100)
     const runAttention = approvals.length > 0
+    // Cancelling one mission asks first: the card below the header, then a second q or its button.
+    const confirming = live && u.confirmCancel === run.id
+    const askCancel = () => void patchUi($, { confirmCancel: run.id })
+    const cancelCard = confirming ? (
+      <Box flexDirection="column" borderStyle="round" borderColor={pulse(n, C.red, C.redDeep, 0.35)} paddingX={1}>
+        <Text wrap="truncate-end"><Pill label="■ CANCEL THIS MISSION?" bg={C.red} /> <Text color={C.text}>{firstLine(run.request).replace(/^#+\s*/, '')}</Text></Text>
+        <Text color={C.dim} wrap="truncate-end">Its agents stop now, open tasks and approvals close, and it ends as rejected. The orchestrator keeps running; the integration branch is kept.</Text>
+        <Box gap={1}>
+          <Button variant="primary" key="cancel-yes" autoFocus label="q · Yes, cancel it" onPress={() => void cancelMission($, run.id)} />
+          <Button key="cancel-keep" label="Keep it running" onPress={() => void patchUi($, { confirmCancel: null })} />
+        </Box>
+      </Box>
+    ) : null
 
     // ── layout: wide = agents | tasks | right; medium = agents strip over tasks | right; narrow = stacked ──
 
@@ -1645,7 +1722,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
 
     // ── body height: what the header, the strips and the footer leave ──
 
-    const chrome = 1 + 2 + 1 + 2 + approvalRows + (u.failure ? 5 : 0) + (run.error ? 1 : 0)
+    const chrome = 1 + 2 + 1 + 2 + approvalRows + (u.failure ? 5 : 0) + (confirming ? 5 : 0) + (run.error ? 1 : 0)
     const agentsStripH = wide ? 0 : 4 + (agentRows.length > Math.max(1, Math.floor((cols - 4) / 30)) ? 2 : 0) + (tel.byAgent?.length ?? 0) + (limitsLine ? 1 : 0)
     const missionsStripH = wide ? 0 : 3 + Math.ceil(missionRows.length / Math.max(1, Math.floor((cols - 4) / 32)))
     const bodyH = Math.max(12, rows - chrome - agentsStripH - missionsStripH)
@@ -2189,7 +2266,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
     )
 
     if (sized) {
-      const bodyTop = 1 + (run.error ? 1 : 0) + (u.failure ? 5 : 0) + approvalRows
+      const bodyTop = 1 + (run.error ? 1 : 0) + (u.failure ? 5 : 0) + (confirming ? 5 : 0) + approvalRows
       const right0 = agentsW + tasksW
       regions = [
         { id: 'centre', x0: agentsW, x1: right0, y0: bodyTop, y1: bodyTop + topH, max: centreMax },
@@ -2264,9 +2341,11 @@ async function drawPane($: EngineInterface, e: PaneRender) {
       ['p', 'report', () => void loadReport($, run.id)],
       ['d', 'dashboard', () => void busy($, 'opening the dashboard…', () => cli($, ['dashboard', run.id])).then(r => say($, r.text))],
       ['y', 'garage', () => void busy($, 'opening the garage…', () => cli($, ['garage', run.id])).then(r => say($, r.text))],
+      // q asks, a second q (or the card's button) cancels: one mission ends, the orchestrator keeps running.
+      ...(live ? ([['q', confirming ? 'confirm cancel' : 'cancel mission', confirming ? () => void cancelMission($, run.id) : askCancel]] as [string, string, () => void][]) : []),
       ['x', 'stop', () => void daemon($, false)],
     ]
-    const keyName: Record<string, string> = { p: 'report', d: 'dashboard', y: 'garage', x: 'stop', t: 'retry', n: 'new' }
+    const keyName: Record<string, string> = { p: 'report', d: 'dashboard', y: 'garage', x: 'stop', t: 'retry', n: 'new', q: 'cancel-mission' }
     const footer = (
       <Box flexDirection="column" paddingX={1}>
         {u.busy ? (
@@ -2334,6 +2413,7 @@ async function drawPane($: EngineInterface, e: PaneRender) {
         {header}
         {run.error ? <Box paddingX={1}><Text color={C.red} wrap="truncate-end">✗ {run.error}</Text></Box> : null}
         {failureCard}
+        {cancelCard}
         {approvals.map(a => <ApprovalCard a={a} />)}
         {body}
         {footer}

@@ -145,7 +145,14 @@ export type CockpitUi = {
   scroll: Record<string, number>
   /** The selected task (its key); null picks the first that needs attention or is running. */
   task: string | null
+  /** The mission whose cancel waits for a second press; null when none does. */
+  confirmCancel: string | null
+  /** The app's view of a mission (the terminal keeps `tab`). */
+  deskTab: CockpitDeskTab
 }
+
+/** The app's mission views: the feed, the task list, the worktree diffs, the event log, the report. */
+export type CockpitDeskTab = 'activity' | 'tasks' | 'changes' | 'events' | 'report'
 
 declare module 'claude-code' {
   interface PluginState {

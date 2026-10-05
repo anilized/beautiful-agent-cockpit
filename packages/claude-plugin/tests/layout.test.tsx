@@ -110,7 +110,7 @@ for (const [name, snap] of [['live', LIVE], ['offline', OFFLINE], ['home', HOME_
     for (const surface of ['terminal', 'desktop'] as const)
       for (const cols of [60, 100, 140]) {
         const ui = await $.ui.mount({ plugin: 'agent-cockpit', surface, ...pane(cols) })
-        const tabs = name === 'live' || name === 'rich' ? ['tab-live', 'tab-task', 'tab-events', 'tab-report'] : ['']
+        const tabs = name === 'live' || name === 'rich' ? (surface === 'terminal' ? ['tab-live', 'tab-task', 'tab-events', 'tab-report'] : ['tab-activity', 'tab-tasks', 'tab-changes', 'tab-events', 'tab-report']) : ['']
         for (const tab of tabs) {
           if (tab) await ui.press({ key: tab })
           const { bad, texts, keys, text } = audit((await ui.drawn()) as Node, cols)
@@ -118,7 +118,8 @@ for (const [name, snap] of [['live', LIVE], ['offline', OFFLINE], ['home', HOME_
           if (surface === 'terminal') expect(keys).toEqual(expect.arrayContaining(name === 'live' || name === 'rich' ? ['hero', 'pipeline', 'divider', 'progress', 'tab-underline'] : ['hero']))
           else {
             expect(keys).toEqual([])
-            if (name === 'live' || name === 'rich') expect([/▔/.test(text), /▕/.test(text)]).toEqual([true, true]) // underline and meter fallbacks
+            // The app draws its meters as boxes and marks the tab by its fill: no cell-art underline or bar glyphs.
+            expect([/▔/.test(text), /▕/.test(text)]).toEqual([false, false])
           }
           expect([surface, cols, tab, bad]).toEqual([surface, cols, tab, []])
         }
